@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}{{ company.company_name }} — SignalForge{% endblock %}
+
+{% block content %}
+{# ── Company header ── #}
+<div class="card">
+    <div class="header-row">
+        <div>
+            <h1 style="margin-bottom: 0.25rem;">{{ company.company_name }}</h1>
+            <div class="text-muted">
+                {% if company.website_url %}<a href="{{ company.website_url }}" target="_blank">{{ company.website_url }}</a> · {% endif %}
+                {% if company.founder_name %}Founder: {{ company.founder_name }}{% endif %}
+                {% if company.founder_linkedin_url %} · <a href="{{ company.founder_linkedin_url }}" target="_blank">LinkedIn</a>{% endif %}
+            </div>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            {% if company.cto_need_score is not none %}
+            <span class="badge {% if company.cto_need_score > 70 %}badge-green{% elif company.cto_need_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}" style="font-size: 1.1rem; padding: 0.3rem 0.8rem;">
+                Score: {{ company.cto_need_score }}
+            </span>
+            {% endif %}
+            {% if company.current_stage %}
+            <span class="badge badge-gray">{{ company.current_stage }}</span>
+            {% endif %}
+        </div>
+    </div>
+    <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+        <form method="POST" action="/companies/{{ company.id }}/rescan" style="display:inline;">
+            <button type="submit" class="btn btn-primary">⟳ Rescan</button>
+        </form>
+        <a href="/companies/{{ company.id }}/edit" class="btn btn-secondary">Edit</a>
+        <form method="POST" action="/companies/{{ company.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this company?');">
+            <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+    </div>
+</div>
+
+{# ── Latest Analysis ── #}
+<div class="card">
+    <h2>Latest Analysis</h2>
+    {% if analysis %}
+    <div style="display: flex; gap: 2rem; margin-bottom: 1rem;">
+        <div><strong>Stage:</strong> {{ analysis.stage or '—' }}</div>
+        <div><strong>Confidence:</strong> {{ analysis.stage_confidence or 0 }}%</div>
+    </div>
+    {% if analysis.pain_signals_json %}
+    <h2 style="font-size: 1rem;">Pain Signals</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+        {% set signals = analysis.pain_signals_json.get('signals', analysis.pain_signals_json) if analysis.pain_signals_json is mapping else {} %}
+        {% for key, val in signals.items() %}
+        {% set active = val.get('value', val) if val is mapping else val %}
+        <span class="badge {% if active %}badge-green{% else %}badge-gray{% endif %}">
+            {% if active %}✓{% else %}✗{% endif %} {{ key|replace('_', ' ')|title }}
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if analysis.evidence_bullets %}
+    <h2 style="font-size: 1rem;">Evidence</h2>
+    <ul style="margin-left: 1.25rem; margin-bottom: 1rem;">
+        {% for bullet in analysis.evidence_bullets %}
+        <li style="margin-bottom: 0.25rem;">{{ bullet }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% if analysis.explanation %}
+    <h2 style="font-size: 1rem;">Explanation</h2>
+    <p>{{ analysis.explanation }}</p>
+    {% endif %}
+    {% else %}
+    <p class="text-muted">No analysis yet. Click Rescan to analyze this company.</p>
+    {% endif %}
+</div>
+
+{# ── Latest Outreach Draft ── #}
+{% if briefing %}
+<div class="card">
+    <h2>Latest Outreach Draft</h2>
+    {% if briefing.outreach_subject %}
+    <div style="margin-bottom: 0.5rem;"><strong>Subject:</strong> {{ briefing.outreach_subject }}</div>
+    {% endif %}
+    {% if briefing.outreach_message %}
+    <div id="outreach-message" style="background: #f8fafc; padding: 1rem; border-radius: 6px; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6; margin-bottom: 0.75rem;">{{ briefing.outreach_message }}</div>
+    <button class="btn btn-secondary" onclick="copyOutreach()">📋 Copy Message</button>
+    {% endif %}
+</div>
+{% endif %}
+
+{# ── Latest Signals ── #}
+<div class="card">
+    <h2>Latest Signals</h2>
+    {% if signals %}
+    <table>
+        <thead>
+            <tr>
+                <th>Source Type</th>
+                <th>URL</th>
+                <th>Date</th>
+                <th>Content</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in signals %}
+            <tr>
+                <td><span class="badge badge-gray">{{ s.source_type or 'unknown' }}</span></td>
+                <td><a href="{{ s.source_url }}" target="_blank" style="font-size: 0.85rem;">{{ s.source_url[:60] }}{% if s.source_url|length > 60 %}…{% endif %}</a></td>
+                <td class="text-muted">{{ s.created_at.strftime('%Y-%m-%d') }}</td>
+                <td style="max-width: 300px;">{{ s.content_text[:200] }}{% if s.content_text|length > 200 %}…{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No signals collected yet.</p>
+    {% endif %}
+</div>
+
+{% block extra_head %}{% endblock %}
+
+<script>
+function copyOutreach() {
+    const el = document.getElementById('outreach-message');
+    if (el) {
+        navigator.clipboard.writeText(el.textContent.trim()).then(() => {
+            const btn = event.target;
+            btn.textContent = '✓ Copied!';
+            setTimeout(() => { btn.textContent = '📋 Copy Message'; }, 2000);
+        });
+    }
+}
+</script>
+{% endblock %}
+

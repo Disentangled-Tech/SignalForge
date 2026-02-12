@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Companies — SignalForge{% endblock %}
+
+{% block content %}
+<div class="header-row">
+    <h1>Companies</h1>
+    <a href="/companies/add" class="btn btn-primary">+ Add Company</a>
+</div>
+
+<div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+    <form method="GET" action="/companies" style="display: flex; gap: 0.75rem; align-items: center;">
+        <input type="text" name="search" value="{{ search or '' }}" placeholder="Search companies…" style="flex: 1;">
+        <button type="submit" class="btn btn-secondary">Search</button>
+        {% if search %}
+        <a href="/companies" class="btn btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+{% if companies %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Score</th>
+            <th>Stage</th>
+            <th>Last Scan</th>
+            <th>Founder</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in companies %}
+        <tr>
+            <td><a href="/companies/{{ c.id }}">{{ c.company_name }}</a></td>
+            <td>
+                {% if c.cto_need_score is not none %}
+                <span class="badge {% if c.cto_need_score > 70 %}badge-green{% elif c.cto_need_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}">
+                    {{ c.cto_need_score }}
+                </span>
+                {% else %}
+                <span class="badge badge-gray">—</span>
+                {% endif %}
+            </td>
+            <td>{{ c.current_stage or '—' }}</td>
+            <td>{{ c.last_scan_at.strftime('%Y-%m-%d %H:%M') if c.last_scan_at else '—' }}</td>
+            <td>{{ c.founder_name or '—' }}</td>
+            <td>
+                <a href="/companies/{{ c.id }}" class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">View</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <p class="text-muted">No companies found.</p>
+    <a href="/companies/add" class="btn btn-primary" style="margin-top: 1rem;">Add your first company</a>
+</div>
+{% endif %}
+{% endblock %}
+

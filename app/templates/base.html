@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SignalForge{% endblock %}</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #1a1a2e; line-height: 1.6; }
+        a { color: #2563eb; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        nav { background: #1a1a2e; color: #fff; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; }
+        nav .brand { font-weight: 700; font-size: 1.1rem; letter-spacing: 0.5px; }
+        nav .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+        nav .nav-links a { color: #cbd5e1; font-size: 0.9rem; }
+        nav .nav-links a:hover { color: #fff; text-decoration: none; }
+        nav .nav-user { font-size: 0.85rem; color: #94a3b8; margin-left: 1.5rem; }
+        .container { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+        .flash { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+        .flash.success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+        .flash.error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; cursor: pointer; border: none; font-family: inherit; }
+        .btn-primary { background: #2563eb; color: #fff; }
+        .btn-primary:hover { background: #1d4ed8; text-decoration: none; }
+        .btn-danger { background: #dc2626; color: #fff; }
+        .btn-danger:hover { background: #b91c1c; text-decoration: none; }
+        .btn-secondary { background: #e2e8f0; color: #334155; }
+        .btn-secondary:hover { background: #cbd5e1; text-decoration: none; }
+        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        th { background: #f1f5f9; text-align: left; padding: 0.75rem 1rem; font-size: 0.8rem; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
+        td { padding: 0.75rem 1rem; border-top: 1px solid #f1f5f9; font-size: 0.9rem; }
+        tr:hover { background: #f8fafc; }
+        .card { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-gray { background: #f1f5f9; color: #64748b; }
+        input, select, textarea { font-family: inherit; font-size: 0.9rem; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; width: 100%; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+        label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 0.3rem; }
+        .form-group { margin-bottom: 1rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+        h2 { font-size: 1.2rem; margin-bottom: 0.75rem; color: #334155; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .text-muted { color: #64748b; font-size: 0.85rem; }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav>
+        <span class="brand">SignalForge</span>
+        <div class="nav-links">
+            <a href="/companies">Companies</a>
+            <a href="/briefing">Briefing</a>
+            <a href="/settings">Settings</a>
+            {% if user %}
+            <span class="nav-user">{{ user.username }}</span>
+            <a href="/logout">Logout</a>
+            {% endif %}
+        </div>
+    </nav>
+    <div class="container">
+        {% if flash_message %}
+        <div class="flash {{ flash_type|default('success') }}">{{ flash_message }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
+
