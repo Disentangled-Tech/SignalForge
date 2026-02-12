@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Operator Profile — SignalForge{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px;">
+    <div class="header-row">
+        <h1>Operator Profile</h1>
+        <a href="/settings" class="btn btn-secondary">← Back to Settings</a>
+    </div>
+
+    <div class="card" style="margin-bottom: 1rem; padding: 1rem; background: #f0f9ff; border: 1px solid #bae6fd;">
+        <h2 style="font-size: 0.95rem; color: #0369a1; margin-bottom: 0.5rem;">Template Hint</h2>
+        <p class="text-muted" style="margin-bottom: 0.5rem;">Your profile is used by the AI to personalize outreach messages. Include these sections:</p>
+        <ul class="text-muted" style="margin-left: 1.5rem; font-size: 0.85rem; line-height: 1.8;">
+            <li><strong>What I do</strong> — your exact offer (tech leadership, product delivery, etc.)</li>
+            <li><strong>Types of companies I help</strong> — stage, founder type, team size, industries</li>
+            <li><strong>Typical problems I solve</strong> — shipping reliability, hiring, tech stack cleanup, etc.</li>
+            <li><strong>What I do NOT do</strong> — things you don't offer</li>
+            <li><strong>Proof points</strong> — years of experience, roles, notable outcomes</li>
+            <li><strong>Communication style</strong> — short, direct, warm, pragmatic, etc.</li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <form method="POST" action="/settings/profile">
+            <div class="form-group">
+                <label for="content">Profile Content (Markdown)</label>
+                <textarea id="content" name="content" rows="20"
+                          style="font-family: monospace; font-size: 0.85rem;"
+                          placeholder="# Operator Profile&#10;&#10;## What I do&#10;- ...">{{ profile_content }}</textarea>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary">Save Profile</button>
+                <a href="/settings" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
