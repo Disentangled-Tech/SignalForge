@@ -39,6 +39,20 @@ def _is_signal_true(val: Any) -> bool:
     """Return True if value indicates a positive pain signal.
 
     LLMs may return boolean True, string \"true\"/\"True\"/\"yes\", or int 1.
+def _sample_for_log(pain_signals: dict[str, Any] | None) -> dict:
+    """Extract a small sample of pain signals for debug logging."""
+    if not pain_signals:
+        return {}
+    signals = pain_signals.get("signals", pain_signals)
+    if not isinstance(signals, dict):
+        return {}
+    return {k: v for k, v in list(signals.items())[:2]}
+
+
+def _is_signal_true(val: Any) -> bool:
+    """Return True if value indicates a positive pain signal.
+
+    LLMs may return boolean True, string "true"/"True"/"yes", or int 1.
     """
     if val is True:
         return True
@@ -91,7 +105,14 @@ def calculate_score(
     stage_str = (stage or "").strip().lower()
     score += STAGE_BONUSES.get(stage_str, 0)
 
-    return max(0, min(score, 100))
+    result = max(0, min(score, 100))
+    if result == 0 and signals:
+        logger.debug(
+            "calculate_score=0: stage=%r signals_sample=%s",
+            stage,
+            {k: v for k, v in list(signals.items())[:3]},
+        )
+    return result
 
 
 def get_custom_weights(db: Session) -> dict[str, int] | None:
@@ -136,5 +157,14 @@ def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int
     company.cto_need_score = score
     company.current_stage = analysis.stage
     db.commit()
+
+    if score == 0 and (analysis.pain_signals_json or analysis.stage):
+        logger.info(
+            "score_company: company_id=%s score=0 stage=%r pain_signals_keys=%s sample=%s",
+            company_id,
+            analysis.stage,
+            list((analysis.pain_signals_json or {}).keys()),
+            _sample_for_log(analysis.pain_signals_json),
+        )
     return score
 
