@@ -8,6 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.models.analysis_record import AnalysisRecord
+from app.models.briefing_item import BriefingItem
+from app.models.signal_record import SignalRecord
 from app.models.user import User
 
 
@@ -269,14 +272,21 @@ class TestCompanyDetail:
         mock_analysis.evidence_bullets = ["Hiring 5 engineers", "Series A funding"]
         mock_analysis.explanation = "This company is scaling rapidly."
 
-        mock_query = MagicMock()
-        mock_filter = MagicMock()
-        mock_order = MagicMock()
-        mock_order.limit.return_value.all.return_value = []  # signals
-        mock_order.first.side_effect = [mock_analysis, None]  # analysis, briefing
-        mock_filter.order_by.return_value = mock_order
-        mock_query.filter.return_value = mock_filter
-        mock_db_session.query.return_value = mock_query
+        def query_side_effect(model):
+            mock_q = MagicMock()
+            mock_f = MagicMock()
+            mock_o = MagicMock()
+            mock_q.filter.return_value = mock_f
+            mock_f.order_by.return_value = mock_o
+            if model is SignalRecord:
+                mock_o.limit.return_value.all.return_value = []
+            elif model is AnalysisRecord:
+                mock_o.first.return_value = mock_analysis
+            elif model is BriefingItem:
+                mock_o.first.return_value = None
+            return mock_q
+
+        mock_db_session.query.side_effect = query_side_effect
 
         resp = views_client.get("/companies/1")
         assert resp.status_code == 200

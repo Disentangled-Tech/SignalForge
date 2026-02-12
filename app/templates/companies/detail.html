@@ -47,8 +47,8 @@
     {% if analysis.pain_signals_json %}
     <h2 style="font-size: 1rem;">Pain Signals</h2>
     <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
-        {% set signals = analysis.pain_signals_json.get('signals', analysis.pain_signals_json) if analysis.pain_signals_json is mapping else {} %}
-        {% for key, val in signals.items() %}
+        {% set pain_signals = analysis.pain_signals_json.get('signals', analysis.pain_signals_json) if analysis.pain_signals_json is mapping else {} %}
+        {% for key, val in pain_signals.items() %}
         {% set active = val.get('value', val) if val is mapping else val %}
         <span class="badge {% if active %}badge-green{% else %}badge-gray{% endif %}">
             {% if active %}✓{% else %}✗{% endif %} {{ key|replace('_', ' ')|title }}
