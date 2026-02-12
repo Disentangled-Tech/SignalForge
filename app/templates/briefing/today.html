@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Briefing — SignalForge{% endblock %}
+
+{% block extra_head %}
+<style>
+    .briefing-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+    .briefing-header h1 { margin-bottom: 0; }
+    .date-nav { display: flex; align-items: center; gap: 0.75rem; font-size: 0.9rem; }
+    .date-nav a { color: #2563eb; }
+    .briefing-card { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+    .company-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; }
+    .company-title { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .company-title a { font-size: 1.15rem; font-weight: 700; color: #1a1a2e; }
+    .company-title a:hover { color: #2563eb; }
+    .founder { font-size: 0.85rem; color: #64748b; }
+    .score-badge { display: inline-flex; align-items: center; gap: 0.3rem; background: #eff6ff; color: #1e40af; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+    .stage-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
+    .stage-idea { background: #f1f5f9; color: #64748b; }
+    .stage-mvp_building { background: #dbeafe; color: #1e40af; }
+    .stage-early_customers { background: #d1fae5; color: #065f46; }
+    .stage-scaling_team { background: #ffedd5; color: #9a3412; }
+    .stage-enterprise_transition { background: #ede9fe; color: #5b21b6; }
+    .stage-struggling_execution { background: #fee2e2; color: #991b1b; }
+    .section-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; font-weight: 600; margin-bottom: 0.25rem; margin-top: 1rem; }
+    .section-text { font-size: 0.9rem; color: #334155; line-height: 1.6; }
+    .outreach-block { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; margin-top: 1rem; }
+    .outreach-subject { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem; color: #1e293b; }
+    .outreach-message { font-size: 0.9rem; color: #475569; white-space: pre-wrap; line-height: 1.6; }
+    .copy-btn { display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.75rem; padding: 0.4rem 0.8rem; background: #e2e8f0; color: #334155; border: none; border-radius: 6px; font-size: 0.8rem; cursor: pointer; font-family: inherit; }
+    .copy-btn:hover { background: #cbd5e1; }
+    .copy-btn.copied { background: #d1fae5; color: #065f46; }
+    .empty-state { text-align: center; padding: 3rem 1rem; }
+    .empty-state h2 { font-size: 1.3rem; color: #475569; margin-bottom: 0.75rem; }
+    .empty-state p { color: #94a3b8; margin-bottom: 1.5rem; }
+
+    @media print {
+        nav, .btn, .copy-btn, .date-nav, form { display: none !important; }
+        body { background: #fff; }
+        .container { max-width: 100%; margin: 0; padding: 0.5rem; }
+        .briefing-card { box-shadow: none; border: 1px solid #e2e8f0; break-inside: avoid; }
+        .outreach-block { background: #fff; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="briefing-header">
+    <div>
+        <h1>Daily Briefing</h1>
+        <div class="date-nav">
+            <a href="/briefing/{{ prev_date }}">&larr; Previous</a>
+            <span>{{ briefing_date.strftime('%A, %B %d, %Y') }}</span>
+            {% if next_date %}
+            <a href="/briefing/{{ next_date }}">Next &rarr;</a>
+            {% endif %}
+        </div>
+    </div>
+    <div>
+        <form method="post" action="/briefing/generate" style="display:inline;">
+            <button type="submit" class="btn btn-primary">Generate Now</button>
+        </form>
+    </div>
+</div>
+
+{% if items %}
+<p class="text-muted" style="margin-bottom:1rem;">{{ items|length }} compan{{ 'y' if items|length == 1 else 'ies' }} ranked by CTO need score</p>
+
+{% for item in items %}
+<div class="briefing-card">
+    <div class="company-header">
+        <div class="company-title">
+            <a href="/companies/{{ item.company.id }}">{{ item.company.name }}</a>
+            {% set stage = item.analysis.stage or item.company.current_stage or 'unknown' %}
+            <span class="stage-badge stage-{{ stage }}">{{ stage|replace('_', ' ') }}</span>
+            {% if item.company.founder_name %}
+            <span class="founder">Founded by {{ item.company.founder_name }}</span>
+            {% endif %}
+        </div>
+        {% if item.company.cto_need_score is not none %}
+        <span class="score-badge">CTO Score: {{ item.company.cto_need_score }}</span>
+        {% endif %}
+    </div>
+
+    {% if item.why_now %}
+    <div class="section-label">Why Now</div>
+    <div class="section-text">{{ item.why_now }}</div>
+    {% endif %}
+
+    {% if item.risk_summary %}
+    <div class="section-label">Risk Summary</div>
+    <div class="section-text">{{ item.risk_summary }}</div>
+    {% endif %}
+
+    {% if item.suggested_angle %}
+    <div class="section-label">Suggested Angle</div>
+    <div class="section-text">{{ item.suggested_angle }}</div>
+    {% endif %}
+
+    {% if item.outreach_subject or item.outreach_message %}
+    <div class="outreach-block">
+        {% if item.outreach_subject %}
+        <div class="outreach-subject">Subject: {{ item.outreach_subject }}</div>
+        {% endif %}
+        {% if item.outreach_message %}
+        <div class="outreach-message">{{ item.outreach_message }}</div>
+        {% endif %}
+        <button class="copy-btn" onclick="copyOutreach(this, {{ item.id }})" data-subject="{{ item.outreach_subject or '' }}" data-message="{{ item.outreach_message or '' }}">📋 Copy Outreach</button>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty-state">
+    <h2>No briefing for {{ briefing_date.strftime('%B %d, %Y') }}</h2>
+    <p>No briefing items have been generated for this date yet.</p>
+    <form method="post" action="/briefing/generate">
+        <button type="submit" class="btn btn-primary">Generate Now</button>
+    </form>
+    {% if briefing_date != today %}
+    <p style="margin-top:1rem;"><a href="/briefing">Back to today</a></p>
+    {% endif %}
+</div>
+{% endif %}
+
+<script>
+function copyOutreach(btn, itemId) {
+    const subject = btn.getAttribute('data-subject');
+    const message = btn.getAttribute('data-message');
+    const text = (subject ? 'Subject: ' + subject + '\n\n' : '') + message;
+    navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() {
+            btn.textContent = '📋 Copy Outreach';
+            btn.classList.remove('copied');
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}
+

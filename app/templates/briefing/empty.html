@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}No Briefing — SignalForge{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: 4rem 1rem;">
+    <h1 style="font-size: 1.5rem; color: #475569; margin-bottom: 0.75rem;">No Briefing Available</h1>
+    <p style="color: #94a3b8; margin-bottom: 1.5rem; max-width: 400px; margin-left: auto; margin-right: auto;">
+        {% if briefing_date %}
+        No briefing has been generated for {{ briefing_date.strftime('%B %d, %Y') }}.
+        {% else %}
+        No briefing has been generated yet.
+        {% endif %}
+    </p>
+    <form method="post" action="/briefing/generate" style="display: inline-block; margin-bottom: 1rem;">
+        <button type="submit" class="btn btn-primary">Generate Now</button>
+    </form>
+    <br>
+    <a href="/briefing" style="font-size: 0.9rem;">Back to today&rsquo;s briefing</a>
+</div>
+{% endblock %}
+
