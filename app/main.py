@@ -4,13 +4,14 @@ SignalForge FastAPI application entry point.
 Pipeline: companies → signals → analysis → scoring → briefing → outreach draft
 """
 
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from app import __version__
 from app.config import get_settings
+from app.db.session import check_db_connection, engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,8 +24,18 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
     logger.info("SignalForge starting")
-    yield
-    logger.info("SignalForge shutting down")
+    try:
+        try:
+            check_db_connection()
+            logger.info("Database connection verified")
+        except Exception as e:
+            logger.critical("Database unreachable: %s", e)
+            raise
+        yield
+    finally:
+        logger.info("SignalForge shutting down")
+        engine.dispose()
+        logger.info("Database connection pool closed")
 
 
 def create_app() -> FastAPI:
@@ -46,8 +57,28 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        """Health check endpoint."""
-        return {"status": "ok", "version": __version__}
+        """Health check endpoint. Confirms DB connectivity."""
+        from sqlalchemy import text
+
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return {
+                "status": "ok",
+                "version": __version__,
+                "database": "connected",
+            }
+        except Exception:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "unhealthy",
+                    "version": __version__,
+                    "database": "disconnected",
+                },
+            )
 
     return app
 

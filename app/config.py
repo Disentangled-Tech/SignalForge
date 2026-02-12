@@ -25,8 +25,9 @@ class Settings:
     app_name: str = "SignalForge"
     debug: bool = False
 
-    # Database
-    database_url: str = "postgresql://localhost:5432/signalforge_dev"
+    # Database (postgresql+psycopg for psycopg3; use postgresql:// for psycopg2)
+    database_url: str = "postgresql+psycopg://localhost:5432/signalforge_dev"
+    db_connect_timeout: int = 10  # seconds
 
     # Security
     secret_key: str = ""
@@ -47,13 +48,22 @@ class Settings:
 
         default_user = os.getenv("PGUSER") or os.getenv("USER") or "postgres"
         default_url = (
-            f"postgresql://{default_user}:"
+            f"postgresql+psycopg://{default_user}:"
             f"{os.getenv('PGPASSWORD', '')}@"
             f"{os.getenv('PGHOST', 'localhost')}:"
             f"{os.getenv('PGPORT', '5432')}/"
             f"{os.getenv('PGDATABASE', 'signalforge_dev')}"
         )
-        self.database_url = os.getenv("DATABASE_URL", default_url)
+        raw_url = os.getenv("DATABASE_URL", default_url)
+        # Ensure psycopg3 driver if URL uses generic postgresql://
+        if raw_url.startswith("postgresql://") and not raw_url.startswith(
+            "postgresql+psycopg"
+        ):
+            raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        self.database_url = raw_url
+        self.db_connect_timeout = int(
+            os.getenv("DB_CONNECT_TIMEOUT", str(self.db_connect_timeout))
+        )
 
         self.secret_key = os.getenv("SECRET_KEY", "")
         self.internal_job_token = os.getenv("INTERNAL_JOB_TOKEN", "")
