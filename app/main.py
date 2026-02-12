@@ -49,10 +49,12 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
     )
 
-    # Mount API routes (to be added)
-    # from app.api import auth, companies, briefing
-    # app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-    # app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
+    # Mount API routes
+    from app.api.auth import router as auth_router
+    from app.api.companies import router as companies_router
+
+    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+    app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
     # app.include_router(briefing.router, prefix="/api/briefing", tags=["briefing"])
 
     @app.get("/health")
