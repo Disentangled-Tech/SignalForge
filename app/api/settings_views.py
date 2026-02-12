@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, require_auth
+from app.api.deps import get_db, require_ui_auth
 from app.models.user import User
 from app.services.settings_service import (
     get_app_settings,
@@ -31,7 +31,7 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(
     request: Request,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
     """Render settings page with current values."""
@@ -53,7 +53,7 @@ def settings_page(
 @router.post("/settings")
 def settings_save(
     request: Request,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
     briefing_time: str = Form(""),
     briefing_email: str = Form(""),
@@ -92,7 +92,7 @@ def settings_save(
 @router.get("/settings/profile", response_class=HTMLResponse)
 def profile_page(
     request: Request,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
     """Render operator profile editor."""
@@ -113,7 +113,7 @@ def profile_page(
 @router.post("/settings/profile")
 def profile_save(
     request: Request,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
     content: str = Form(""),
 ):

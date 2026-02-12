@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_auth
+from app.api.deps import get_db, require_ui_auth
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.user import User
@@ -27,7 +27,7 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 @router.get("/briefing", response_class=HTMLResponse)
 def briefing_today(
     request: Request,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
     """Show today's briefing page."""
@@ -39,7 +39,7 @@ def briefing_today(
 def briefing_by_date(
     request: Request,
     date_str: str,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
     """Show briefing for a specific date (YYYY-MM-DD)."""
@@ -53,7 +53,7 @@ def briefing_by_date(
 @router.post("/briefing/generate")
 def briefing_generate(
     request: Request,
-    user: User = Depends(require_auth),
+    user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
     """Trigger briefing generation and redirect to briefing page."""
