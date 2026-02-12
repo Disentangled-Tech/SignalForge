@@ -6,7 +6,13 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
-from app.schemas.company import CompanyCreate, CompanyRead, CompanyUpdate
+from app.schemas.company import (
+    BulkImportResponse,
+    BulkImportRow,
+    CompanyCreate,
+    CompanyRead,
+    CompanyUpdate,
+)
 
 
 # ── Field mapping helpers ────────────────────────────────────────────
@@ -147,3 +153,80 @@ def delete_company(db: Session, company_id: int) -> bool:
     db.commit()
     return True
 
+
+
+# ── Bulk import ──────────────────────────────────────────────────────
+
+
+def bulk_import_companies(
+    db: Session, companies: list[CompanyCreate]
+) -> BulkImportResponse:
+    """Import multiple companies, skipping duplicates.
+
+    Returns a summary with per-row details.
+    """
+    rows: list[BulkImportRow] = []
+    created = 0
+    duplicates = 0
+    errors = 0
+
+    for idx, data in enumerate(companies, start=1):
+        name = data.company_name.strip()
+        if not name:
+            rows.append(
+                BulkImportRow(
+                    row=idx,
+                    company_name=name or "(empty)",
+                    status="error",
+                    detail="Missing company_name",
+                )
+            )
+            errors += 1
+            continue
+
+        # Duplicate detection: case-insensitive name match
+        existing = (
+            db.query(Company)
+            .filter(func.lower(Company.name) == name.lower())
+            .first()
+        )
+        if existing:
+            rows.append(
+                BulkImportRow(
+                    row=idx,
+                    company_name=name,
+                    status="duplicate",
+                    detail=f"Company '{name}' already exists (id={existing.id})",
+                )
+            )
+            duplicates += 1
+            continue
+
+        try:
+            result = create_company(db, data)
+            rows.append(
+                BulkImportRow(
+                    row=idx,
+                    company_name=name,
+                    status="created",
+                )
+            )
+            created += 1
+        except Exception as exc:
+            rows.append(
+                BulkImportRow(
+                    row=idx,
+                    company_name=name,
+                    status="error",
+                    detail=str(exc),
+                )
+            )
+            errors += 1
+
+    return BulkImportResponse(
+        total=len(companies),
+        created=created,
+        duplicates=duplicates,
+        errors=errors,
+        rows=rows,
+    )
