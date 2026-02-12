@@ -72,3 +72,22 @@ class CompanyList(BaseModel):
     page: int = 1
     page_size: int = 20
 
+
+class BulkImportRow(BaseModel):
+    """Result for a single row in a bulk import."""
+
+    row: int
+    company_name: str
+    status: str  # "created", "duplicate", "error"
+    detail: Optional[str] = None
+
+
+class BulkImportResponse(BaseModel):
+    """Summary response for a bulk import operation."""
+
+    total: int
+    created: int
+    duplicates: int
+    errors: int
+    rows: list[BulkImportRow]
+

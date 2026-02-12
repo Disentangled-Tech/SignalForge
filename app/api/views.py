@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
+import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -19,7 +22,13 @@ from app.models.signal_record import SignalRecord
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanySource
 from app.services.auth import authenticate_user, create_access_token
-from app.services.company import create_company, delete_company, get_company, list_companies
+from app.services.company import (
+    bulk_import_companies,
+    create_company,
+    delete_company,
+    get_company,
+    list_companies,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,6 +187,83 @@ def companies_add_submit(
     )
     create_company(db, data)
     return RedirectResponse(url="/companies", status_code=302)
+
+
+# ── Companies: import ────────────────────────────────────────────────
+
+@router.get("/companies/import", response_class=HTMLResponse)
+def companies_import_form(
+    request: Request,
+    user: User = Depends(_require_ui_auth),
+):
+    """Render bulk import form."""
+    return templates.TemplateResponse(
+        "companies/import.html",
+        {"request": request, "user": user},
+    )
+
+
+@router.post("/companies/import", response_class=HTMLResponse)
+def companies_import_submit(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+    csv_file: UploadFile | None = File(None),
+    json_data: str = Form(""),
+):
+    """Handle bulk import form submission (CSV file or JSON paste)."""
+    companies: list[CompanyCreate] = []
+    errors: list[str] = []
+
+    if csv_file is not None and csv_file.filename:
+        # Parse CSV upload
+        try:
+            content = csv_file.file.read().decode("utf-8")
+            reader = csv.DictReader(io.StringIO(content))
+            for idx, row in enumerate(reader, start=1):
+                name = (row.get("company_name") or "").strip()
+                if not name:
+                    continue
+                companies.append(
+                    CompanyCreate(
+                        company_name=name,
+                        website_url=row.get("website_url") or None,
+                        founder_name=row.get("founder_name") or None,
+                        founder_linkedin_url=row.get("founder_linkedin_url") or None,
+                        company_linkedin_url=row.get("company_linkedin_url") or None,
+                        notes=row.get("notes") or None,
+                    )
+                )
+        except Exception as exc:
+            errors.append(f"Failed to parse CSV: {exc}")
+    elif json_data.strip():
+        # Parse JSON paste
+        try:
+            parsed = json.loads(json_data)
+            if not isinstance(parsed, list):
+                errors.append("JSON must be an array of objects.")
+            else:
+                for item in parsed:
+                    companies.append(CompanyCreate(**item))
+        except json.JSONDecodeError as exc:
+            errors.append(f"Invalid JSON: {exc}")
+        except Exception as exc:
+            errors.append(f"Failed to parse JSON data: {exc}")
+    else:
+        errors.append("Please upload a CSV file or paste JSON data.")
+
+    if errors:
+        return templates.TemplateResponse(
+            "companies/import.html",
+            {"request": request, "user": user, "errors": errors},
+            status_code=422,
+        )
+
+    result = bulk_import_companies(db, companies)
+    return templates.TemplateResponse(
+        "companies/import.html",
+        {"request": request, "user": user, "result": result},
+    )
 
 
 # ── Companies: detail ────────────────────────────────────────────────
