@@ -20,6 +20,7 @@ class SignalRecord(Base):
         Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
     )
     source_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     content_text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
