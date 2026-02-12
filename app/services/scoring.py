@@ -35,6 +35,10 @@ STAGE_BONUSES: dict[str, int] = {
 }
 
 
+def _is_signal_true(val: Any) -> bool:
+    """Return True if value indicates a positive pain signal.
+
+    LLMs may return boolean True, string \"true\"/\"True\"/\"yes\", or int 1.
 def _sample_for_log(pain_signals: dict[str, Any] | None) -> dict:
     """Extract a small sample of pain signals for debug logging."""
     if not pain_signals:
