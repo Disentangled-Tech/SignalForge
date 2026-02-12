@@ -1,0 +1,175 @@
+"""Tests for scan orchestrator service."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.models.company import Company
+from app.models.job_run import JobRun
+from app.models.signal_record import SignalRecord
+from app.services.scan_orchestrator import infer_source_type
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+
+def _company(id: int, name: str, website_url: str | None = "https://example.com") -> MagicMock:
+    c = MagicMock(spec=Company)
+    c.id = id
+    c.name = name
+    c.website_url = website_url
+    c.last_scan_at = None
+    return c
+
+
+def _mock_db(*companies: Company):
+    """Return a mock Session pre-loaded with company list."""
+    db = MagicMock()
+    db.query.return_value.all.return_value = list(companies)
+
+    def _query_filter(model):
+        chain = MagicMock()
+        if model is Company:
+            def _filter_first(*a, **kw):
+                inner = MagicMock()
+                inner.first.return_value = companies[0] if companies else None
+                return inner
+            chain.filter = _filter_first
+        return chain
+
+    db.query.side_effect = lambda m: (
+        _query_filter(m) if m is Company else db.query.return_value
+    )
+    return db
+
+
+# ── infer_source_type tests ──────────────────────────────────────────
+
+
+class TestInferSourceType:
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            ("https://acme.com", "homepage"),
+            ("https://acme.com/", "homepage"),
+            ("https://acme.com/blog/post-1", "blog"),
+            ("https://acme.com/articles/hello", "blog"),
+            ("https://acme.com/jobs", "jobs"),
+            ("https://acme.com/careers", "careers"),
+            ("https://acme.com/news/latest", "news"),
+            ("https://acme.com/press/release", "news"),
+            ("https://acme.com/about", "about"),
+            ("https://acme.com/about-us", "about"),
+            ("https://acme.com/team", "about"),
+            ("https://acme.com/products/widget", "homepage"),  # no match → homepage
+        ],
+    )
+    def test_infer(self, url: str, expected: str):
+        assert infer_source_type(url) == expected
+
+
+# ── run_scan_company tests ───────────────────────────────────────────
+
+
+class TestRunScanCompany:
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.store_signal")
+    @patch("app.services.scan_orchestrator.discover_pages", new_callable=AsyncMock)
+    async def test_returns_new_signal_count(self, mock_discover, mock_store):
+        """run_scan_company returns count of non-duplicate signals."""
+        from app.services.scan_orchestrator import run_scan_company
+
+        company = _company(1, "Acme")
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = company
+
+        mock_discover.return_value = [
+            ("https://acme.com/", "Homepage text"),
+            ("https://acme.com/blog/post", "Blog text"),
+        ]
+        # First is new, second is duplicate (None)
+        mock_store.side_effect = [MagicMock(), None]
+
+        count = await run_scan_company(db, 1)
+        assert count == 1
+        assert mock_store.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.discover_pages", new_callable=AsyncMock)
+    async def test_no_website_returns_zero(self, mock_discover):
+        from app.services.scan_orchestrator import run_scan_company
+
+        company = _company(2, "NoSite", website_url=None)
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = company
+
+        count = await run_scan_company(db, 2)
+        assert count == 0
+        mock_discover.assert_not_called()
+
+
+# ── run_scan_all tests ───────────────────────────────────────────────
+
+
+class TestRunScanAll:
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_creates_job_run_and_completes(self, mock_scan_co):
+        from app.services.scan_orchestrator import run_scan_all
+
+        c1 = _company(1, "Alpha")
+        c2 = _company(2, "Beta")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1, c2]
+        mock_scan_co.return_value = 3
+
+        job = await run_scan_all(db)
+
+        assert isinstance(job, JobRun)
+        assert job.status == "completed"
+        assert job.companies_processed == 2
+        assert job.finished_at is not None
+        assert job.error_message is None
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_error_isolation(self, mock_scan_co):
+        """One company failure must NOT stop the others."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        c1 = _company(1, "Good")
+        c2 = _company(2, "Bad")
+        c3 = _company(3, "AlsoGood")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1, c2, c3]
+
+        mock_scan_co.side_effect = [2, RuntimeError("network down"), 1]
+
+        job = await run_scan_all(db)
+
+        # Despite one error the job should complete
+        assert job.status == "completed"
+        assert job.companies_processed == 2  # c1 + c3
+        assert "Company 2" in job.error_message
+        assert "network down" in job.error_message
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_all_failed_status(self, mock_scan_co):
+        """If every company with a URL fails, job status should be 'failed'."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        c1 = _company(1, "Bad1")
+        c2 = _company(2, "Bad2")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1, c2]
+
+        mock_scan_co.side_effect = RuntimeError("boom")
+
+        job = await run_scan_all(db)
+
+        assert job.status == "failed"
+        assert job.companies_processed == 0
+        assert job.error_message is not None
