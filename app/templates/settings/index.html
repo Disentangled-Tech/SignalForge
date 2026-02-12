@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — SignalForge{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px;">
+    <div class="header-row">
+        <h1>Settings</h1>
+        <a href="/settings/profile" class="btn btn-secondary">Edit Operator Profile</a>
+    </div>
+
+    <div class="card">
+        <form method="POST" action="/settings">
+            <div class="form-group">
+                <label for="briefing_time">Briefing Time</label>
+                <input type="time" id="briefing_time" name="briefing_time"
+                       value="{{ settings.get('briefing_time', '08:00') }}">
+                <span class="text-muted">Time of day to generate daily briefings (24h format)</span>
+            </div>
+
+            <div class="form-group">
+                <label for="briefing_email">Briefing Email</label>
+                <input type="email" id="briefing_email" name="briefing_email"
+                       placeholder="you@example.com"
+                       value="{{ settings.get('briefing_email', '') }}">
+                <span class="text-muted">Email address for briefing delivery</span>
+            </div>
+
+            <div class="form-group">
+                <label for="scoring_weights">Scoring Weights (JSON)</label>
+                <textarea id="scoring_weights" name="scoring_weights" rows="8"
+                          style="font-family: monospace; font-size: 0.85rem;">{{ settings.get('scoring_weights', '{}') }}</textarea>
+                <span class="text-muted">Custom signal weights as JSON. Keys: hiring_engineers, switching_from_agency, adding_enterprise_features, compliance_security_pressure, product_delivery_issues, architecture_scaling_risk, founder_overload</span>
+            </div>
+
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+                <a href="/companies" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

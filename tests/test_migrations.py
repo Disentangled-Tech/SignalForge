@@ -1,5 +1,6 @@
 """Alembic migration tests."""
 
+import os
 import subprocess
 import sys
 
@@ -8,7 +9,7 @@ from sqlalchemy import inspect
 
 from app.db import engine
 
-PROJECT_ROOT = "/Users/triciaballad/Documents/GitHub/SignalForge"
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run_alembic(*args: str) -> subprocess.CompletedProcess[str]:
@@ -43,3 +44,8 @@ def test_alembic_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
     assert "companies" in tables
     assert "signal_records" in tables
     assert "job_runs" in tables
+    assert "analysis_records" in tables
+    assert "briefing_items" in tables
+    assert "users" in tables
+    assert "operator_profiles" in tables
+    assert "app_settings" in tables

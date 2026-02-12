@@ -49,11 +49,25 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
     )
 
-    # Mount API routes (to be added)
-    # from app.api import auth, companies, briefing
-    # app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-    # app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
-    # app.include_router(briefing.router, prefix="/api/briefing", tags=["briefing"])
+    # Mount API routes
+    from app.api.auth import router as auth_router
+    from app.api.briefing_views import router as briefing_views_router
+    from app.api.companies import router as companies_router
+    from app.api.settings_views import router as settings_views_router
+    from app.api.views import router as views_router
+
+    app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+    app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
+
+    # Mount HTML-serving view routes (no prefix — serves /, /login, /companies, etc.)
+    app.include_router(views_router, tags=["views"])
+    app.include_router(briefing_views_router, tags=["briefing-views"])
+    app.include_router(settings_views_router, tags=["settings-views"])
+
+    # Internal job endpoints (cron/scripts — token-authenticated)
+    from app.api.internal import router as internal_router
+
+    app.include_router(internal_router, tags=["internal"])
 
     @app.get("/health")
     def health() -> dict:

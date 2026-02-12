@@ -42,6 +42,14 @@ class Settings:
     briefing_time: str = "08:00"  # 24h format for cron
     briefing_email_enabled: bool = False
 
+    # SMTP / Email
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    briefing_email_to: str = ""
+
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", self.app_name)
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
@@ -76,3 +84,10 @@ class Settings:
         self.briefing_email_enabled = os.getenv(
             "BRIEFING_EMAIL_ENABLED", "false"
         ).lower() == "true"
+
+        self.smtp_host = os.getenv("SMTP_HOST", "")
+        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        self.smtp_user = os.getenv("SMTP_USER", "")
+        self.smtp_password = os.getenv("SMTP_PASSWORD", "")
+        self.smtp_from = os.getenv("SMTP_FROM", "")
+        self.briefing_email_to = os.getenv("BRIEFING_EMAIL_TO", "")

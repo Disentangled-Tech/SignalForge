@@ -6,3 +6,7 @@ Rules:
 - Prompts must be versioned by filename
 - Prompts must be editable without code changes
 """
+
+from app.prompts.loader import load_prompt, render_prompt
+
+__all__ = ["load_prompt", "render_prompt"]

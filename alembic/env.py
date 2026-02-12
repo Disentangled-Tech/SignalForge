@@ -22,7 +22,16 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import models so Alembic can detect them
-from app.models import Company, JobRun, SignalRecord  # noqa: F401
+from app.models import (  # noqa: F401
+    AnalysisRecord,
+    AppSettings,
+    BriefingItem,
+    Company,
+    JobRun,
+    OperatorProfile,
+    SignalRecord,
+    User,
+)
 
 target_metadata = Base.metadata
 

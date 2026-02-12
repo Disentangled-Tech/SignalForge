@@ -1,0 +1,126 @@
+"""Scoring engine — deterministic CTO-need score from analysis results."""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.models.analysis_record import AnalysisRecord
+from app.models.app_settings import AppSettings
+from app.models.company import Company
+
+logger = logging.getLogger(__name__)
+
+# ── Default signal weights ──────────────────────────────────────────
+# Each key maps to a pain-signal boolean in the analysis output.
+# Value = points added when the signal is *true*.
+DEFAULT_SIGNAL_WEIGHTS: dict[str, int] = {
+    "hiring_engineers": 15,
+    "switching_from_agency": 10,
+    "adding_enterprise_features": 15,
+    "compliance_security_pressure": 25,
+    "product_delivery_issues": 20,
+    "architecture_scaling_risk": 15,
+    "founder_overload": 10,
+}
+
+# ── Stage bonuses ───────────────────────────────────────────────────
+STAGE_BONUSES: dict[str, int] = {
+    "scaling_team": 20,
+    "enterprise_transition": 30,
+    "struggling_execution": 30,
+}
+
+
+def calculate_score(
+    pain_signals: dict[str, Any],
+    stage: str,
+    custom_weights: dict[str, int] | None = None,
+) -> int:
+    """Return a 0-100 CTO-need score from pain signals and stage.
+
+    Parameters
+    ----------
+    pain_signals:
+        Dict from ``AnalysisRecord.pain_signals_json``.  Accepts either the
+        nested ``{"signals": {key: {"value": bool, ...}, ...}}`` format or a
+        flat ``{key: {"value": bool, ...}, ...}`` format.
+    stage:
+        Company lifecycle stage string (e.g. ``"scaling_team"``).
+    custom_weights:
+        If provided, **replaces** ``DEFAULT_SIGNAL_WEIGHTS`` entirely.
+    """
+    if not isinstance(pain_signals, dict):
+        return 0
+
+    weights = custom_weights if custom_weights is not None else DEFAULT_SIGNAL_WEIGHTS
+
+    # Normalise: accept nested {"signals": {...}} or flat dict
+    signals: dict[str, Any] = pain_signals.get("signals", pain_signals)
+    if not isinstance(signals, dict):
+        return 0
+
+    score = 0
+    for key, weight in weights.items():
+        entry = signals.get(key)
+        if isinstance(entry, dict):
+            if entry.get("value") is True:
+                score += weight
+        elif entry is True:
+            # Also accept flat bool values
+            score += weight
+
+    # Stage bonus
+    stage_str = (stage or "").strip().lower()
+    score += STAGE_BONUSES.get(stage_str, 0)
+
+    return max(0, min(score, 100))
+
+
+def get_custom_weights(db: Session) -> dict[str, int] | None:
+    """Load custom scoring weights from AppSettings.
+
+    Returns ``None`` when the ``scoring_weights`` key is absent or the stored
+    value is not valid JSON.
+    """
+    row = db.query(AppSettings).filter(AppSettings.key == "scoring_weights").first()
+    if row is None or row.value is None:
+        return None
+    try:
+        parsed = json.loads(row.value)
+        if isinstance(parsed, dict):
+            return parsed
+        return None
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Invalid JSON in scoring_weights AppSettings row")
+        return None
+
+
+def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int:
+    """Score a company from its latest analysis and persist the result.
+
+    1. Loads optional custom weights from AppSettings.
+    2. Computes the deterministic score.
+    3. Updates ``company.cto_need_score`` and ``company.current_stage``.
+    4. Commits and returns the score.
+    """
+    custom_weights = get_custom_weights(db)
+    score = calculate_score(
+        pain_signals=analysis.pain_signals_json or {},
+        stage=analysis.stage or "",
+        custom_weights=custom_weights,
+    )
+
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if company is None:
+        logger.error("score_company: company_id=%s not found", company_id)
+        return score
+
+    company.cto_need_score = score
+    company.current_stage = analysis.stage
+    db.commit()
+    return score
+
