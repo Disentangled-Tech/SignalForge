@@ -10,6 +10,7 @@ from app.models.company import Company
 from app.services.scoring import (
     DEFAULT_SIGNAL_WEIGHTS,
     STAGE_BONUSES,
+    _is_signal_true,
     calculate_score,
     get_custom_weights,
     score_company,
@@ -125,6 +126,26 @@ class TestCalculateScore:
         }
         score = calculate_score(signals, "")
         assert score == 25  # hiring_engineers(15) + founder_overload(10)
+
+    def test_is_signal_true_accepts_various_formats(self) -> None:
+        """_is_signal_true accepts boolean, string, and int representations."""
+        assert _is_signal_true(True) is True
+        assert _is_signal_true("true") is True
+        assert _is_signal_true("True") is True
+        assert _is_signal_true("yes") is True
+        assert _is_signal_true("1") is True
+        assert _is_signal_true(1) is True
+        assert _is_signal_true(1.0) is True
+        assert _is_signal_true(False) is False
+        assert _is_signal_true("false") is False
+        assert _is_signal_true("no") is False
+        assert _is_signal_true(0) is False
+        assert _is_signal_true(None) is False
+
+    def test_value_yes_is_counted(self) -> None:
+        """String 'yes' is treated as truthy."""
+        signals = {"signals": {"hiring_engineers": {"value": "yes", "why": "test"}}}
+        assert calculate_score(signals, "") == 15
 
     def test_stage_case_insensitive(self) -> None:
         score = calculate_score(_signals([]), "Scaling_Team")
