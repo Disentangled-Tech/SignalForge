@@ -11,7 +11,7 @@ from app.db.session import get_db  # re-export
 from app.models.user import User
 from app.services.auth import get_user_from_token
 
-__all__ = ["get_db", "get_current_user", "require_auth"]
+__all__ = ["get_db", "get_current_user", "require_auth", "require_ui_auth"]
 
 # Cookie name for browser sessions
 AUTH_COOKIE = "access_token"
@@ -58,6 +58,23 @@ def require_auth(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
+        )
+    return user
+
+
+def require_ui_auth(
+    request: Request,
+    user: Optional[User] = Depends(get_current_user),
+) -> User:
+    """Dependency that requires authentication for browser/UI routes.
+
+    Redirects to /login instead of returning a 401 JSON response.
+    """
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            detail="Not authenticated",
+            headers={"Location": "/login"},
         )
     return user
 

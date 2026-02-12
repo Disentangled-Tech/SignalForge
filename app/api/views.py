@@ -38,8 +38,9 @@ def _require_ui_auth(
     """Require authentication for UI routes; redirect to login on failure."""
     if user is None:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_303_SEE_OTHER,
             detail="Not authenticated",
+            headers={"Location": "/login"},
         )
     return user
 

@@ -152,9 +152,10 @@ class TestLoginPage:
 
 class TestCompaniesList:
     def test_companies_list_requires_auth(self, noauth_client):
-        """GET /companies without auth returns 401."""
+        """GET /companies without auth redirects to login."""
         resp = noauth_client.get("/companies", follow_redirects=False)
-        assert resp.status_code == 401
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
 
     @patch("app.api.views.list_companies")
     def test_companies_list_renders(self, mock_list, views_client):
@@ -197,9 +198,10 @@ class TestAddCompany:
         assert "company_name" in resp.text
 
     def test_add_form_requires_auth(self, noauth_client):
-        """GET /companies/add without auth returns 401."""
+        """GET /companies/add without auth redirects to login."""
         resp = noauth_client.get("/companies/add", follow_redirects=False)
-        assert resp.status_code == 401
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
 
     @patch("app.api.views.create_company")
     def test_add_company_success(self, mock_create, views_client):

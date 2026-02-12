@@ -16,7 +16,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("INTERNAL_JOB_TOKEN", "test-internal-token")
 
 from app.api.briefing_views import router  # noqa: E402
-from app.api.deps import get_db, require_auth  # noqa: E402
+from app.api.deps import get_db, require_ui_auth  # noqa: E402
 from app.models.analysis_record import AnalysisRecord  # noqa: E402
 from app.models.briefing_item import BriefingItem  # noqa: E402
 from app.models.company import Company  # noqa: E402
@@ -101,7 +101,7 @@ def _create_test_app(mock_db, mock_user=None):
     app.dependency_overrides[get_db] = override_get_db
 
     if mock_user is not None:
-        app.dependency_overrides[require_auth] = lambda: mock_user
+        app.dependency_overrides[require_ui_auth] = lambda: mock_user
 
     return app
 
@@ -277,16 +277,19 @@ class TestAuthRequired:
     """Tests that routes require authentication."""
 
     def test_briefing_requires_auth(self, noauth_client):
-        """GET /briefing returns 401 without authentication."""
-        resp = noauth_client.get("/briefing")
-        assert resp.status_code == 401
+        """GET /briefing redirects to login without authentication."""
+        resp = noauth_client.get("/briefing", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
 
     def test_briefing_date_requires_auth(self, noauth_client):
-        """GET /briefing/{date} returns 401 without authentication."""
-        resp = noauth_client.get("/briefing/2026-01-01")
-        assert resp.status_code == 401
+        """GET /briefing/{date} redirects to login without authentication."""
+        resp = noauth_client.get("/briefing/2026-01-01", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
 
     def test_generate_requires_auth(self, noauth_client):
-        """POST /briefing/generate returns 401 without authentication."""
-        resp = noauth_client.post("/briefing/generate")
-        assert resp.status_code == 401
+        """POST /briefing/generate redirects to login without authentication."""
+        resp = noauth_client.post("/briefing/generate", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
