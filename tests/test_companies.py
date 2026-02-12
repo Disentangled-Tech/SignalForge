@@ -194,7 +194,7 @@ class TestCompanyAPI:
         """TestClient with mocked DB and auth dependencies."""
         from app.main import app
         from app.db.session import get_db
-        from app.api.companies import _require_auth
+        from app.api.deps import require_auth
 
         self._mock_db = MagicMock()
 
@@ -205,7 +205,7 @@ class TestCompanyAPI:
             pass
 
         app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[_require_auth] = override_auth
+        app.dependency_overrides[require_auth] = override_auth
         client = TestClient(app)
         yield client
         app.dependency_overrides.clear()
