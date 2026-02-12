@@ -67,7 +67,11 @@ def calculate_score(
     for key, weight in weights.items():
         entry = signals.get(key)
         if isinstance(entry, dict):
-            if entry.get("value") is True:
+            val = entry.get("value")
+            # LLMs sometimes return string "true" instead of boolean true in JSON
+            if val is True or (
+                isinstance(val, str) and val.lower() == "true"
+            ):
                 score += weight
         elif entry is True:
             # Also accept flat bool values

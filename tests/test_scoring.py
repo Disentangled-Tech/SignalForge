@@ -112,6 +112,20 @@ class TestCalculateScore:
         score = calculate_score(signals, "")
         assert score == 15
 
+    def test_string_true_is_counted(self) -> None:
+        """Regression: LLMs sometimes return string 'true' instead of boolean true.
+
+        Previously entry.get('value') is True failed for string 'true', causing score 0.
+        """
+        signals = {
+            "signals": {
+                k: {"value": "true" if k in ("hiring_engineers", "founder_overload") else "false", "why": "test"}
+                for k in DEFAULT_SIGNAL_WEIGHTS
+            }
+        }
+        score = calculate_score(signals, "")
+        assert score == 25  # hiring_engineers(15) + founder_overload(10)
+
     def test_stage_case_insensitive(self) -> None:
         score = calculate_score(_signals([]), "Scaling_Team")
         assert score == 20
