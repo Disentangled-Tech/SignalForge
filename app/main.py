@@ -51,15 +51,16 @@ def create_app() -> FastAPI:
 
     # Mount API routes
     from app.api.auth import router as auth_router
+    from app.api.briefing_views import router as briefing_views_router
     from app.api.companies import router as companies_router
     from app.api.views import router as views_router
 
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
-    # app.include_router(briefing.router, prefix="/api/briefing", tags=["briefing"])
 
     # Mount HTML-serving view routes (no prefix — serves /, /login, /companies, etc.)
     app.include_router(views_router, tags=["views"])
+    app.include_router(briefing_views_router, tags=["briefing-views"])
 
     @app.get("/health")
     def health() -> dict:
