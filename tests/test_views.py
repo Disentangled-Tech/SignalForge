@@ -226,6 +226,86 @@ class TestAddCompany:
         assert "required" in resp.text.lower()
 
 
+# ── Import company tests ──────────────────────────────────────────
+
+
+class TestImportCompanies:
+    def test_import_page_renders(self, views_client):
+        """GET /companies/import renders the import form."""
+        resp = views_client.get("/companies/import")
+        assert resp.status_code == 200
+        assert "Import Companies" in resp.text
+        assert "csv_file" in resp.text
+        assert "json_data" in resp.text
+
+    def test_import_page_requires_auth(self, noauth_client):
+        """GET /companies/import without auth redirects to login."""
+        resp = noauth_client.get("/companies/import", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
+
+    @patch("app.api.views.bulk_import_companies")
+    def test_csv_import(self, mock_import, views_client):
+        """POST /companies/import with CSV file processes correctly."""
+        from app.schemas.company import BulkImportResponse, BulkImportRow
+
+        mock_import.return_value = BulkImportResponse(
+            total=2, created=2, duplicates=0, errors=0,
+            rows=[
+                BulkImportRow(row=1, company_name="Acme Corp", status="created"),
+                BulkImportRow(row=2, company_name="Beta Inc", status="created"),
+            ],
+        )
+        csv_content = "company_name,website_url\nAcme Corp,https://acme.example.com\nBeta Inc,https://beta.example.com\n"
+        resp = views_client.post(
+            "/companies/import",
+            files={"csv_file": ("companies.csv", csv_content, "text/csv")},
+            data={"json_data": ""},
+        )
+        assert resp.status_code == 200
+        mock_import.assert_called_once()
+        assert "Acme Corp" in resp.text
+        assert "Created" in resp.text
+
+    @patch("app.api.views.bulk_import_companies")
+    def test_json_import(self, mock_import, views_client):
+        """POST /companies/import with JSON data processes correctly."""
+        from app.schemas.company import BulkImportResponse, BulkImportRow
+
+        mock_import.return_value = BulkImportResponse(
+            total=1, created=1, duplicates=0, errors=0,
+            rows=[
+                BulkImportRow(row=1, company_name="Gamma LLC", status="created"),
+            ],
+        )
+        json_str = '[{"company_name": "Gamma LLC"}]'
+        resp = views_client.post(
+            "/companies/import",
+            data={"json_data": json_str},
+        )
+        assert resp.status_code == 200
+        mock_import.assert_called_once()
+        assert "Gamma LLC" in resp.text
+
+    def test_import_no_data_shows_error(self, views_client):
+        """POST /companies/import with no file or JSON shows error."""
+        resp = views_client.post(
+            "/companies/import",
+            data={"json_data": ""},
+        )
+        assert resp.status_code == 422
+        assert "upload a csv" in resp.text.lower() or "paste json" in resp.text.lower()
+
+    def test_import_invalid_json_shows_error(self, views_client):
+        """POST /companies/import with invalid JSON shows error."""
+        resp = views_client.post(
+            "/companies/import",
+            data={"json_data": "not valid json"},
+        )
+        assert resp.status_code == 422
+        assert "Invalid JSON" in resp.text or "invalid" in resp.text.lower()
+
+
 # ── Company detail tests ────────────────────────────────────────────
 
 
