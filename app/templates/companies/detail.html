@@ -15,10 +15,14 @@
             </div>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
-            {% if company.cto_need_score is not none %}
-            <span class="badge {% if company.cto_need_score > 70 %}badge-green{% elif company.cto_need_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}" style="font-size: 1.1rem; padding: 0.3rem 0.8rem;">
-                Score: {{ company.cto_need_score }}
+            {% set display_score = recomputed_score if recomputed_score is not none else company.cto_need_score %}
+            {% if display_score is not none %}
+            <span class="badge {% if display_score > 70 %}badge-green{% elif display_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}" style="font-size: 1.1rem; padding: 0.3rem 0.8rem;">
+                Score: {{ display_score }}
             </span>
+            {% if recomputed_score is not none and company.cto_need_score != recomputed_score %}
+            <span class="text-muted" style="font-size: 0.75rem;">(stored: {{ company.cto_need_score or '—' }})</span>
+            {% endif %}
             {% endif %}
             {% if company.current_stage %}
             <span class="badge badge-gray">{{ company.current_stage }}</span>

@@ -112,6 +112,34 @@ class TestCalculateScore:
         score = calculate_score(signals, "")
         assert score == 15
 
+    def test_cto_score_non_zero_when_signals_present(self) -> None:
+        """Regression: CTO score must be non-zero when pain signals are true.
+
+        Fails if scoring ignores valid signals (e.g. string \"true\" vs boolean).
+        """
+        signals = _signals(["hiring_engineers", "founder_overload"])
+        score = calculate_score(signals, "")
+        assert score != 0, (
+            "CTO score must be non-zero when pain signals are present. "
+            "Check that value parsing accepts both boolean True and string \"true\"."
+        )
+        assert score == 25  # hiring_engineers(15) + founder_overload(10)
+
+    def test_string_true_produces_non_zero_score(self) -> None:
+        """Regression: LLM may return string \"true\" — must not yield score 0."""
+        signals = {
+            "signals": {
+                k: {"value": "true" if k == "hiring_engineers" else "false", "why": "test"}
+                for k in DEFAULT_SIGNAL_WEIGHTS
+            }
+        }
+        score = calculate_score(signals, "")
+        assert score != 0, (
+            "String \"true\" must be counted. Scoring likely uses 'is True' instead of "
+            "_is_signal_true()."
+        )
+        assert score == 15
+
     def test_stage_case_insensitive(self) -> None:
         score = calculate_score(_signals([]), "Scaling_Team")
         assert score == 20

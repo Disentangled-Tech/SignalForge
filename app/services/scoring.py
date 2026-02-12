@@ -35,6 +35,20 @@ STAGE_BONUSES: dict[str, int] = {
 }
 
 
+def _is_signal_true(val: Any) -> bool:
+    """Return True if value indicates a positive pain signal.
+
+    LLMs may return boolean True, string \"true\"/\"True\"/\"yes\", or int 1.
+    """
+    if val is True:
+        return True
+    if isinstance(val, str):
+        return val.lower() in ("true", "yes", "1")
+    if isinstance(val, (int, float)):
+        return val == 1 or val == 1.0
+    return False
+
+
 def calculate_score(
     pain_signals: dict[str, Any],
     stage: str,
@@ -67,10 +81,10 @@ def calculate_score(
     for key, weight in weights.items():
         entry = signals.get(key)
         if isinstance(entry, dict):
-            if entry.get("value") is True:
+            val = entry.get("value")
+            if _is_signal_true(val):
                 score += weight
-        elif entry is True:
-            # Also accept flat bool values
+        elif _is_signal_true(entry):
             score += weight
 
     # Stage bonus

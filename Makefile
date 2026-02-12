@@ -20,7 +20,7 @@ install:
 	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example")
 
 dev:
-	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --reload-exclude '.venv' --reload-exclude '.git'
+	.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --reload-exclude '.venv' --reload-exclude '.git'
 
 migrate:
 	alembic -c $(CURDIR)/alembic.ini revision --autogenerate -m "migration"

@@ -305,6 +305,19 @@ def company_detail(
         .first()
     )
 
+    # Recompute score from analysis; use for display and repair if stored score is wrong
+    recomputed_score: int | None = None
+    if analysis is not None:
+        from app.services.scoring import calculate_score, score_company
+        recomputed_score = calculate_score(
+            pain_signals=analysis.pain_signals_json or {},
+            stage=analysis.stage or "",
+        )
+        # Repair: if stored score differs from recomputed, persist the correct value
+        if company.cto_need_score != recomputed_score:
+            score_company(db, company_id, analysis)
+            company = get_company(db, company_id) or company
+
     return templates.TemplateResponse(
         "companies/detail.html",
         {
@@ -314,6 +327,7 @@ def company_detail(
             "signals": signals,
             "analysis": analysis,
             "briefing": briefing,
+            "recomputed_score": recomputed_score,
         },
     )
 
