@@ -1,7 +1,7 @@
 # SignalForge local development
 # Usage: make help
 
-.PHONY: help install dev migrate upgrade test lint
+.PHONY: help install dev migrate upgrade test lint diagnose-scan
 
 help:
 	@echo "SignalForge local development"
@@ -12,6 +12,7 @@ help:
 	@echo "  make upgrade   - Run database migrations"
 	@echo "  make test      - Run tests"
 	@echo "  make lint      - Run ruff"
+	@echo "  make diagnose-scan COMPANY_ID=N - Diagnose why a company scan fails"
 
 install:
 	python3 -m venv .venv
@@ -33,3 +34,7 @@ test:
 
 lint:
 	ruff check app tests
+
+diagnose-scan:
+	@test -n "$(COMPANY_ID)" || (echo "Usage: make diagnose-scan COMPANY_ID=<id>"; exit 1)
+	DEBUG=0 .venv/bin/python scripts/diagnose_scan.py $(COMPANY_ID)

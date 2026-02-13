@@ -68,7 +68,9 @@ async def run_scan_company(db: Session, company_id: int) -> int:
         logger.info("Company %s has no website_url – skipping", company_id)
         return 0
 
+    logger.info("Scanning company %s (%s) – website_url=%s", company_id, company.name, company.website_url)
     pages = await discover_pages(company.website_url)
+    logger.info("Company %s: discovered %d pages with content", company_id, len(pages))
     new_count = 0
     for page_url, page_text in pages:
         source_type = infer_source_type(page_url)

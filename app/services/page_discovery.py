@@ -45,6 +45,11 @@ async def discover_pages(base_url: str) -> list[tuple[str, str]]:
         text = extract_text(html)
         if len(text) > _MIN_TEXT_LENGTH:
             results.append((base_url, text))
+            logger.debug("discover_pages: %s OK (%d chars)", base_url, len(text))
+        else:
+            logger.debug("discover_pages: %s fetched but text too short (%d < %d)", base_url, len(text), _MIN_TEXT_LENGTH)
+    else:
+        logger.warning("discover_pages: %s fetch failed (timeout, connection error, or non-2xx)", base_url)
 
     # Try common sub-paths
     for path in _COMMON_PATHS:
@@ -57,6 +62,8 @@ async def discover_pages(base_url: str) -> list[tuple[str, str]]:
             text = extract_text(html)
             if len(text) > _MIN_TEXT_LENGTH:
                 results.append((page_url, text))
+                logger.debug("discover_pages: %s OK (%d chars)", page_url, len(text))
+        # Don't log every 404 for /blog, /news etc – many sites don't have them
 
     return results
 
