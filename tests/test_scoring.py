@@ -408,6 +408,19 @@ class TestIssue64ZeroScores:
         assert score != 0
         assert score == 40  # hiring_engineers(15) + compliance_security_pressure(25)
 
+    def test_legacy_recent_funding_maps_to_architecture_scaling_risk(self) -> None:
+        """recent_funding (capital received, scaling needs) maps to architecture_scaling_risk.
+
+        Not switching_from_agency (agency→in-house) — semantically different signals.
+        """
+        signals = {
+            "signals": {
+                "recent_funding": {"value": True, "why": "Series A announced"},
+            }
+        }
+        score = calculate_score(signals, "")
+        assert score == 15  # architecture_scaling_risk weight
+
     def test_custom_weights_with_legacy_keys_merge_with_defaults(self) -> None:
         """Custom weights with legacy keys still produce non-zero score (merge fix)."""
         db = MagicMock()
