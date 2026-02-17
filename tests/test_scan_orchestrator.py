@@ -9,7 +9,8 @@ import pytest
 from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
-from app.services.scan_orchestrator import infer_source_type
+from app.models.analysis_record import AnalysisRecord
+from app.services.scan_orchestrator import _analysis_changed, infer_source_type
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -70,6 +71,48 @@ class TestInferSourceType:
         assert infer_source_type(url) == expected
 
 
+# ── _analysis_changed tests (issue #61) ───────────────────────────────
+
+
+def _analysis(stage: str, pain_signals: dict | None = None) -> MagicMock:
+    """Create a mock AnalysisRecord with stage and pain_signals_json."""
+    r = MagicMock(spec=AnalysisRecord)
+    r.stage = stage
+    r.pain_signals_json = pain_signals or {}
+    return r
+
+
+class TestAnalysisChanged:
+    def test_prev_none_returns_false(self):
+        """No prior analysis → not changed."""
+        new = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
+        assert _analysis_changed(None, new) is False
+
+    def test_stage_differs_returns_true(self):
+        """Stage change → changed."""
+        prev = _analysis("early_customers")
+        new = _analysis("scaling_team")
+        assert _analysis_changed(prev, new) is True
+
+    def test_stage_case_insensitive_no_change(self):
+        """Stage same (case diff) → not changed."""
+        prev = _analysis("Early_Customers")
+        new = _analysis("early_customers")
+        assert _analysis_changed(prev, new) is False
+
+    def test_pain_signal_differs_returns_true(self):
+        """Pain signal value change → changed."""
+        prev = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": False}}})
+        new = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
+        assert _analysis_changed(prev, new) is True
+
+    def test_identical_returns_false(self):
+        """Same stage and signals → not changed."""
+        prev = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
+        new = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
+        assert _analysis_changed(prev, new) is False
+
+
 # ── run_scan_company_full tests ───────────────────────────────────────
 
 
@@ -83,14 +126,19 @@ class TestRunScanCompanyFull:
         from app.services.scan_orchestrator import run_scan_company_full
 
         db = MagicMock()
+        # No prior analysis (for change detection)
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
         mock_scan.return_value = 2
         analysis = MagicMock()
         mock_analyze.return_value = analysis
 
-        new_count, result_analysis = await run_scan_company_full(db, 1)
+        new_count, result_analysis, changed = await run_scan_company_full(db, 1)
 
         assert new_count == 2
         assert result_analysis is analysis
+        assert changed is False  # no prev analysis
         mock_scan.assert_awaited_once_with(db, 1)
         mock_analyze.assert_called_once_with(db, 1)
         mock_score.assert_called_once_with(db, 1, analysis)
@@ -150,13 +198,14 @@ class TestRunScanAll:
         c2 = _company(2, "Beta")
         db = MagicMock()
         db.query.return_value.all.return_value = [c1, c2]
-        mock_scan_full.return_value = (3, MagicMock())  # (new_signals, analysis)
+        mock_scan_full.return_value = (3, MagicMock(), False)  # (new_signals, analysis, changed)
 
         job = await run_scan_all(db)
 
         assert isinstance(job, JobRun)
         assert job.status == "completed"
         assert job.companies_processed == 2
+        assert job.companies_analysis_changed == 0
         assert job.finished_at is not None
         assert job.error_message is None
         assert mock_scan_full.await_count == 2
@@ -173,13 +222,18 @@ class TestRunScanAll:
         db = MagicMock()
         db.query.return_value.all.return_value = [c1, c2, c3]
 
-        mock_scan_full.side_effect = [(2, MagicMock()), RuntimeError("network down"), (1, MagicMock())]
+        mock_scan_full.side_effect = [
+            (2, MagicMock(), False),
+            RuntimeError("network down"),
+            (1, MagicMock(), True),
+        ]
 
         job = await run_scan_all(db)
 
         # Despite one error the job should complete
         assert job.status == "completed"
         assert job.companies_processed == 2  # c1 + c3
+        assert job.companies_analysis_changed == 1  # c3 had changed=True
         assert "Company 2" in job.error_message
         assert "network down" in job.error_message
 

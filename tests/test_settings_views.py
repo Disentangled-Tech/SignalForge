@@ -146,6 +146,61 @@ class TestSettingsPage:
         assert "Wednesday" in resp.text
         assert "Enable briefing email" in resp.text
 
+    def test_settings_shows_scan_change_rate_when_available(
+        self, mock_db, mock_user
+    ):
+        """GET /settings shows Scan Change Rate card when metric available (issue #61)."""
+        settings_rows = [
+            MagicMock(key="briefing_time", value="08:00"),
+            MagicMock(key="briefing_email", value=""),
+        ]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+
+        with patch(
+            "app.api.settings_views.get_scan_change_rate_30d"
+        ) as mock_scan_metrics:
+            mock_scan_metrics.return_value = (20.0, 10, 50)
+
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app)
+
+            resp = client.get("/settings")
+
+        assert resp.status_code == 200
+        assert "Scan Change Rate (Last 30 Days)" in resp.text
+        assert "20.0%" in resp.text
+        assert "10" in resp.text
+        assert "50" in resp.text
+        assert "tune cron frequency" in resp.text
+
+    def test_settings_shows_no_scan_data_when_empty(
+        self, mock_db, mock_user
+    ):
+        """GET /settings shows empty state when no scan data (issue #61)."""
+        settings_rows = [
+            MagicMock(key="briefing_time", value="08:00"),
+            MagicMock(key="briefing_email", value=""),
+        ]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+
+        with patch(
+            "app.api.settings_views.get_scan_change_rate_30d"
+        ) as mock_scan_metrics:
+            mock_scan_metrics.return_value = (None, 0, 0)
+
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app)
+
+            resp = client.get("/settings")
+
+        assert resp.status_code == 200
+        assert "Scan Change Rate (Last 30 Days)" in resp.text
+        assert "No scan data in last 30 days" in resp.text
+
 
 class TestSettingsSave:
     """Tests for POST /settings (issue #29)."""
