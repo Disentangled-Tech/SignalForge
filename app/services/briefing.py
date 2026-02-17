@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
@@ -15,7 +15,9 @@ from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.prompts.loader import render_prompt
+from app.services.email_service import send_briefing_email
 from app.services.outreach import generate_outreach
+from app.services.settings_resolver import get_resolved_settings
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
     One company failing does **not** stop the whole run.
 
     Creates a JobRun record (issue #27) to track start, finish, and errors.
+    Sends briefing email when enabled (issue #29).
     """
     job = JobRun(job_type="briefing", status="running")
     db.add(job)
@@ -106,6 +109,24 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
     db.refresh(job)
 
     try:
+        resolved = get_resolved_settings(db)
+
+        # Weekly frequency: skip if today is not the configured day
+        if resolved.briefing_frequency == "weekly":
+            today_weekday = date.today().weekday()  # 0=Monday, 6=Sunday
+            if today_weekday != resolved.briefing_day_of_week:
+                logger.info(
+                    "Briefing skipped: weekly frequency, today weekday=%s != configured=%s",
+                    today_weekday,
+                    resolved.briefing_day_of_week,
+                )
+                job.finished_at = datetime.now(timezone.utc)
+                job.status = "completed"
+                job.companies_processed = 0
+                job.error_message = None
+                db.commit()
+                return []
+
         companies = select_top_companies(db)
         items: list[BriefingItem] = []
 
@@ -126,6 +147,26 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
         job.companies_processed = len(items)
         job.error_message = None
         db.commit()
+
+        # Send briefing email when enabled (issue #29)
+        if items and resolved.should_send_briefing_email():
+            _items_with_company = (
+                db.query(BriefingItem)
+                .options(joinedload(BriefingItem.company))
+                .filter(BriefingItem.id.in_([i.id for i in items]))
+                .all()
+            )
+            try:
+                ok = send_briefing_email(
+                    _items_with_company,
+                    resolved.briefing_email_recipient,
+                    settings=resolved,
+                )
+                if not ok:
+                    logger.warning("Briefing email send returned False")
+            except Exception:
+                logger.exception("Briefing email send failed (job still completed)")
+
         return items
 
     except Exception as exc:

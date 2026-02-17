@@ -5,6 +5,16 @@
 {% block extra_head %}
 <style>
     .job-failed { background: #fef2f2; }
+    /* Override base input width for checkboxes/radios so they render correctly */
+    input[type="checkbox"], input[type="radio"] { width: auto; min-width: 1rem; }
+    /* Stack helper text below form rows */
+    .form-group .text-muted { display: block; margin-top: 0.35rem; }
+    /* Briefing frequency: clear row layout */
+    .settings-freq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+    .settings-freq-option { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+    .settings-freq-option input { flex-shrink: 0; }
+    .settings-email-checkbox { display: flex; align-items: center; gap: 0.5rem; }
+    .settings-email-checkbox input { flex-shrink: 0; }
 </style>
 {% endblock %}
 
@@ -21,7 +31,43 @@
                 <label for="briefing_time">Briefing Time</label>
                 <input type="time" id="briefing_time" name="briefing_time"
                        value="{{ settings.get('briefing_time', '08:00') }}">
-                <span class="text-muted">Time of day to generate daily briefings (24h format)</span>
+                <span class="text-muted">Time of day to generate briefings (24h format)</span>
+            </div>
+
+            <div class="form-group">
+                <label>Briefing Frequency</label>
+                <div class="settings-freq-row">
+                    <label class="settings-freq-option">
+                        <input type="radio" name="briefing_frequency" value="daily"
+                               {% if settings.get('briefing_frequency', 'daily') == 'daily' %}checked{% endif %}>
+                        Daily
+                    </label>
+                    <label class="settings-freq-option">
+                        <input type="radio" name="briefing_frequency" value="weekly"
+                               {% if settings.get('briefing_frequency') == 'weekly' %}checked{% endif %}>
+                        Weekly
+                    </label>
+                    <span class="text-muted">on</span>
+                    <select name="briefing_day_of_week" id="briefing_day_of_week" style="width: auto; min-width: 8rem;">
+                        <option value="0" {% if settings.get('briefing_day_of_week', '0') == '0' %}selected{% endif %}>Monday</option>
+                        <option value="1" {% if settings.get('briefing_day_of_week') == '1' %}selected{% endif %}>Tuesday</option>
+                        <option value="2" {% if settings.get('briefing_day_of_week') == '2' %}selected{% endif %}>Wednesday</option>
+                        <option value="3" {% if settings.get('briefing_day_of_week') == '3' %}selected{% endif %}>Thursday</option>
+                        <option value="4" {% if settings.get('briefing_day_of_week') == '4' %}selected{% endif %}>Friday</option>
+                        <option value="5" {% if settings.get('briefing_day_of_week') == '5' %}selected{% endif %}>Saturday</option>
+                        <option value="6" {% if settings.get('briefing_day_of_week') == '6' %}selected{% endif %}>Sunday</option>
+                    </select>
+                </div>
+                <span class="text-muted">When to generate briefings (cron runs daily; weekly skips non-configured days)</span>
+            </div>
+
+            <div class="form-group">
+                <div class="settings-email-checkbox">
+                    <input type="checkbox" name="briefing_email_enabled" value="on" id="briefing_email_enabled"
+                           {% if settings.get('briefing_email_enabled', 'false') == 'true' %}checked{% endif %}>
+                    <label for="briefing_email_enabled" style="margin-bottom: 0;">Enable briefing email</label>
+                </div>
+                <span class="text-muted">Send briefing to the address below when generation completes</span>
             </div>
 
             <div class="form-group">
@@ -29,7 +75,7 @@
                 <input type="email" id="briefing_email" name="briefing_email"
                        placeholder="you@example.com"
                        value="{{ settings.get('briefing_email', '') }}">
-                <span class="text-muted">Email address for briefing delivery</span>
+                <span class="text-muted">Email address for briefing delivery (SMTP configured via env)</span>
             </div>
 
             <div class="form-group">

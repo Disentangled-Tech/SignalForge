@@ -47,6 +47,8 @@ class Settings:
     # Briefing
     briefing_time: str = "08:00"  # 24h format for cron
     briefing_email_enabled: bool = False
+    briefing_frequency: str = "daily"  # daily or weekly (issue #29)
+    briefing_day_of_week: int = 0  # 0=Monday .. 6=Sunday
 
     # SMTP / Email
     smtp_host: str = ""
@@ -103,6 +105,12 @@ class Settings:
         self.briefing_email_enabled = os.getenv(
             "BRIEFING_EMAIL_ENABLED", "false"
         ).lower() == "true"
+        self.briefing_frequency = os.getenv(
+            "BRIEFING_FREQUENCY", self.briefing_frequency
+        ).lower()
+        self.briefing_day_of_week = int(
+            os.getenv("BRIEFING_DAY_OF_WEEK", str(self.briefing_day_of_week))
+        )
 
         self.smtp_host = os.getenv("SMTP_HOST", "")
         self.smtp_port = int(os.getenv("SMTP_PORT", "587"))

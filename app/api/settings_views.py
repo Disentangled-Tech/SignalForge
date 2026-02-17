@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -27,6 +28,12 @@ router = APIRouter()
 
 _templates_dir = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
+
+# HH:MM (24h)
+_BRIEFING_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+# Simple email validation (RFC 5322 simplified)
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_VALID_FREQUENCIES = frozenset({"daily", "weekly"})
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -67,16 +74,48 @@ def settings_save(
     db: Session = Depends(get_db),
     briefing_time: str = Form(""),
     briefing_email: str = Form(""),
+    briefing_email_enabled: str = Form(""),
+    briefing_frequency: str = Form("daily"),
+    briefing_day_of_week: str = Form("0"),
     scoring_weights: str = Form(""),
 ):
-    """Save settings from form and redirect back."""
+    """Save settings from form and redirect back (issue #29)."""
     updates: dict[str, str] = {}
 
-    if briefing_time.strip():
-        updates["briefing_time"] = briefing_time.strip()
+    # briefing_time: validate HH:MM
+    time_val = briefing_time.strip()
+    if time_val:
+        if not _BRIEFING_TIME_RE.match(time_val):
+            return RedirectResponse(
+                url="/settings?error=Invalid+briefing+time+format+use+HH%3AMM",
+                status_code=303,
+            )
+        updates["briefing_time"] = time_val
 
-    if briefing_email.strip():
-        updates["briefing_email"] = briefing_email.strip()
+    # briefing_email: always update (allow empty to clear)
+    email_val = briefing_email.strip()
+    if email_val and not _EMAIL_RE.match(email_val):
+        return RedirectResponse(
+            url="/settings?error=Invalid+email+address",
+            status_code=303,
+        )
+    updates["briefing_email"] = email_val
+
+    # briefing_email_enabled: checkbox sends "on" when checked
+    updates["briefing_email_enabled"] = "true" if briefing_email_enabled == "on" else "false"
+
+    # briefing_frequency
+    freq_val = briefing_frequency.strip().lower()
+    if freq_val in _VALID_FREQUENCIES:
+        updates["briefing_frequency"] = freq_val
+
+    # briefing_day_of_week: 0=Monday .. 6=Sunday
+    try:
+        day_val = int(briefing_day_of_week.strip())
+        if 0 <= day_val <= 6:
+            updates["briefing_day_of_week"] = str(day_val)
+    except ValueError:
+        pass
 
     # Validate scoring_weights JSON if provided
     scoring_text = scoring_weights.strip()
