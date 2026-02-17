@@ -137,7 +137,9 @@ def send_briefing_email(
         logger.warning("email_send_skipped: SMTP host not configured")
         return False
 
-    if briefing_items:
+    if briefing_items and failure_summary:
+        subject = f"SignalForge Daily Briefing — Partial Failures - {date.today()}"
+    elif briefing_items:
         subject = f"SignalForge Daily Briefing - {date.today()}"
     else:
         subject = f"SignalForge Briefing — Failures (no items generated) - {date.today()}"

@@ -165,3 +165,25 @@ def test_send_email_auth_failure(mock_smtp_cls: MagicMock) -> None:
     result = send_briefing_email([_make_item()], "dest@example.com", settings=_make_settings())
     assert result is False
 
+
+@patch("app.services.email_service.smtplib.SMTP")
+def test_send_email_partial_failures_subject(mock_smtp_cls: MagicMock) -> None:
+    """When items exist but failure_summary is set, subject indicates partial failures."""
+    mock_server = MagicMock()
+    mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
+    mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+    items = [_make_item("Acme")]
+    result = send_briefing_email(
+        items,
+        "dest@example.com",
+        settings=_make_settings(),
+        failure_summary="Company 2 (Beta): LLM timeout",
+    )
+
+    assert result is True
+    mock_server.sendmail.assert_called_once()
+    sent_msg = mock_server.sendmail.call_args[0][2]
+    # Subject is MIME-encoded; "Partial Failures" appears as Partial_Failures in q-encoding
+    assert "Partial_Failures" in sent_msg or "Partial Failures" in sent_msg
+

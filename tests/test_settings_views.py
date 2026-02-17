@@ -189,6 +189,36 @@ class TestSettingsSave:
         assert updates.get("briefing_day_of_week") == "3"
         assert updates.get("briefing_email_enabled") == "true"
 
+    def test_post_empty_briefing_time_redirects_with_error(self, mock_db, mock_user):
+        """POST with empty briefing_time redirects with error (required field)."""
+        settings_rows = [MagicMock(key="briefing_time", value="08:00")]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+
+        with patch(
+            "app.api.settings_views.update_app_settings"
+        ) as mock_update:
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app, follow_redirects=False)
+
+            resp = client.post(
+                "/settings",
+                data={
+                    "briefing_time": "",
+                    "briefing_email": "",
+                    "briefing_email_enabled": "",
+                    "briefing_frequency": "daily",
+                    "briefing_day_of_week": "0",
+                    "scoring_weights": "{}",
+                },
+            )
+
+        assert resp.status_code == 303
+        assert "error" in resp.headers.get("location", "")
+        assert "Briefing+time+is+required" in resp.headers.get("location", "")
+        mock_update.assert_not_called()
+
     def test_post_invalid_briefing_time_redirects_with_error(self, mock_db, mock_user):
         """POST with invalid briefing_time (e.g. 25:00) redirects with error."""
         settings_rows = [MagicMock(key="briefing_time", value="08:00")]

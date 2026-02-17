@@ -35,9 +35,10 @@ STAGE_BONUSES: dict[str, int] = {
 }
 
 # Legacy keys from pre-schema-change analyses (Issue #64)
+# recent_funding = capital received (scaling needs); switching_from_agency = agency→in-house transition
 _LEGACY_SIGNAL_KEY_MAP: dict[str, str] = {
     "hiring_technical_roles": "hiring_engineers",
-    "recent_funding": "switching_from_agency",
+    "recent_funding": "architecture_scaling_risk",
     "product_launch": "adding_enterprise_features",
     "technical_debt_indicators": "architecture_scaling_risk",
     "scaling_challenges": "architecture_scaling_risk",

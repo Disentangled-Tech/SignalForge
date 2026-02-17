@@ -84,15 +84,19 @@ def settings_save(
     """Save settings from form and redirect back (issue #29)."""
     updates: dict[str, str] = {}
 
-    # briefing_time: validate HH:MM
+    # briefing_time: required, validate HH:MM (cannot be cleared)
     time_val = briefing_time.strip()
-    if time_val:
-        if not _BRIEFING_TIME_RE.match(time_val):
-            return RedirectResponse(
-                url="/settings?error=Invalid+briefing+time+format+use+HH%3AMM",
-                status_code=303,
-            )
-        updates["briefing_time"] = time_val
+    if not time_val:
+        return RedirectResponse(
+            url="/settings?error=Briefing+time+is+required",
+            status_code=303,
+        )
+    if not _BRIEFING_TIME_RE.match(time_val):
+        return RedirectResponse(
+            url="/settings?error=Invalid+briefing+time+format+use+HH%3AMM",
+            status_code=303,
+        )
+    updates["briefing_time"] = time_val
 
     # briefing_email: always update (allow empty to clear)
     email_val = briefing_email.strip()
