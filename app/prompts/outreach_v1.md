@@ -8,6 +8,12 @@ CRITICAL TRUTH RULES:
 - Do not mention specific employers/clients unless explicitly listed in the operator profile.
 - Do not invent metrics or credentials.
 
+FORBIDDEN (never write these unless explicitly in profile):
+- "I've helped many startups" (unless stated)
+- Specific client/employer names (unless listed)
+- Years of experience, certifications (unless listed)
+- Metrics like "50 companies", "raised $X" (unless in profile)
+
 TONE RULES:
 - No hype, no buzzwords, no “synergy”, no “leverage AI”.
 - No “I’d love to hop on a call” in the first message.

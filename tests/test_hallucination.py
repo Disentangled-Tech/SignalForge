@@ -11,7 +11,11 @@ import pytest
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
-from app.services.outreach import _validate_claims, generate_outreach
+from app.services.outreach import (
+    _message_has_suspicious_claims,
+    _validate_claims,
+    generate_outreach,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -149,30 +153,36 @@ class TestOutreachHallucinationGuardrail:
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.render_prompt")
-    def test_retry_still_hallucinated_strips_claims(self, mock_render, mock_get_llm, caplog):
-        """When retry also has hallucinated claims, invalid claims are stripped."""
+    def test_retry_still_hallucinated_returns_safe_fallback(self, mock_render, mock_get_llm, caplog):
+        """When retry also has hallucinated claims, return safe fallback (no hallucinated content)."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
 
-        # Both calls return hallucinated claims
+        # Both calls return hallucinated claims; first message contains fabricated text
         bad_response = json.dumps({
-            "subject": "Hello", "message": "Hi Jane",
+            "subject": "Hello",
+            "message": "Hi Jane, I've built 50 startups and can help you scale.",
             "operator_claims_used": ["built 50 startups", "15 years experience"],
         })
         still_bad_response = json.dumps({
-            "subject": "Hello v2", "message": "Hi Jane v2",
+            "subject": "Hello v2",
+            "message": "Hi Jane v2, invented AI expertise here.",
             "operator_claims_used": ["invented AI"],
         })
         mock_llm.complete.side_effect = [bad_response, still_bad_response]
 
         db = _make_mock_db()
+        company = _make_company(name="Acme Corp", founder_name="Jane Doe")
+        analysis = _make_analysis(evidence_bullets=["Hiring engineers"])
         with caplog.at_level(logging.WARNING):
-            result = generate_outreach(db, _make_company(), _make_analysis())
+            result = generate_outreach(db, company, analysis)
 
-        # Original message kept, invalid claims stripped
-        assert result["subject"] == "Hello"
-        assert result["message"] == "Hi Jane"
+        # Safe fallback: no hallucinated content, references company context
+        assert "built 50 startups" not in result["message"]
+        assert "invented AI" not in result["message"]
+        assert "Acme Corp" in result["subject"] or "your company" in result["subject"]
+        assert "Jane" in result["message"] or "there" in result["message"]
         assert mock_llm.complete.call_count == 2
         assert any("Retry still has hallucinated" in r.message for r in caplog.records)
 
@@ -264,4 +274,141 @@ class TestOutreachHallucinationGuardrail:
         assert corrected_long_message in shorten_prompt
         assert "Shorten" in shorten_prompt or "140 words" in shorten_prompt
         assert "15 years experience" in result["message"]
+
+
+# ---------------------------------------------------------------------------
+# Empty profile handling (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyProfileHandling:
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_empty_profile_with_claims_uses_fallback(self, mock_render, mock_get_llm, caplog):
+        """When profile is empty and LLM returns claims, use safe fallback."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.return_value = json.dumps({
+            "subject": "Hello",
+            "message": "Hi Jane, I've 15 years experience.",
+            "operator_claims_used": ["15 years experience"],
+        })
+
+        db = _make_mock_db(profile_content="")  # Empty profile
+        company = _make_company(name="Acme Corp", founder_name="Jane Doe")
+        analysis = _make_analysis(evidence_bullets=["Hiring engineers"])
+        with caplog.at_level(logging.WARNING):
+            result = generate_outreach(db, company, analysis)
+
+        # Empty profile + claims = invalid; use safe fallback
+        assert "15 years experience" not in result["message"]
+        assert "Acme Corp" in result["subject"] or "your company" in result["subject"]
+
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_empty_profile_no_claims_returns_message(self, mock_render, mock_get_llm):
+        """When profile is empty and LLM returns no claims, accept the message."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.return_value = json.dumps({
+            "subject": "Quick question",
+            "message": "Hi Jane, I noticed you're hiring. Would you be open to a chat?",
+            "operator_claims_used": [],
+        })
+
+        db = _make_mock_db(profile_content="")
+        company = _make_company(name="Acme Corp", founder_name="Jane Doe")
+        result = generate_outreach(db, company, _make_analysis())
+
+        assert result["subject"] == "Quick question"
+        assert "hiring" in result["message"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Suspicious claims in message when operator_claims_used empty
+# ---------------------------------------------------------------------------
+
+
+class TestMessageHasSuspiciousClaims:
+    def test_detects_years_of_experience(self):
+        assert _message_has_suspicious_claims("I have 15 years of experience") is True
+
+    def test_detects_helped_n(self):
+        assert _message_has_suspicious_claims("I've helped 50 startups") is True
+
+    def test_detects_ive_built(self):
+        assert _message_has_suspicious_claims("I've built several companies") is True
+
+    def test_allows_ive_noticed(self):
+        assert _message_has_suspicious_claims("I've noticed you're hiring") is False
+
+    def test_allows_company_context_only(self):
+        assert _message_has_suspicious_claims(
+            "Hi Jane, I noticed your hiring. Would you be open to a chat?"
+        ) is False
+
+
+class TestSuspiciousClaimsInMessageGuardrail:
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_suspicious_claims_empty_operator_claims_triggers_retry(
+        self, mock_render, mock_get_llm, caplog
+    ):
+        """When message has claim-like phrases but operator_claims_used empty, retry."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.side_effect = [
+            json.dumps({
+                "subject": "Hello",
+                "message": "Hi Jane, I have 15 years of experience and can help.",
+                "operator_claims_used": [],
+            }),
+            json.dumps({
+                "subject": "Quick question",
+                "message": "Hi Jane, I noticed you're hiring. Would you be open to a chat?",
+                "operator_claims_used": [],
+            }),
+        ]
+
+        db = _make_mock_db()
+        with caplog.at_level(logging.WARNING):
+            result = generate_outreach(db, _make_company(), _make_analysis())
+
+        assert "15 years" not in result["message"]
+        assert "hiring" in result["message"]
+        assert mock_llm.complete.call_count == 2
+
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_suspicious_claims_retry_still_bad_uses_fallback(
+        self, mock_render, mock_get_llm, caplog
+    ):
+        """When retry still has suspicious claims, use safe fallback."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.side_effect = [
+            json.dumps({
+                "subject": "Hello",
+                "message": "Hi Jane, I have 15 years of experience.",
+                "operator_claims_used": [],
+            }),
+            json.dumps({
+                "subject": "Hello v2",
+                "message": "Hi Jane, I've helped 50 startups scale.",
+                "operator_claims_used": [],
+            }),
+        ]
+
+        db = _make_mock_db()
+        company = _make_company(name="Acme Corp", founder_name="Jane Doe")
+        with caplog.at_level(logging.WARNING):
+            result = generate_outreach(db, company, _make_analysis())
+
+        assert "15 years" not in result["message"]
+        assert "50 startups" not in result["message"]
+        assert "Acme Corp" in result["subject"] or "your company" in result["subject"]
 
