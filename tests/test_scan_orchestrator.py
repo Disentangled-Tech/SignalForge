@@ -173,3 +173,76 @@ class TestRunScanAll:
         assert job.status == "failed"
         assert job.companies_processed == 0
         assert job.error_message is not None
+
+
+# ── run_scan_company_with_job tests ───────────────────────────────────
+
+
+class TestRunScanCompanyWithJob:
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_creates_job_run_and_completes(
+        self, mock_scan, mock_analyze, mock_score
+    ):
+        """run_scan_company_with_job creates JobRun and completes successfully."""
+        from app.services.scan_orchestrator import run_scan_company_with_job
+
+        db = MagicMock()
+        mock_scan.return_value = 2
+        mock_analyze.return_value = MagicMock()
+
+        job = await run_scan_company_with_job(db, 1)
+
+        assert job.job_type == "company_scan"
+        assert job.company_id == 1
+        assert job.status == "completed"
+        assert job.finished_at is not None
+        db.add.assert_called_once()
+        mock_scan.assert_awaited_once_with(db, 1)
+        mock_analyze.assert_called_once_with(db, 1)
+        mock_score.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_scan_failure_marks_job_failed(self, mock_scan):
+        """When run_scan_company raises, job status is failed with error_message."""
+        from app.services.scan_orchestrator import run_scan_company_with_job
+
+        db = MagicMock()
+        mock_scan.side_effect = RuntimeError("network error")
+
+        job = await run_scan_company_with_job(db, 1)
+
+        assert job.status == "failed"
+        assert "network error" in (job.error_message or "")
+        assert job.finished_at is not None
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_updates_existing_job_when_job_id_provided(
+        self, mock_scan, mock_analyze, mock_score
+    ):
+        """When job_id is provided, updates that JobRun instead of creating new one."""
+        from app.services.scan_orchestrator import run_scan_company_with_job
+
+        db = MagicMock()
+        existing_job = MagicMock(spec=JobRun)
+        existing_job.id = 42
+        existing_job.status = "running"
+        existing_job.finished_at = None
+        existing_job.error_message = None
+        db.query.return_value.filter.return_value.first.return_value = existing_job
+
+        mock_scan.return_value = 1
+        mock_analyze.return_value = MagicMock()
+
+        job = await run_scan_company_with_job(db, 1, job_id=42)
+
+        assert job.id == 42
+        assert job.status == "completed"
+        db.add.assert_not_called()
+        db.query.return_value.filter.assert_called()

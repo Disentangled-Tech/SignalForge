@@ -11,16 +11,18 @@ from pathlib import Path
 
 import re
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import AUTH_COOKIE, get_current_user, get_db
+from app.db.session import SessionLocal
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanySource
@@ -355,6 +357,17 @@ def company_detail(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    # Latest company scan job (for status display)
+    scan_job = (
+        db.query(JobRun)
+        .filter(
+            JobRun.company_id == company_id,
+            JobRun.job_type == "company_scan",
+        )
+        .order_by(JobRun.started_at.desc())
+        .first()
+    )
+
     # Latest signals (most recent first, limit 20)
     signals = (
         db.query(SignalRecord)
@@ -399,6 +412,9 @@ def company_detail(
             score_company(db, company_id, analysis)
             company = get_company(db, company_id) or company
 
+    # Query param for one-time flash: ?rescan=queued | ?rescan=running
+    rescan_param = request.query_params.get("rescan")
+
     return templates.TemplateResponse(
         "companies/detail.html",
         {
@@ -409,39 +425,69 @@ def company_detail(
             "analysis": analysis,
             "briefing": briefing,
             "recomputed_score": recomputed_score,
+            "scan_job": scan_job,
+            "rescan_param": rescan_param,
         },
     )
 
 
 # ── Companies: rescan ────────────────────────────────────────────────
 
+
+def _run_rescan_background(company_id: int, job_id: int) -> None:
+    """Background task: run scan pipeline and update JobRun. Uses its own DB session."""
+    from app.services.scan_orchestrator import run_scan_company_with_job
+
+    db = SessionLocal()
+    try:
+        asyncio.run(run_scan_company_with_job(db, company_id, job_id=job_id))
+    finally:
+        db.close()
+
+
 @router.post("/companies/{company_id}/rescan")
 async def company_rescan(
     company_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(_require_ui_auth),
 ):
-    """Trigger scan + analysis + scoring for a company, then redirect back."""
+    """Queue scan + analysis + scoring for a company, then redirect back."""
     company = get_company(db, company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    try:
-        from app.services.scan_orchestrator import run_scan_company
-        await run_scan_company(db, company_id)
-    except Exception as exc:
-        logger.error("Scan failed for company %s: %s", company_id, exc)
+    # Check if a scan is already running for this company
+    running_job = (
+        db.query(JobRun)
+        .filter(
+            JobRun.company_id == company_id,
+            JobRun.job_type == "company_scan",
+            JobRun.status == "running",
+        )
+        .order_by(JobRun.started_at.desc())
+        .first()
+    )
+    if running_job is not None:
+        return RedirectResponse(
+            url=f"/companies/{company_id}?rescan=running", status_code=302
+        )
 
-    try:
-        from app.services.analysis import analyze_company
-        analysis = analyze_company(db, company_id)
-        if analysis is not None:
-            from app.services.scoring import score_company
-            score_company(db, company_id, analysis)
-    except Exception as exc:
-        logger.error("Analysis/scoring failed for company %s: %s", company_id, exc)
+    # Create JobRun and queue background task
+    job = JobRun(
+        job_type="company_scan",
+        company_id=company_id,
+        status="running",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
 
-    return RedirectResponse(url=f"/companies/{company_id}", status_code=302)
+    background_tasks.add_task(_run_rescan_background, company_id, job.id)
+
+    return RedirectResponse(
+        url=f"/companies/{company_id}?rescan=queued", status_code=302
+    )
 
 
 # ── Companies: delete ────────────────────────────────────────────────

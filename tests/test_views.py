@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
+from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.models.user import User
 
@@ -506,6 +507,7 @@ class TestCompanyDetail:
         signals=None,
         analysis=None,
         briefing=None,
+        scan_job=None,
     ):
         """Configure mock DB session for company_detail view queries."""
         signals = signals if signals is not None else []
@@ -516,7 +518,9 @@ class TestCompanyDetail:
             mock_o = MagicMock()
             mock_q.filter.return_value = mock_f
             mock_f.order_by.return_value = mock_o
-            if model is SignalRecord:
+            if model is JobRun:
+                mock_o.first.return_value = scan_job
+            elif model is SignalRecord:
                 mock_o.limit.return_value.all.return_value = signals
             elif model is AnalysisRecord:
                 mock_o.first.return_value = analysis
@@ -694,6 +698,147 @@ class TestCompanyDetail:
         assert "scaling_team" in resp.text
         assert "80" in resp.text
         assert "Hiring Engineers" in resp.text
+
+
+# ── Rescan tests ────────────────────────────────────────────────────
+
+
+class TestCompanyRescan:
+    @patch("app.api.views.get_company")
+    def test_rescan_creates_job_run_and_redirects(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """POST rescan returns 302, JobRun created with status running."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        # No running job exists: query(JobRun).filter(...).order_by(...).first() -> None
+        mock_first = MagicMock(return_value=None)
+        mock_order = MagicMock()
+        mock_order.first = mock_first
+        mock_filter = MagicMock()
+        mock_filter.order_by.return_value = mock_order
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post(
+            f"/companies/{company.id}/rescan",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 302
+        assert f"/companies/{company.id}" in resp.headers.get("location", "")
+        assert "rescan=queued" in resp.headers.get("location", "")
+        mock_db_session.add.assert_called()
+        mock_db_session.commit.assert_called()
+
+    @patch("app.api.views.get_company")
+    def test_rescan_already_running_redirects_without_new_job(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """When a running job exists, no new JobRun, redirect with rescan=running."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        running_job = MagicMock()
+        running_job.status = "running"
+        mock_first = MagicMock(return_value=running_job)
+        mock_order = MagicMock()
+        mock_order.first = mock_first
+        mock_filter = MagicMock()
+        mock_filter.order_by.return_value = mock_order
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post(
+            f"/companies/{company.id}/rescan",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 302
+        assert "rescan=running" in resp.headers.get("location", "")
+        mock_db_session.add.assert_not_called()
+
+    @patch("app.api.views.get_company")
+    def test_rescan_not_found_returns_404(self, mock_get, views_client):
+        """POST rescan for non-existent company returns 404."""
+        mock_get.return_value = None
+        resp = views_client.post("/companies/999/rescan")
+        assert resp.status_code == 404
+
+
+# ── Company detail scan status tests ─────────────────────────────────
+
+
+class TestCompanyDetailScanStatus:
+    @patch("app.api.views.get_company")
+    def test_detail_shows_scan_status_running(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """GET detail with running JobRun shows 'Scan in progress' and disabled button."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        mock_scan_job = MagicMock()
+        mock_scan_job.status = "running"
+        mock_scan_job.error_message = None
+        mock_scan_job.finished_at = None
+
+        TestCompanyDetail()._setup_query_mock(
+            mock_db_session,
+            scan_job=mock_scan_job,
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Scan in progress" in resp.text
+        assert "Scanning…" in resp.text or "disabled" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_detail_shows_scan_status_failed(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """GET detail with failed JobRun shows error message."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        mock_scan_job = MagicMock()
+        mock_scan_job.status = "failed"
+        mock_scan_job.error_message = "Network timeout"
+
+        TestCompanyDetail()._setup_query_mock(
+            mock_db_session,
+            scan_job=mock_scan_job,
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Last scan failed" in resp.text
+        assert "Network timeout" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_detail_shows_rescan_queued_param(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """GET detail with ?rescan=queued shows queued message."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        TestCompanyDetail()._setup_query_mock(mock_db_session)
+
+        resp = views_client.get("/companies/1?rescan=queued")
+        assert resp.status_code == 200
+        assert "Scan queued" in resp.text or "queued" in resp.text.lower()
+
+    @patch("app.api.views.get_company")
+    def test_detail_shows_rescan_running_param(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """GET detail with ?rescan=running shows already in progress message."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        TestCompanyDetail()._setup_query_mock(mock_db_session)
+
+        resp = views_client.get("/companies/1?rescan=running")
+        assert resp.status_code == 200
+        assert "already in progress" in resp.text or "in progress" in resp.text.lower()
 
 
 # ── Delete tests ────────────────────────────────────────────────────
