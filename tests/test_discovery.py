@@ -141,3 +141,57 @@ class TestDiscoverPages:
             assert len(text) > 100
             assert raw_html == _HOMEPAGE_HTML
 
+    async def test_tries_only_issue_13_paths(self):
+        """Only /blog, /news, /careers, /jobs are tried (no /about)."""
+        with patch("app.services.page_discovery.fetch_page", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = _SUBPAGE_HTML
+
+            await discover_pages("https://example.com")
+
+            call_urls = [call[0][0] for call in mock_fetch.call_args_list]
+            assert "https://example.com/about" not in call_urls
+            for path in ["/blog", "/news", "/careers", "/jobs"]:
+                assert f"https://example.com{path}" in call_urls
+
+    async def test_fetch_order_homepage_then_common_paths(self):
+        """fetch_page is called with homepage first, then paths in COMMON_PATHS order."""
+        with patch("app.services.page_discovery.fetch_page", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = _SUBPAGE_HTML
+
+            await discover_pages("https://example.com")
+
+            from app.services.page_discovery import COMMON_PATHS
+
+            call_urls = [call[0][0] for call in mock_fetch.call_args_list]
+            assert call_urls[0] == "https://example.com"
+            for i, path in enumerate(COMMON_PATHS):
+                expected = f"https://example.com{path}"
+                assert call_urls[i + 1] == expected
+
+
+# ---------------------------------------------------------------------------
+# Valid page validation
+# ---------------------------------------------------------------------------
+
+
+class TestValidPageCriteria:
+    def test_rejects_empty_html(self):
+        from app.services.page_discovery import _is_valid_page
+
+        assert _is_valid_page("", "some text") is False
+
+    def test_rejects_short_text(self):
+        from app.services.page_discovery import _is_valid_page
+
+        assert _is_valid_page("<html>ok</html>", "x" * 50) is False
+
+    def test_rejects_exactly_min_length_text_with_empty_html(self):
+        from app.services.page_discovery import _is_valid_page, MIN_TEXT_LENGTH
+
+        assert _is_valid_page("", "x" * MIN_TEXT_LENGTH) is False
+
+    def test_accepts_long_text_with_non_empty_html(self):
+        from app.services.page_discovery import _is_valid_page, MIN_TEXT_LENGTH
+
+        assert _is_valid_page("<html>ok</html>", "x" * (MIN_TEXT_LENGTH + 1)) is True
+
