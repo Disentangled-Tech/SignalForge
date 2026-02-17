@@ -384,8 +384,14 @@ def company_detail(
     recomputed_score: int | None = None
     if analysis is not None:
         from app.services.scoring import calculate_score, score_company
+
+        pain_signals = (
+            analysis.pain_signals_json
+            if isinstance(analysis.pain_signals_json, dict)
+            else {}
+        )
         recomputed_score = calculate_score(
-            pain_signals=analysis.pain_signals_json or {},
+            pain_signals=pain_signals,
             stage=analysis.stage or "",
         )
         # Repair: if stored score differs from recomputed, persist the correct value

@@ -11,7 +11,8 @@
             <div class="text-muted">
                 {% if company.website_url %}<a href="{{ company.website_url }}" target="_blank">{{ company.website_url }}</a> · {% endif %}
                 {% if company.founder_name %}Founder: {{ company.founder_name }}{% endif %}
-                {% if company.founder_linkedin_url %} · <a href="{{ company.founder_linkedin_url }}" target="_blank">LinkedIn</a>{% endif %}
+                {% if company.founder_linkedin_url %} · <a href="{{ company.founder_linkedin_url }}" target="_blank">Founder LinkedIn</a>{% endif %}
+                {% if company.company_linkedin_url %} · <a href="{{ company.company_linkedin_url }}" target="_blank">Company LinkedIn</a>{% endif %}
             </div>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -29,11 +30,23 @@
             {% endif %}
         </div>
     </div>
+    {# ── Metadata block ── #}
+    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; font-size: 0.9rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem 1.5rem;">
+        <div><strong>Source:</strong> {{ company.source.value if company.source else '—' }}</div>
+        {% if company.last_scan_at %}
+        <div><strong>Last scan:</strong> {{ company.last_scan_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        {% endif %}
+        {% if company.target_profile_match %}
+        <div><strong>Target profile:</strong> ✓</div>
+        {% endif %}
+        {% if company.notes %}
+        <div style="grid-column: 1 / -1;"><strong>Notes:</strong> {{ company.notes }}</div>
+        {% endif %}
+    </div>
     <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
         <form method="POST" action="/companies/{{ company.id }}/rescan" style="display:inline;">
             <button type="submit" class="btn btn-primary">⟳ Rescan</button>
         </form>
-        <a href="/companies/{{ company.id }}/edit" class="btn btn-secondary">Edit</a>
         <form method="POST" action="/companies/{{ company.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this company?');">
             <button type="submit" class="btn btn-danger">Delete</button>
         </form>
@@ -48,11 +61,12 @@
         <div><strong>Stage:</strong> {{ analysis.stage or '—' }}</div>
         <div><strong>Confidence:</strong> {{ analysis.stage_confidence or 0 }}%</div>
     </div>
-    {% if analysis.pain_signals_json %}
+    {% set pain_signals_raw = analysis.pain_signals_json|default({}) %}
+    {% if pain_signals_raw is mapping %}
     <h2 style="font-size: 1rem;">Pain Signals</h2>
     <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
-        {% set pain_signals = analysis.pain_signals_json.get('signals', analysis.pain_signals_json) if analysis.pain_signals_json is mapping else {} %}
-        {% for key, val in pain_signals.items() %}
+        {% set pain_signals = pain_signals_raw.get('signals', pain_signals_raw) if pain_signals_raw is mapping else {} %}
+        {% for key, val in (pain_signals.items() if pain_signals is mapping else []) %}
         {% set active = val.get('value', val) if val is mapping else val %}
         <span class="badge {% if active %}badge-green{% else %}badge-gray{% endif %}">
             {% if active %}✓{% else %}✗{% endif %} {{ key|replace('_', ' ')|title }}
@@ -60,14 +74,11 @@
         {% endfor %}
     </div>
     {% endif %}
-    {% if analysis.evidence_bullets %}
-    <h2 style="font-size: 1rem;">Evidence</h2>
-    <ul style="margin-left: 1.25rem; margin-bottom: 1rem;">
-        {% for bullet in analysis.evidence_bullets %}
+    {% for bullet in (analysis.evidence_bullets|default([])) %}
+    {% if loop.first %}<h2 style="font-size: 1rem;">Evidence</h2><ul style="margin-left: 1.25rem; margin-bottom: 1rem;">{% endif %}
         <li style="margin-bottom: 0.25rem;">{{ bullet }}</li>
-        {% endfor %}
-    </ul>
-    {% endif %}
+    {% if loop.last %}</ul>{% endif %}
+    {% endfor %}
     {% if analysis.explanation %}
     <h2 style="font-size: 1rem;">Explanation</h2>
     <p>{{ analysis.explanation }}</p>
@@ -78,9 +89,9 @@
 </div>
 
 {# ── Latest Outreach Draft ── #}
-{% if briefing %}
 <div class="card">
     <h2>Latest Outreach Draft</h2>
+    {% if briefing %}
     {% if briefing.outreach_subject %}
     <div style="margin-bottom: 0.5rem;"><strong>Subject:</strong> {{ briefing.outreach_subject }}</div>
     {% endif %}
@@ -88,8 +99,10 @@
     <div id="outreach-message" style="background: #f8fafc; padding: 1rem; border-radius: 6px; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6; margin-bottom: 0.75rem;">{{ briefing.outreach_message }}</div>
     <button class="btn btn-secondary" onclick="copyOutreach()">📋 Copy Message</button>
     {% endif %}
+    {% else %}
+    <p class="text-muted">No outreach draft yet. Run a daily briefing or rescan to generate one.</p>
+    {% endif %}
 </div>
-{% endif %}
 
 {# ── Latest Signals ── #}
 <div class="card">
@@ -108,9 +121,9 @@
             {% for s in signals %}
             <tr>
                 <td><span class="badge badge-gray">{{ s.source_type or 'unknown' }}</span></td>
-                <td><a href="{{ s.source_url }}" target="_blank" style="font-size: 0.85rem;">{{ s.source_url[:60] }}{% if s.source_url|length > 60 %}…{% endif %}</a></td>
+                <td>{% set url = s.source_url or '' %}<a href="{{ url }}" target="_blank" style="font-size: 0.85rem;">{{ url[:60] }}{% if url|length > 60 %}…{% endif %}</a></td>
                 <td class="text-muted">{{ s.created_at.strftime('%Y-%m-%d') }}</td>
-                <td style="max-width: 300px;">{{ s.content_text[:200] }}{% if s.content_text|length > 200 %}…{% endif %}</td>
+                <td style="max-width: 300px;">{% set content = s.content_text or '' %}{{ content[:200] }}{% if content|length > 200 %}…{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>
