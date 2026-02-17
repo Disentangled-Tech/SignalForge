@@ -418,6 +418,121 @@ class TestAnalyzeCompanyEdgeCases:
 
 
 # ---------------------------------------------------------------------------
+# Explanation generator — Issue #18 acceptance criteria
+# ---------------------------------------------------------------------------
+
+
+class TestExplanationGeneratorIssue18:
+    """Tests for Issue #18: explanation uses prompt template, anti-generic, 2-6 sentences."""
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_explanation_uses_prompt_template(self, mock_render, mock_get_llm):
+        """render_prompt is called with explanation_v1 and correct placeholders."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_llm.complete.side_effect = [
+            _VALID_STAGE_RESPONSE,
+            _VALID_PAIN_RESPONSE,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        analyze_company(db, company_id=1)
+
+        # Third render_prompt call is explanation (after stage, pain)
+        explanation_call = mock_render.call_args_list[2]
+        assert explanation_call[0][0] == "explanation_v1"
+        kwargs = explanation_call[1]
+        assert kwargs["COMPANY_NAME"] == "Acme Corp"
+        assert kwargs["STAGE"] == "scaling_team"
+        assert "EVIDENCE_BULLETS" in kwargs
+        assert "PAIN_SIGNALS_SUMMARY" in kwargs
+        assert "TOP_RISKS" in kwargs
+        assert "MOST_LIKELY_NEXT_PROBLEM" in kwargs
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_explanation_includes_pain_data_context(self, mock_render, mock_get_llm):
+        """Explanation prompt receives top_risks and most_likely_next_problem from pain_data."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_llm.complete.side_effect = [
+            _VALID_STAGE_RESPONSE,
+            _VALID_PAIN_RESPONSE,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        analyze_company(db, company_id=1)
+
+        explanation_call = mock_render.call_args_list[2]
+        kwargs = explanation_call[1]
+        assert "hiring" in kwargs["TOP_RISKS"] or "founder burnout" in kwargs["TOP_RISKS"]
+        assert "Scaling the engineering team" in kwargs["MOST_LIKELY_NEXT_PROBLEM"]
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_explanation_handles_empty_pain_data(self, mock_render, mock_get_llm):
+        """When pain_data has empty top_risks/most_likely_next_problem, placeholders get empty."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+
+        pain_no_risks = json.dumps({
+            "signals": {"hiring_engineers": {"value": True, "why": "3 roles"}},
+            "top_risks": [],
+            "most_likely_next_problem": "",
+            "uncertainties": [],
+            "recommended_conversation_angle": "",
+        })
+        mock_llm.complete.side_effect = [
+            _VALID_STAGE_RESPONSE,
+            pain_no_risks,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        analyze_company(db, company_id=1)
+
+        explanation_call = mock_render.call_args_list[2]
+        kwargs = explanation_call[1]
+        assert kwargs["TOP_RISKS"] == ""
+        assert kwargs["MOST_LIKELY_NEXT_PROBLEM"] == ""
+
+
+def test_explanation_prompt_includes_anti_generic_guidance():
+    """explanation_v1.md contains anti-generic wording per Issue #18 AC."""
+    from app.prompts.loader import load_prompt
+
+    content = load_prompt("explanation_v1")
+    assert "generic" in content.lower()
+    assert "specific" in content.lower()
+
+
+def test_explanation_prompt_includes_2_6_sentences():
+    """explanation_v1.md mentions 2-6 sentence requirement per Issue #18 AC."""
+    from app.prompts.loader import load_prompt
+
+    content = load_prompt("explanation_v1")
+    assert "2" in content and "6" in content
+
+
+# ---------------------------------------------------------------------------
 # Stage classification — Issue #16 acceptance criteria
 # ---------------------------------------------------------------------------
 
