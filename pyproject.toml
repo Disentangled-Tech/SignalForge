@@ -51,6 +51,9 @@ ignore = ["E501"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = [
+    "integration: marks tests requiring real DB (deselect with -m 'not integration')",
+]
 
 [tool.mypy]
 python_version = "3.11"

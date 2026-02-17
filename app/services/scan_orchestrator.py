@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
+from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.job_run import JobRun
 from app.services.analysis import analyze_company
@@ -86,6 +87,27 @@ async def run_scan_company(db: Session, company_id: int) -> int:
         if result is not None:
             new_count += 1
     return new_count
+
+
+# ── Per-company full pipeline (scan + analysis + scoring) ─────────────
+
+
+async def run_scan_company_full(db: Session, company_id: int) -> tuple[int, AnalysisRecord | None]:
+    """Run scan + analysis + scoring for a single company (no JobRun).
+
+    Used by run_scan_all for bulk scans. Updates company.cto_need_score
+    when analysis succeeds.
+
+    Returns
+    -------
+    tuple[int, AnalysisRecord | None]
+        (new_signals_count, analysis_record or None)
+    """
+    new_count = await run_scan_company(db, company_id)
+    analysis = analyze_company(db, company_id)
+    if analysis is not None:
+        score_company(db, company_id, analysis)
+    return new_count, analysis
 
 
 # ── Per-company scan with job tracking ───────────────────────────────
@@ -189,7 +211,7 @@ async def run_scan_all(db: Session) -> JobRun:
         if not company.website_url:
             continue
         try:
-            await run_scan_company(db, company.id)
+            await run_scan_company_full(db, company.id)
             processed += 1
         except Exception as exc:  # noqa: BLE001
             msg = f"Company {company.id} ({company.name}): {exc}"
