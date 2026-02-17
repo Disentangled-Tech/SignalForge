@@ -140,8 +140,12 @@ def noauth_client(mock_db):
 class TestBriefingPage:
     """Tests for GET /briefing."""
 
-    def test_briefing_renders_with_items(self, mock_db, mock_user):
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_renders_with_items(
+        self, mock_get_scores, mock_db, mock_user
+    ):
         """Briefing page renders when items exist."""
+        mock_get_scores.return_value = {}
         item = _make_briefing_item()
         query_mock = MagicMock()
         query_mock.options.return_value = query_mock
@@ -180,8 +184,12 @@ class TestBriefingPage:
         assert "No briefing" in resp.text
         assert "Generate Now" in resp.text
 
-    def test_briefing_multiple_items_ordered(self, mock_db, mock_user):
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_multiple_items_ordered(
+        self, mock_get_scores, mock_db, mock_user
+    ):
         """Briefing page renders multiple items."""
+        mock_get_scores.return_value = {}
         co1 = _make_company(id=1, name="Alpha Co", cto_need_score=90)
         co2 = _make_company(id=2, name="Beta Co", cto_need_score=60)
         item1 = _make_briefing_item(id=1, company=co1)
@@ -207,8 +215,12 @@ class TestBriefingPage:
 class TestBriefingByDate:
     """Tests for GET /briefing/{date_str}."""
 
-    def test_date_specific_briefing(self, mock_db, mock_user):
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_date_specific_briefing(
+        self, mock_get_scores, mock_db, mock_user
+    ):
         """Briefing page renders for a specific date."""
+        mock_get_scores.return_value = {}
         target = date(2026, 1, 15)
         item = _make_briefing_item(briefing_date=target)
 
@@ -271,6 +283,157 @@ class TestBriefingGenerate:
 
         assert resp.status_code == 303
         assert "error" in resp.headers["location"]
+
+
+class TestBriefingDisplayScores:
+    """Tests for CTO Score display (Issue #24: same logic as company detail)."""
+
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_uses_display_scores_when_available(
+        self, mock_get_scores, mock_db, mock_user
+    ):
+        """Briefing page shows recomputed score from get_display_scores_for_companies."""
+        co = _make_company(id=1, cto_need_score=70)  # stored score
+        item = _make_briefing_item(company=co)
+        mock_get_scores.return_value = {1: 88}  # recomputed score
+
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [item]
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "88" in resp.text
+        assert "CTO Score" in resp.text
+        mock_get_scores.assert_called_once()
+        call_args = mock_get_scores.call_args[0]
+        assert call_args[1] == [1]
+
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_falls_back_to_stored_score_when_no_recomputed(
+        self, mock_get_scores, mock_db, mock_user
+    ):
+        """When get_display_scores returns empty, use company.cto_need_score."""
+        co = _make_company(id=1, cto_need_score=75)
+        item = _make_briefing_item(company=co)
+        mock_get_scores.return_value = {}  # no recomputed scores
+
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [item]
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "75" in resp.text
+
+
+class TestBriefingSort:
+    """Tests for sort/filter param (Issue #24)."""
+
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_sort_param_score_orders_by_cto_score(
+        self, mock_get_scores, mock_db, mock_user
+    ):
+        """sort=score uses cto_need_score desc (default)."""
+        mock_get_scores.return_value = {}
+        item = _make_briefing_item()
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        order_mock = MagicMock()
+        order_mock.all.return_value = [item]
+        query_mock.order_by.return_value = order_mock
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        client.get("/briefing?sort=score")
+
+        assert query_mock.order_by.called
+
+    def test_sort_param_invalid_falls_back_to_score(self, mock_db, mock_user):
+        """Invalid sort value does not cause 500; falls back to score."""
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = []
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing?sort=invalid")
+
+        assert resp.status_code == 200
+
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_duplicate_companies_deduplicated_in_display(
+        self, mock_get_scores, mock_db, mock_user
+    ):
+        """When same company has multiple BriefingItems, display shows only one."""
+        mock_get_scores.return_value = {}
+        co = _make_company(id=1, name="Acme Corp")
+        analysis = _make_analysis()
+        item1 = _make_briefing_item(
+            id=1, company=co, risk_summary="First risk", created_at=datetime(2026, 2, 17, 8, 0, tzinfo=timezone.utc)
+        )
+        item2 = _make_briefing_item(
+            id=2, company=co, risk_summary="Second risk", created_at=datetime(2026, 2, 17, 9, 0, tzinfo=timezone.utc)
+        )
+        # Simulate DB returning duplicates (same company, different items)
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [item1, item2]
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        # Acme Corp should appear only once (deduplication keeps first per sort)
+        assert resp.text.count("Acme Corp") == 1
+
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_sort_ui_present_when_items_exist(
+        self, mock_get_scores, mock_db, mock_user
+    ):
+        """Sort dropdown/links visible when briefing has items."""
+        mock_get_scores.return_value = {}
+        item = _make_briefing_item()
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [item]
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "sort=" in resp.text or "Sort" in resp.text
 
 
 class TestAuthRequired:
