@@ -500,21 +500,15 @@ class TestCompanyDetail:
         resp = views_client.get("/companies/999")
         assert resp.status_code == 404
 
-    @patch("app.api.views.get_company")
-    def test_detail_with_analysis(self, mock_get, views_client, mock_db_session):
-        """Company detail shows analysis data when present."""
-        company = _make_company_read()
-        mock_get.return_value = company
-
-        # Create mock analysis
-        mock_analysis = MagicMock()
-        mock_analysis.stage = "scaling_team"
-        mock_analysis.stage_confidence = 80
-        mock_analysis.pain_signals_json = {
-            "signals": {"hiring_engineers": {"value": True}, "founder_overload": {"value": False}}
-        }
-        mock_analysis.evidence_bullets = ["Hiring 5 engineers", "Series A funding"]
-        mock_analysis.explanation = "This company is scaling rapidly."
+    def _setup_query_mock(
+        self,
+        mock_db_session,
+        signals=None,
+        analysis=None,
+        briefing=None,
+    ):
+        """Configure mock DB session for company_detail view queries."""
+        signals = signals if signals is not None else []
 
         def query_side_effect(model):
             mock_q = MagicMock()
@@ -523,14 +517,177 @@ class TestCompanyDetail:
             mock_q.filter.return_value = mock_f
             mock_f.order_by.return_value = mock_o
             if model is SignalRecord:
-                mock_o.limit.return_value.all.return_value = []
+                mock_o.limit.return_value.all.return_value = signals
             elif model is AnalysisRecord:
-                mock_o.first.return_value = mock_analysis
+                mock_o.first.return_value = analysis
             elif model is BriefingItem:
-                mock_o.first.return_value = None
+                mock_o.first.return_value = briefing
             return mock_q
 
         mock_db_session.query.side_effect = query_side_effect
+
+    @patch("app.api.views.get_company")
+    def test_detail_no_analysis_no_briefing_no_signals(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """Company with no analysis, no briefing, no signals — page returns 200, empty states."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        self._setup_query_mock(mock_db_session, signals=[], analysis=None, briefing=None)
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Acme Corp" in resp.text
+        assert "No analysis yet" in resp.text
+        assert "No outreach draft yet" in resp.text
+        assert "No signals collected yet" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_detail_no_briefing_shows_outreach_empty_state(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """Company with analysis but no briefing — outreach section shows empty-state message."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        mock_analysis = MagicMock()
+        mock_analysis.stage = "scaling_team"
+        mock_analysis.stage_confidence = 80
+        mock_analysis.pain_signals_json = {}
+        mock_analysis.evidence_bullets = []
+        mock_analysis.explanation = None
+        self._setup_query_mock(
+            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Latest Outreach Draft" in resp.text
+        assert "No outreach draft yet" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_detail_all_data_present(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """Company with signals, analysis, briefing — all sections render with content."""
+        company = _make_company_read(
+            company_name="FullData Co",
+            source="referral",
+            notes="Test notes",
+            company_linkedin_url="https://linkedin.com/company/fulldata",
+            last_scan_at=datetime(2025, 2, 15, 10, 0, 0, tzinfo=timezone.utc),
+        )
+        mock_get.return_value = company
+
+        mock_signal = MagicMock()
+        mock_signal.source_type = "job_board"
+        mock_signal.source_url = "https://example.com/jobs"
+        mock_signal.content_text = "Hiring senior engineers"
+        mock_signal.created_at = datetime(2025, 2, 14, tzinfo=timezone.utc)
+
+        mock_analysis = MagicMock()
+        mock_analysis.stage = "scaling_team"
+        mock_analysis.stage_confidence = 85
+        mock_analysis.pain_signals_json = {
+            "signals": {"hiring_engineers": {"value": True}}
+        }
+        mock_analysis.evidence_bullets = ["Evidence 1"]
+        mock_analysis.explanation = "Scaling rapidly"
+
+        mock_briefing = MagicMock()
+        mock_briefing.outreach_subject = "Re: CTO opportunity"
+        mock_briefing.outreach_message = "Hi, I noticed you're hiring..."
+
+        self._setup_query_mock(
+            mock_db_session,
+            signals=[mock_signal],
+            analysis=mock_analysis,
+            briefing=mock_briefing,
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "FullData Co" in resp.text
+        assert "referral" in resp.text
+        assert "Test notes" in resp.text
+        assert "linkedin.com/company/fulldata" in resp.text
+        assert "2025-02-15" in resp.text or "Last scan" in resp.text.lower()
+        assert "scaling_team" in resp.text
+        assert "85" in resp.text
+        assert "Hiring senior engineers" in resp.text
+        assert "Re: CTO opportunity" in resp.text
+        assert "hiring" in resp.text  # outreach message (apostrophe may be HTML-escaped)
+
+    @patch("app.api.views.get_company")
+    def test_detail_malformed_pain_signals_json_string(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """pain_signals_json as string — page does not crash."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        mock_analysis = MagicMock()
+        mock_analysis.stage = "scaling_team"
+        mock_analysis.stage_confidence = 50
+        mock_analysis.pain_signals_json = "invalid-string"
+        mock_analysis.evidence_bullets = []
+        mock_analysis.explanation = None
+        self._setup_query_mock(
+            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Acme Corp" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_detail_malformed_pain_signals_json_list(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """pain_signals_json as list — page does not crash."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        mock_analysis = MagicMock()
+        mock_analysis.stage = "scaling_team"
+        mock_analysis.stage_confidence = 50
+        mock_analysis.pain_signals_json = ["item1", "item2"]
+        mock_analysis.evidence_bullets = []
+        mock_analysis.explanation = None
+        self._setup_query_mock(
+            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Acme Corp" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_detail_renders(self, mock_get, views_client, mock_db_session):
+        """GET /companies/1 renders company info."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        self._setup_query_mock(mock_db_session)
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Acme Corp" in resp.text
+        assert "75" in resp.text  # score
+
+    @patch("app.api.views.get_company")
+    def test_detail_with_analysis(self, mock_get, views_client, mock_db_session):
+        """Company detail shows analysis data when present."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        mock_analysis = MagicMock()
+        mock_analysis.stage = "scaling_team"
+        mock_analysis.stage_confidence = 80
+        mock_analysis.pain_signals_json = {
+            "signals": {"hiring_engineers": {"value": True}, "founder_overload": {"value": False}}
+        }
+        mock_analysis.evidence_bullets = ["Hiring 5 engineers", "Series A funding"]
+        mock_analysis.explanation = "This company is scaling rapidly."
+        self._setup_query_mock(
+            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
+        )
 
         resp = views_client.get("/companies/1")
         assert resp.status_code == 200

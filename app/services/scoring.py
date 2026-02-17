@@ -155,8 +155,13 @@ def get_display_scores_for_companies(
 
     result: dict[int, int] = {}
     for cid, analysis in latest_by_company.items():
+        pain_signals = (
+            analysis.pain_signals_json
+            if isinstance(analysis.pain_signals_json, dict)
+            else {}
+        )
         score = calculate_score(
-            pain_signals=analysis.pain_signals_json or {},
+            pain_signals=pain_signals,
             stage=analysis.stage or "",
         )
         result[cid] = score
@@ -172,8 +177,13 @@ def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int
     4. Commits and returns the score.
     """
     custom_weights = get_custom_weights(db)
+    pain_signals = (
+        analysis.pain_signals_json
+        if isinstance(analysis.pain_signals_json, dict)
+        else {}
+    )
     score = calculate_score(
-        pain_signals=analysis.pain_signals_json or {},
+        pain_signals=pain_signals,
         stage=analysis.stage or "",
         custom_weights=custom_weights,
     )
@@ -187,13 +197,13 @@ def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int
     company.current_stage = analysis.stage
     db.commit()
 
-    if score == 0 and (analysis.pain_signals_json or analysis.stage):
+    if score == 0 and (pain_signals or analysis.stage):
         logger.info(
             "score_company: company_id=%s score=0 stage=%r pain_signals_keys=%s sample=%s",
             company_id,
             analysis.stage,
-            list((analysis.pain_signals_json or {}).keys()),
-            _sample_for_log(analysis.pain_signals_json),
+            list(pain_signals.keys()),
+            _sample_for_log(pain_signals),
         )
     return score
 
