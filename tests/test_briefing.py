@@ -11,6 +11,7 @@ import pytest
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.services.briefing import (
     _ACTIVITY_WINDOW_DAYS,
@@ -410,5 +411,80 @@ class TestGenerateBriefing:
         assert result == []
         mock_render.assert_not_called()
         mock_outreach.assert_not_called()
-        db.add.assert_not_called()
+        # JobRun is always created (issue #27); no BriefingItem added
+        add_calls = db.add.call_args_list
+        assert all(isinstance(c.args[0], JobRun) for c in add_calls)
+
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_creates_job_run_on_success(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach
+    ):
+        """generate_briefing creates JobRun with status completed and companies_processed (issue #27)."""
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+
+        # Track JobRun add
+        added = []
+
+        def capture_add(obj):
+            added.append(obj)
+
+        db.add.side_effect = capture_add
+
+        result = generate_briefing(db)
+
+        assert len(result) == 1
+        job_runs = [a for a in added if isinstance(a, JobRun)]
+        assert len(job_runs) == 1
+        job = job_runs[0]
+        assert job.job_type == "briefing"
+        assert job.status == "completed"
+        assert job.companies_processed == 1
+        assert job.finished_at is not None
+        assert job.error_message is None
+
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_creates_job_run_on_exception(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach
+    ):
+        """generate_briefing creates JobRun with status failed on exception (issue #27)."""
+        mock_select.side_effect = RuntimeError("DB connection lost")
+
+        db = MagicMock()
+        added = []
+
+        def capture_add(obj):
+            added.append(obj)
+
+        db.add.side_effect = capture_add
+
+        with pytest.raises(RuntimeError, match="DB connection lost"):
+            generate_briefing(db)
+
+        job_runs = [a for a in added if isinstance(a, JobRun)]
+        assert len(job_runs) == 1
+        job = job_runs[0]
+        assert job.job_type == "briefing"
+        assert job.status == "failed"
+        assert "DB connection lost" in (job.error_message or "")
+        assert job.finished_at is not None
 

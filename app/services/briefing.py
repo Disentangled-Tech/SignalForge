@@ -12,6 +12,7 @@ from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.prompts.loader import render_prompt
 from app.services.outreach import generate_outreach
@@ -96,23 +97,43 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
     4. Persist a ``BriefingItem``.
 
     One company failing does **not** stop the whole run.
+
+    Creates a JobRun record (issue #27) to track start, finish, and errors.
     """
-    companies = select_top_companies(db)
-    items: list[BriefingItem] = []
+    job = JobRun(job_type="briefing", status="running")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
 
-    for company in companies:
-        try:
-            item = _generate_for_company(db, company)
-            if item is not None:
-                items.append(item)
-        except Exception:
-            logger.exception(
-                "Briefing generation failed for company %s (id=%s)",
-                company.name,
-                company.id,
-            )
+    try:
+        companies = select_top_companies(db)
+        items: list[BriefingItem] = []
 
-    return items
+        for company in companies:
+            try:
+                item = _generate_for_company(db, company)
+                if item is not None:
+                    items.append(item)
+            except Exception:
+                logger.exception(
+                    "Briefing generation failed for company %s (id=%s)",
+                    company.name,
+                    company.id,
+                )
+
+        job.finished_at = datetime.now(timezone.utc)
+        job.status = "completed"
+        job.companies_processed = len(items)
+        job.error_message = None
+        db.commit()
+        return items
+
+    except Exception as exc:
+        job.finished_at = datetime.now(timezone.utc)
+        job.status = "failed"
+        job.error_message = str(exc)
+        db.commit()
+        raise
 
 
 def _generate_for_company(db: Session, company: Company) -> BriefingItem | None:
