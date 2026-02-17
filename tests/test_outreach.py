@@ -10,7 +10,11 @@ import pytest
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
-from app.services.outreach import _MAX_MESSAGE_WORDS, generate_outreach
+from app.services.outreach import (
+    _MAX_MESSAGE_WORDS,
+    _truncate_to_word_limit,
+    generate_outreach,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,6 +85,28 @@ def _make_operator_profile(content="# CTO\n15 years experience"):
     p = MagicMock(spec=OperatorProfile)
     p.content = content
     return p
+
+
+# ---------------------------------------------------------------------------
+# _truncate_to_word_limit
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateToWordLimit:
+    def test_under_limit_unchanged(self):
+        text = "Hello world. How are you?"
+        assert _truncate_to_word_limit(text, 10) == text
+
+    def test_over_limit_truncates(self):
+        text = "One two three four five six seven eight nine ten."
+        result = _truncate_to_word_limit(text, 5)
+        assert len(result.split()) <= 5
+
+    def test_prefers_sentence_boundary(self):
+        text = "First sentence. Second sentence. Third sentence."
+        result = _truncate_to_word_limit(text, 4)
+        assert result.endswith(".")
+        assert "First sentence." in result or result == "First sentence."
 
 
 # ---------------------------------------------------------------------------
@@ -164,20 +190,58 @@ class TestGenerateOutreachEdgeCases:
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.render_prompt")
-    def test_word_count_warning_logged(self, mock_render, mock_get_llm, caplog):
+    def test_word_count_over_140_triggers_retry(self, mock_render, mock_get_llm, caplog):
+        """When message > 140 words, retry once."""
+        short_response = json.dumps({
+            "subject": "Short",
+            "message": "Hi Jane. " + " ".join(["word"] * 70),
+            "operator_claims_used": [],
+            "company_specific_hooks": [],
+        })
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
-        mock_llm.complete.return_value = _LONG_MESSAGE_RESPONSE
+        mock_llm.complete.side_effect = [_LONG_MESSAGE_RESPONSE, short_response]
 
         db = _make_mock_db(operator_profile=_make_operator_profile())
         import logging
         with caplog.at_level(logging.WARNING):
             result = generate_outreach(db, _make_company(), _make_analysis())
 
-        # Message is kept even though it's over limit.
-        assert len(result["message"].split()) == 200
-        assert any("200 words" in r.message for r in caplog.records)
+        assert result["subject"] == "Short"
+        assert len(result["message"].split()) <= _MAX_MESSAGE_WORDS
+        assert mock_llm.complete.call_count == 2
+        retry_prompt = mock_llm.complete.call_args_list[1][0][0]
+        assert "140 words" in retry_prompt or "Shorten" in retry_prompt
+
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_word_count_retry_still_over_truncates(self, mock_render, mock_get_llm):
+        """When retry also exceeds 140 words, message is truncated."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.return_value = _LONG_MESSAGE_RESPONSE
+
+        db = _make_mock_db(operator_profile=_make_operator_profile())
+        result = generate_outreach(db, _make_company(), _make_analysis())
+
+        assert len(result["message"].split()) <= _MAX_MESSAGE_WORDS
+        assert mock_llm.complete.call_count == 2
+
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_word_count_under_140_no_retry(self, mock_render, mock_get_llm):
+        """When message is under 140 words, no retry."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.return_value = _VALID_OUTREACH_RESPONSE
+
+        db = _make_mock_db(operator_profile=_make_operator_profile())
+        generate_outreach(db, _make_company(), _make_analysis())
+
+        mock_llm.complete.assert_called_once()
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.render_prompt")

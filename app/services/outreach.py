@@ -48,6 +48,23 @@ def _parse_json_safe(text: str) -> dict | None:
         return None
 
 
+def _truncate_to_word_limit(text: str, max_words: int) -> str:
+    """Truncate text to max_words, preferring sentence boundaries."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    truncated = " ".join(words[:max_words])
+    # Prefer sentence boundary: find last . ! ? in truncated
+    last_boundary = max(
+        truncated.rfind(". "),
+        truncated.rfind("! "),
+        truncated.rfind("? "),
+    )
+    if last_boundary > 0:
+        return truncated[: last_boundary + 1].rstrip()
+    return truncated
+
+
 def _extract_pain_field(pain_signals: dict | None, key: str) -> str:
     """Safely pull a string field from the pain_signals_json dict."""
     if not isinstance(pain_signals, dict):
@@ -167,15 +184,48 @@ def generate_outreach(
                 # Keep original message but strip invalid claims
                 claims = valid
 
-    # Word-count validation (warning only — keep the message).
+    # ── Word-count enforcement (PRD: regenerate once on violation) ─────
     word_count = len(message.split())
     if word_count > _MAX_MESSAGE_WORDS:
         logger.warning(
-            "Outreach message for %s is %d words (limit %d)",
+            "Outreach message for %s is %d words (limit %d), retrying once",
             company.name,
             word_count,
             _MAX_MESSAGE_WORDS,
         )
+        word_count_retry_suffix = (
+            "\n\nIMPORTANT: Your previous message was over 140 words. "
+            "Shorten it to under 140 words."
+        )
+        try:
+            retry_raw = llm.complete(
+                prompt + word_count_retry_suffix,
+                response_format={"type": "json_object"},
+                temperature=0.7,
+            )
+            retry_parsed = _parse_json_safe(retry_raw)
+            if retry_parsed is not None:
+                retry_message = retry_parsed.get("message", "")
+                retry_count = len(retry_message.split())
+                if retry_count <= _MAX_MESSAGE_WORDS:
+                    message = retry_message
+                    subject = retry_parsed.get("subject", subject)
+                else:
+                    logger.info(
+                        "Word-count retry for %s still %d words, truncating",
+                        company.name,
+                        retry_count,
+                    )
+                    message = _truncate_to_word_limit(retry_message, _MAX_MESSAGE_WORDS)
+            else:
+                logger.warning(
+                    "Word-count retry returned invalid JSON for %s, truncating",
+                    company.name,
+                )
+                message = _truncate_to_word_limit(message, _MAX_MESSAGE_WORDS)
+        except Exception:
+            logger.exception("Word-count retry failed for %s, truncating", company.name)
+            message = _truncate_to_word_limit(message, _MAX_MESSAGE_WORDS)
 
     return {"subject": subject, "message": message}
 
