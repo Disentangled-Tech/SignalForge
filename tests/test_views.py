@@ -544,6 +544,7 @@ class TestCompanyDetail:
         assert "Acme Corp" in resp.text
         assert "No analysis yet" in resp.text
         assert "No outreach draft yet" in resp.text
+        assert "daily briefing" in resp.text
         assert "No signals collected yet" in resp.text
 
     @patch("app.api.views.get_company")
@@ -567,6 +568,7 @@ class TestCompanyDetail:
         assert resp.status_code == 200
         assert "Latest Outreach Draft" in resp.text
         assert "No outreach draft yet" in resp.text
+        assert "daily briefing" in resp.text
 
     @patch("app.api.views.get_company")
     def test_detail_all_data_present(

@@ -157,6 +157,14 @@ def test_load_prompt_caches_results() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_outreach_v1_includes_issue_19_acceptance_criteria() -> None:
+    """outreach_v1.md contains conversational, no marketing, company context per Issue #19."""
+    content = load_prompt("outreach_v1")
+    assert "conversational" in content.lower()
+    assert "marketing" in content.lower() or "promotional" in content.lower()
+    assert "company" in content.lower() or "context" in content.lower()
+
+
 def test_imports_from_package() -> None:
     """load_prompt and render_prompt should be importable from app.prompts."""
     from app.prompts import load_prompt as lp, render_prompt as rp
