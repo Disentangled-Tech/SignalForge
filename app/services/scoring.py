@@ -62,7 +62,7 @@ def _sample_for_log(pain_signals: dict[str, Any] | None) -> dict:
 def calculate_score(
     pain_signals: dict[str, Any],
     stage: str,
-    custom_weights: dict[str, int] | None = None,
+    custom_weights: dict[str, int] | dict[str, float] | None = None,
 ) -> int:
     """Return a 0-100 CTO-need score from pain signals and stage.
 
@@ -108,7 +108,7 @@ def calculate_score(
             stage,
             {k: v for k, v in list(signals.items())[:3]},
         )
-    return result
+    return int(round(result))
 
 
 def get_custom_weights(db: Session) -> dict[str, int] | None:
@@ -123,7 +123,10 @@ def get_custom_weights(db: Session) -> dict[str, int] | None:
     try:
         parsed = json.loads(row.value)
         if isinstance(parsed, dict):
-            return parsed
+            return {
+                k: int(round(float(v))) if isinstance(v, (int, float)) else 0
+                for k, v in parsed.items()
+            }
         return None
     except (json.JSONDecodeError, TypeError):
         logger.warning("Invalid JSON in scoring_weights AppSettings row")
@@ -136,12 +139,13 @@ def get_display_scores_for_companies(
     """Compute display scores from latest analysis for each company.
 
     Returns a dict mapping company_id -> score. Only includes companies that
-    have at least one analysis. Uses the same logic as the company detail page
-    (calculate_score from pain_signals + stage, default weights).
+    have at least one analysis. Uses the same weights as score_company
+    (custom weights from Settings when set, else defaults).
     """
     if not company_ids:
         return {}
 
+    custom_weights = get_custom_weights(db)
     analyses = (
         db.query(AnalysisRecord)
         .filter(AnalysisRecord.company_id.in_(company_ids))
@@ -163,6 +167,7 @@ def get_display_scores_for_companies(
         score = calculate_score(
             pain_signals=pain_signals,
             stage=analysis.stage or "",
+            custom_weights=custom_weights,
         )
         result[cid] = score
     return result

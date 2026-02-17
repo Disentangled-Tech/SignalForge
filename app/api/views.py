@@ -396,8 +396,9 @@ def company_detail(
     # Recompute score from analysis; use for display and repair if stored score is wrong
     recomputed_score: int | None = None
     if analysis is not None:
-        from app.services.scoring import calculate_score, score_company
+        from app.services.scoring import calculate_score, get_custom_weights, score_company
 
+        custom_weights = get_custom_weights(db)
         pain_signals = (
             analysis.pain_signals_json
             if isinstance(analysis.pain_signals_json, dict)
@@ -406,6 +407,7 @@ def company_detail(
         recomputed_score = calculate_score(
             pain_signals=pain_signals,
             stage=analysis.stage or "",
+            custom_weights=custom_weights,
         )
         # Repair: if stored score differs from recomputed, persist the correct value
         if company.cto_need_score != recomputed_score:
