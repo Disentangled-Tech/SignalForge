@@ -38,20 +38,6 @@ STAGE_BONUSES: dict[str, int] = {
 def _is_signal_true(val: Any) -> bool:
     """Return True if value indicates a positive pain signal.
 
-    LLMs may return boolean True, string \"true\"/\"True\"/\"yes\", or int 1.
-def _sample_for_log(pain_signals: dict[str, Any] | None) -> dict:
-    """Extract a small sample of pain signals for debug logging."""
-    if not pain_signals:
-        return {}
-    signals = pain_signals.get("signals", pain_signals)
-    if not isinstance(signals, dict):
-        return {}
-    return {k: v for k, v in list(signals.items())[:2]}
-
-
-def _is_signal_true(val: Any) -> bool:
-    """Return True if value indicates a positive pain signal.
-
     LLMs may return boolean True, string "true"/"True"/"yes", or int 1.
     """
     if val is True:
@@ -61,6 +47,16 @@ def _is_signal_true(val: Any) -> bool:
     if isinstance(val, (int, float)):
         return val == 1 or val == 1.0
     return False
+
+
+def _sample_for_log(pain_signals: dict[str, Any] | None) -> dict:
+    """Extract a small sample of pain signals for debug logging."""
+    if not pain_signals:
+        return {}
+    signals = pain_signals.get("signals", pain_signals)
+    if not isinstance(signals, dict):
+        return {}
+    return {k: v for k, v in list(signals.items())[:2]}
 
 
 def calculate_score(
