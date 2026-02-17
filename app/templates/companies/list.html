@@ -13,12 +13,38 @@
 
 <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
     <form method="GET" action="/companies" style="display: flex; gap: 0.75rem; align-items: center;">
+        <input type="hidden" name="sort_by" value="{{ sort_by or 'score' }}">
+        <input type="hidden" name="order" value="{{ sort_order or 'desc' }}">
         <input type="text" name="search" value="{{ search or '' }}" placeholder="Search companies…" style="flex: 1;">
         <button type="submit" class="btn btn-secondary">Search</button>
         {% if search %}
-        <a href="/companies" class="btn btn-secondary">Clear</a>
+        <a href="/companies?sort_by={{ sort_by or 'score' }}&order={{ sort_order or 'desc' }}" class="btn btn-secondary">Clear</a>
         {% endif %}
     </form>
+</div>
+
+<div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+    <span>Sort by:</span>
+    {% set current_sort = sort_by or 'score' %}
+    {% set current_order = sort_order or 'desc' %}
+    {% set search_qs = 'search=' ~ search if search else '' %}
+    {% set qs_sep = '&' if search_qs else '' %}
+    {# Score: toggle asc/desc when on score; else default desc #}
+    {% set score_order = 'asc' if (current_sort == 'score' and current_order == 'desc') else 'desc' %}
+    {% set score_url = '/companies?sort_by=score&order=' ~ score_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {# Name: toggle when on name; else default asc #}
+    {% set name_order = 'desc' if (current_sort == 'name' and current_order == 'asc') else 'asc' %}
+    {% set name_url = '/companies?sort_by=name&order=' ~ name_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {# Last Scan: toggle when on last_scan_at; else default desc #}
+    {% set last_scan_order = 'asc' if (current_sort == 'last_scan_at' and current_order == 'desc') else 'desc' %}
+    {% set last_scan_url = '/companies?sort_by=last_scan_at&order=' ~ last_scan_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {# Created: toggle when on created_at; else default desc #}
+    {% set created_order = 'asc' if (current_sort == 'created_at' and current_order == 'desc') else 'desc' %}
+    {% set created_url = '/companies?sort_by=created_at&order=' ~ created_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    <a href="{{ score_url }}" class="{% if current_sort == 'score' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Score {% if current_sort == 'score' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
+    <a href="{{ name_url }}" class="{% if current_sort == 'name' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Name {% if current_sort == 'name' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
+    <a href="{{ last_scan_url }}" class="{% if current_sort == 'last_scan_at' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Last Scan {% if current_sort == 'last_scan_at' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
+    <a href="{{ created_url }}" class="{% if current_sort == 'created_at' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Created {% if current_sort == 'created_at' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
 </div>
 
 {% if companies %}
@@ -61,6 +87,20 @@
 <div class="card" style="text-align: center; padding: 3rem;">
     <p class="text-muted">No companies found.</p>
     <a href="/companies/add" class="btn btn-primary" style="margin-top: 1rem;">Add your first company</a>
+</div>
+{% endif %}
+
+{% if total and total > page_size %}
+<div class="card" style="margin-top: 1rem; padding: 0.75rem 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+    {% set pagination_base = '/companies?sort_by=' ~ (sort_by or 'score') ~ '&order=' ~ (sort_order or 'desc') %}
+    {% set pagination_base = pagination_base ~ ('&search=' ~ search if search else '') %}
+    <span>Page {{ page }} of {{ total_pages }} ({{ total }} total)</span>
+    {% if page > 1 %}
+    <a href="{{ pagination_base }}&page={{ page - 1 }}" class="btn btn-secondary">Previous</a>
+    {% endif %}
+    {% if page < total_pages %}
+    <a href="{{ pagination_base }}&page={{ page + 1 }}" class="btn btn-secondary">Next</a>
+    {% endif %}
 </div>
 {% endif %}
 {% endblock %}
