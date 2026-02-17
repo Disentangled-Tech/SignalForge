@@ -9,9 +9,12 @@ import json
 import logging
 from pathlib import Path
 
+import re
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import AUTH_COOKIE, get_current_user, get_db
@@ -164,6 +167,17 @@ def companies_list(
 
 # ── Companies: add ───────────────────────────────────────────────────
 
+_URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
+
+
+def _is_valid_url(s: str) -> bool:
+    """Return True if s is empty or a valid http(s) URL."""
+    s = s.strip()
+    if not s:
+        return True
+    return bool(_URL_PATTERN.match(s))
+
+
 @router.get("/companies/add", response_class=HTMLResponse)
 def companies_add_form(
     request: Request,
@@ -204,6 +218,14 @@ def companies_add_submit(
     if not company_name.strip():
         errors.append("Company name is required.")
 
+    # Validate URL fields when non-empty
+    if website_url.strip() and not _is_valid_url(website_url):
+        errors.append("Website URL must be a valid URL (e.g. https://example.com).")
+    if founder_linkedin_url.strip() and not _is_valid_url(founder_linkedin_url):
+        errors.append("Founder LinkedIn URL must be a valid URL.")
+    if company_linkedin_url.strip() and not _is_valid_url(company_linkedin_url):
+        errors.append("Company LinkedIn URL must be a valid URL.")
+
     if errors:
         return templates.TemplateResponse(
             "companies/add.html",
@@ -216,17 +238,30 @@ def companies_add_submit(
     except ValueError:
         source_enum = CompanySource.manual
 
-    data = CompanyCreate(
-        company_name=company_name.strip(),
-        website_url=website_url.strip() or None,
-        founder_name=founder_name.strip() or None,
-        founder_linkedin_url=founder_linkedin_url.strip() or None,
-        company_linkedin_url=company_linkedin_url.strip() or None,
-        notes=notes.strip() or None,
-        source=source_enum,
-    )
-    create_company(db, data)
-    return RedirectResponse(url="/companies", status_code=302)
+    try:
+        data = CompanyCreate(
+            company_name=company_name.strip(),
+            website_url=website_url.strip() or None,
+            founder_name=founder_name.strip() or None,
+            founder_linkedin_url=founder_linkedin_url.strip() or None,
+            company_linkedin_url=company_linkedin_url.strip() or None,
+            notes=notes.strip() or None,
+            source=source_enum,
+        )
+    except ValidationError as e:
+        for err in e.errors():
+            msg = err.get("msg", "Invalid value")
+            loc = err.get("loc", ())
+            field = loc[0] if loc else "field"
+            errors.append(f"{field}: {msg}")
+        return templates.TemplateResponse(
+            "companies/add.html",
+            {"request": request, "user": user, "form_data": form_data, "errors": errors},
+            status_code=422,
+        )
+
+    result = create_company(db, data)
+    return RedirectResponse(url=f"/companies/{result.id}", status_code=302)
 
 
 # ── Companies: import ────────────────────────────────────────────────
