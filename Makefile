@@ -1,7 +1,7 @@
 # SignalForge local development
 # Usage: make help
 
-.PHONY: help install dev migrate upgrade test lint diagnose-scan
+.PHONY: help install dev migrate upgrade test lint diagnose-scan create-company
 
 help:
 	@echo "SignalForge local development"
@@ -12,6 +12,7 @@ help:
 	@echo "  make upgrade   - Run database migrations"
 	@echo "  make test      - Run tests"
 	@echo "  make lint      - Run ruff"
+	@echo "  make create-company COMPANY_NAME=\"Acme\" - Insert a company via CLI script"
 	@echo "  make diagnose-scan COMPANY_ID=N - Diagnose why a company scan fails"
 
 install:
@@ -34,6 +35,10 @@ test:
 
 lint:
 	ruff check app tests
+
+create-company:
+	@test -n "$(COMPANY_NAME)" || (echo "Usage: make create-company COMPANY_NAME=\"Acme Corp\""; exit 1)
+	.venv/bin/python -m app.scripts.create_company --company-name "$(COMPANY_NAME)"
 
 diagnose-scan:
 	@test -n "$(COMPANY_ID)" || (echo "Usage: make diagnose-scan COMPANY_ID=<id>"; exit 1)
