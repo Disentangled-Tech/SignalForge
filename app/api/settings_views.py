@@ -31,6 +31,8 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 
 # HH:MM (24h)
 _BRIEFING_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+# Max profile content length (50KB) to prevent abuse
+_PROFILE_MAX_LENGTH = 50_000
 # Simple email validation (RFC 5322 simplified)
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _VALID_FREQUENCIES = frozenset({"daily", "weekly"})
@@ -147,14 +149,15 @@ def profile_page(
     """Render operator profile editor."""
     content = get_operator_profile(db)
     flash_message = request.query_params.get("success")
+    error = request.query_params.get("error")
     return templates.TemplateResponse(
         request,
         "settings/profile.html",
         {
             "profile_content": content,
             "user": user,
-            "flash_message": flash_message,
-            "flash_type": "success" if flash_message else None,
+            "flash_message": flash_message or error,
+            "flash_type": "error" if error else "success" if flash_message else None,
         },
     )
 
@@ -167,6 +170,11 @@ def profile_save(
     content: str = Form(""),
 ):
     """Save operator profile and redirect back."""
+    if len(content) > _PROFILE_MAX_LENGTH:
+        return RedirectResponse(
+            url="/settings/profile?error=Profile+content+too+long",
+            status_code=303,
+        )
     update_operator_profile(db, content)
     return RedirectResponse(
         url="/settings/profile?success=Profile+saved", status_code=303

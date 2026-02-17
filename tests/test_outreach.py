@@ -304,4 +304,40 @@ class TestGenerateOutreachEdgeCases:
         assert result["subject"] != ""
 
 
+# ---------------------------------------------------------------------------
+# Integration: profile from DB flows to outreach prompt (issue #30)
+# ---------------------------------------------------------------------------
+
+
+class TestProfileOutreachIntegration:
+    """Integration test: seeded OperatorProfile in DB is passed to outreach prompt."""
+
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_profile_from_db_flows_to_outreach_prompt(
+        self, mock_render, mock_get_llm, db
+    ):
+        """Seeded OperatorProfile content is passed as OPERATOR_PROFILE_MARKDOWN."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.return_value = _VALID_OUTREACH_RESPONSE
+
+        seeded_content = "Seeded profile: 20 years CTO, helped 50 startups scale"
+        profile = OperatorProfile(content=seeded_content)
+        db.add(profile)
+        db.flush()
+
+        try:
+            result = generate_outreach(
+                db, _make_company(), _make_analysis()
+            )
+            assert result["subject"] != ""
+
+            call_kwargs = mock_render.call_args[1]
+            assert call_kwargs["OPERATOR_PROFILE_MARKDOWN"] == seeded_content
+        finally:
+            db.rollback()
+
+
 
