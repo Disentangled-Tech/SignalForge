@@ -9,42 +9,44 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PainSignalItem(BaseModel):
-    """A single pain signal: detected (bool) with reasoning."""
+    """A single pain signal: value (bool) with reasoning. Matches LLM output format."""
 
-    detected: bool = False
+    value: bool = False
     why: str = ""
 
 
 class PainSignals(BaseModel):
-    """The 7 boolean pain signal fields from the analysis pipeline."""
+    """The 7 boolean pain signal fields from the analysis pipeline (LLM output keys)."""
 
-    hiring_technical_roles: PainSignalItem = Field(
+    model_config = ConfigDict(extra="allow")
+
+    hiring_engineers: PainSignalItem = Field(
         default_factory=PainSignalItem,
         description="Company is hiring for technical roles",
     )
-    recent_funding: PainSignalItem = Field(
+    switching_from_agency: PainSignalItem = Field(
         default_factory=PainSignalItem,
-        description="Company recently received funding",
+        description="Mentions agency, contractors, bringing in-house",
     )
-    product_launch: PainSignalItem = Field(
+    adding_enterprise_features: PainSignalItem = Field(
         default_factory=PainSignalItem,
-        description="Company is launching or has launched a product",
+        description="SSO, RBAC, audit logs, SLAs, multi-tenant",
     )
-    technical_debt_indicators: PainSignalItem = Field(
+    compliance_security_pressure: PainSignalItem = Field(
         default_factory=PainSignalItem,
-        description="Signs of technical debt or legacy systems",
+        description="SOC2, HIPAA, ISO, vendor security questionnaires",
     )
-    scaling_challenges: PainSignalItem = Field(
+    product_delivery_issues: PainSignalItem = Field(
         default_factory=PainSignalItem,
-        description="Company facing scaling challenges",
+        description="Missed timelines, slipping, hard to ship, bug volume",
     )
-    leadership_changes: PainSignalItem = Field(
+    architecture_scaling_risk: PainSignalItem = Field(
         default_factory=PainSignalItem,
-        description="Recent leadership or CTO changes",
+        description="Rewrites, performance bottlenecks, outgrowing stack",
     )
-    compliance_needs: PainSignalItem = Field(
+    founder_overload: PainSignalItem = Field(
         default_factory=PainSignalItem,
-        description="Regulatory or compliance requirements",
+        description="Burnout posts, wearing too many hats, looking for technical leadership",
     )
 
 

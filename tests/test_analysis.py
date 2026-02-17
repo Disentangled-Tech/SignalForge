@@ -532,6 +532,120 @@ class TestStageClassificationIssue16:
 
 
 # ---------------------------------------------------------------------------
+# Pain signal detection — Issue #17 acceptance criteria
+# ---------------------------------------------------------------------------
+
+
+# Issue #17 canonical signals: hiring engineers, compliance, scaling issues, delivery problems
+ISSUE_17_SIGNAL_KEYS = frozenset({
+    "hiring_engineers",           # hiring engineers
+    "compliance_security_pressure",  # compliance
+    "architecture_scaling_risk",  # scaling issues
+    "product_delivery_issues",     # delivery problems
+})
+
+
+class TestPainSignalDetectionIssue17:
+    """Tests for Issue #17: four boolean signals detected and structured JSON stored."""
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_four_issue_17_signals_stored_in_pain_signals_json(
+        self, mock_render, mock_get_llm
+    ):
+        """LLM returning four Issue #17 signals results in structured JSON in pain_signals_json."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+
+        pain_response = json.dumps({
+            "signals": {
+                "hiring_engineers": {"value": True, "why": "3 open SWE roles"},
+                "compliance_security_pressure": {"value": True, "why": "SOC2 mentioned"},
+                "architecture_scaling_risk": {"value": True, "why": "Performance bottlenecks"},
+                "product_delivery_issues": {"value": False, "why": "No evidence"},
+            },
+            "top_risks": ["hiring", "compliance"],
+            "most_likely_next_problem": "Scaling the team",
+            "uncertainties": [],
+            "recommended_conversation_angle": "Compliance readiness",
+        })
+        mock_llm.complete.side_effect = [
+            _VALID_STAGE_RESPONSE,
+            pain_response,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        result = analyze_company(db, company_id=1)
+
+        assert result is not None
+        pain = result.pain_signals_json
+        assert pain is not None
+        assert "signals" in pain
+
+        signals = pain["signals"]
+        for key in ISSUE_17_SIGNAL_KEYS:
+            assert key in signals, f"Issue #17 signal '{key}' missing from stored JSON"
+            entry = signals[key]
+            assert isinstance(entry, dict), f"Signal '{key}' must be dict"
+            assert "value" in entry, f"Signal '{key}' must have 'value'"
+            assert isinstance(entry["value"], bool), f"Signal '{key}.value' must be bool"
+            assert "why" in entry, f"Signal '{key}' must have 'why'"
+            assert isinstance(entry["why"], str), f"Signal '{key}.why' must be str"
+
+        assert "top_risks" in pain
+        assert pain["top_risks"] == ["hiring", "compliance"]
+        assert "most_likely_next_problem" in pain
+        assert pain["most_likely_next_problem"] == "Scaling the team"
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_pain_signals_json_structure_persisted(self, mock_render, mock_get_llm):
+        """Full pain signals JSON structure (signals, top_risks, etc.) is persisted."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+
+        pain_response = json.dumps({
+            "signals": {
+                "hiring_engineers": {"value": False, "why": ""},
+                "compliance_security_pressure": {"value": False, "why": ""},
+                "architecture_scaling_risk": {"value": True, "why": "Rewrites mentioned"},
+                "product_delivery_issues": {"value": True, "why": "Missed timelines"},
+            },
+            "top_risks": ["delivery", "scaling"],
+            "most_likely_next_problem": "Delivery problems",
+            "uncertainties": ["Team size unknown"],
+            "recommended_conversation_angle": "Delivery process",
+        })
+        mock_llm.complete.side_effect = [
+            _VALID_STAGE_RESPONSE,
+            pain_response,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        result = analyze_company(db, company_id=1)
+
+        assert result is not None
+        pain = result.pain_signals_json
+        assert pain is not None
+        assert pain["signals"]["architecture_scaling_risk"]["value"] is True
+        assert pain["signals"]["product_delivery_issues"]["value"] is True
+        assert pain["uncertainties"] == ["Team size unknown"]
+        assert pain["recommended_conversation_angle"] == "Delivery process"
+
+
+# ---------------------------------------------------------------------------
 # ALLOWED_STAGES constant
 # ---------------------------------------------------------------------------
 

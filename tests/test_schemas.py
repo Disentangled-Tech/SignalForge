@@ -119,15 +119,15 @@ class TestSignalRecordRead:
 class TestPainSignals:
     def test_defaults(self) -> None:
         ps = PainSignals()
-        assert ps.hiring_technical_roles.detected is False
-        assert ps.recent_funding.why == ""
+        assert ps.hiring_engineers.value is False
+        assert ps.compliance_security_pressure.why == ""
 
     def test_custom_values(self) -> None:
         ps = PainSignals(
-            hiring_technical_roles=PainSignalItem(detected=True, why="3 open roles"),
+            hiring_engineers=PainSignalItem(value=True, why="3 open roles"),
         )
-        assert ps.hiring_technical_roles.detected is True
-        assert ps.hiring_technical_roles.why == "3 open roles"
+        assert ps.hiring_engineers.value is True
+        assert ps.hiring_engineers.why == "3 open roles"
 
 
 class TestAnalysisRecordRead:

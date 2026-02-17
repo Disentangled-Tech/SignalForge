@@ -33,6 +33,12 @@ Interpretation guide (examples):
 - architecture_scaling_risk: rewrites, performance bottlenecks, reliability issues, “outgrowing” stack
 - founder_overload: burnout posts, “wearing too many hats”, looking for technical leadership
 
+Issue #17 canonical signals → prompt keys:
+- hiring engineers → hiring_engineers
+- compliance → compliance_security_pressure
+- scaling issues → architecture_scaling_risk
+- delivery problems → product_delivery_issues
+
 Inputs:
 Company:
 - Name: {{COMPANY_NAME}}
