@@ -109,6 +109,18 @@
 <div class="card">
     <h2>Latest Outreach Draft</h2>
     {% if briefing %}
+    {% if briefing.why_now %}
+    <div style="margin-bottom: 1rem;">
+        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; font-weight: 600; margin-bottom: 0.25rem;">Why Now</div>
+        <p style="font-size: 0.9rem; color: #334155; line-height: 1.6; margin: 0;">{{ briefing.why_now }}</p>
+    </div>
+    {% endif %}
+    {% if briefing.risk_summary %}
+    <div style="margin-bottom: 1rem;">
+        <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; font-weight: 600; margin-bottom: 0.25rem;">Risk Summary</div>
+        <p style="font-size: 0.9rem; color: #334155; line-height: 1.6; margin: 0;">{{ briefing.risk_summary }}</p>
+    </div>
+    {% endif %}
     {% if briefing.outreach_subject %}
     <div style="margin-bottom: 0.5rem;"><strong>Subject:</strong> {{ briefing.outreach_subject }}</div>
     {% endif %}

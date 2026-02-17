@@ -81,16 +81,16 @@ class TestCalculateScore:
         )
         assert score == 100
 
-    def test_custom_weights_ignore_defaults(self) -> None:
-        """Custom weights replace defaults entirely — unknown default keys ignored."""
+    def test_custom_weights_merge_with_defaults(self) -> None:
+        """Custom weights override specified keys; unspecified use defaults (Issue #64)."""
         custom = {"hiring_engineers": 10}
-        # Even though compliance_security_pressure is true, custom doesn't have it
         score = calculate_score(
             _signals(["hiring_engineers", "compliance_security_pressure"]),
             "",
             custom_weights=custom,
         )
-        assert score == 10
+        # hiring_engineers: 10 (custom), compliance: 25 (default)
+        assert score == 35
 
     def test_empty_pain_signals(self) -> None:
         assert calculate_score({}, "") == 0
@@ -376,6 +376,83 @@ class TestScoreCompany:
         score = score_company(db, 1, analysis)
         assert score == 99
         assert company.cto_need_score == 99
+
+
+# ── Issue #64: All company scores zero ─────────────────────────────────────
+
+
+class TestIssue64ZeroScores:
+    """Regression tests for Issue #64: custom weights/legacy keys causing score 0."""
+
+    def test_detected_key_accepted_as_legacy(self) -> None:
+        """Signals with 'detected' instead of 'value' produce non-zero score."""
+        signals = {
+            "signals": {
+                "hiring_engineers": {"detected": True, "why": "legacy format"},
+                "founder_overload": {"detected": False, "why": "no evidence"},
+            }
+        }
+        score = calculate_score(signals, "")
+        assert score != 0, "Legacy 'detected' key must be counted"
+        assert score == 15  # hiring_engineers weight
+
+    def test_legacy_signal_keys_mapped_to_canonical(self) -> None:
+        """Analysis with hiring_technical_roles maps to hiring_engineers."""
+        signals = {
+            "signals": {
+                "hiring_technical_roles": {"value": True, "why": "old key"},
+                "compliance_needs": {"value": True, "why": "old key"},
+            }
+        }
+        score = calculate_score(signals, "")
+        assert score != 0
+        assert score == 40  # hiring_engineers(15) + compliance_security_pressure(25)
+
+    def test_custom_weights_with_legacy_keys_merge_with_defaults(self) -> None:
+        """Custom weights with legacy keys still produce non-zero score (merge fix)."""
+        db = MagicMock()
+        settings_row = MagicMock(spec=AppSettings)
+        settings_row.value = '{"hiring_technical_roles": 50, "compliance_needs": 30}'
+        db.query.return_value.filter.return_value.first.return_value = settings_row
+
+        custom = get_custom_weights(db)
+        assert custom is not None
+        assert "hiring_engineers" in custom
+        assert custom["hiring_engineers"] == 50
+        assert custom["compliance_security_pressure"] == 30
+
+        signals = {
+            "signals": {
+                "hiring_engineers": {"value": True, "why": "test"},
+                "compliance_security_pressure": {"value": True, "why": "test"},
+            }
+        }
+        score = calculate_score(signals, "", custom_weights=custom)
+        assert score == 80  # 50 + 30
+
+    def test_custom_weights_partial_override_uses_defaults_for_rest(self) -> None:
+        """Custom weights override only specified keys; rest use defaults."""
+        custom = {"hiring_engineers": 50}
+        signals = _signals(["hiring_engineers", "founder_overload"])
+        score = calculate_score(signals, "", custom_weights=custom)
+        assert score == 60  # 50 (custom) + 10 (founder_overload from default)
+
+    def test_all_zero_when_custom_weights_had_wrong_keys_now_fixed(self) -> None:
+        """Before fix: custom weights with only wrong keys caused score 0.
+        After fix: we merge with defaults, so canonical keys from analysis still score.
+        """
+        # Simulate old custom weights that had ONLY legacy keys (now normalized)
+        custom = {"hiring_engineers": 20}  # User overrode one key
+        signals = {
+            "signals": {
+                "hiring_engineers": {"value": True, "why": "test"},
+                "compliance_security_pressure": {"value": True, "why": "test"},
+            }
+        }
+        score = calculate_score(signals, "scaling_team", custom_weights=custom)
+        assert score != 0
+        # hiring_engineers: 20 (custom), compliance: 25 (default), stage: 20
+        assert score == 65
 
 
 # ── Integration: score_company updates company record in DB ─────────────
