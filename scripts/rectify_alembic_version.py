@@ -7,7 +7,7 @@ that no longer exists in the repo, causing "Can't locate revision" errors.
 Usage:
     python scripts/rectify_alembic_version.py [TARGET_REVISION]
 
-Default TARGET_REVISION is 'head' (26bb8c9d58d5).
+Default TARGET_REVISION is 'head' (resolved from current migration chain).
 Only run this if your DB schema already matches the target revision.
 """
 
@@ -17,18 +17,33 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 
 from app.config import get_settings
 from app.db.session import engine
 
 
+def _get_alembic_head() -> str:
+    """Return the current head revision from the migration chain."""
+    config = Config(str(project_root / "alembic.ini"))
+    script = ScriptDirectory.from_config(config)
+    head = script.get_current_head()
+    if head is None:
+        raise RuntimeError("No migration head found. Check alembic/versions/.")
+    return head
+
+
 def main() -> None:
-    target = sys.argv[1] if len(sys.argv) > 1 else "26bb8c9d58d5"
-    if target.lower() == "head":
-        target = "26bb8c9d58d5"
+    raw_target = sys.argv[1] if len(sys.argv) > 1 else "head"
+    if raw_target.lower() == "head":
+        target = _get_alembic_head()
+    else:
+        target = raw_target
 
     settings = get_settings()
     print(f"Connecting to {settings.database_url.split('@')[-1] if '@' in settings.database_url else 'DB'}...")

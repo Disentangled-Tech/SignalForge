@@ -83,7 +83,7 @@ class TestStoreSignal:
         db.refresh.assert_called_once()
 
     def test_duplicate_signal_skipped(self):
-        """Same company_id + content_hash → return None, no add/commit."""
+        """Same company_id + content_hash → return None, no add. No commit when company missing."""
         existing = MagicMock(spec=SignalRecord)
         existing.id = 99
         db = _make_query_mock(existing_record=existing, company=None)
@@ -99,6 +99,27 @@ class TestStoreSignal:
         assert result is None
         db.add.assert_not_called()
         db.commit.assert_not_called()
+
+    def test_duplicate_signal_updates_last_scan_at(self):
+        """Duplicate signal still updates company.last_scan_at (AC #14: last activity timestamp)."""
+        company = _make_company()
+        company.last_scan_at = None
+        existing = MagicMock(spec=SignalRecord)
+        existing.id = 99
+        db = _make_query_mock(existing_record=existing, company=company)
+
+        result = store_signal(
+            db,
+            company_id=1,
+            source_url="https://acme.example.com/blog",
+            source_type="blog",
+            content_text="Duplicate content",
+        )
+
+        assert result is None
+        db.add.assert_not_called()
+        assert company.last_scan_at is not None
+        db.commit.assert_called_once()
 
     def test_last_scan_at_updated(self):
         """company.last_scan_at is set to roughly now on new signal."""
