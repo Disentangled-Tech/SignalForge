@@ -222,3 +222,46 @@ class TestOutreachHallucinationGuardrail:
         assert "IMPORTANT" in retry_prompt
         assert "must not be used" in retry_prompt
 
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_word_count_shorten_includes_actual_message_not_regenerate(self, mock_render, mock_get_llm):
+        """Word-count shorten prompt includes the message so LLM shortens it, not regenerates.
+
+        Regeneration could reintroduce hallucinated claims from the earlier retry.
+        """
+        # First: hallucinated claim, retry returns valid but long message (>140 words)
+        corrected_long_message = (
+            "Hi Jane, I noticed you are scaling. With 15 years experience "
+            + " ".join(["in engineering leadership"] * 50)  # 150+ words total
+        )
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.side_effect = [
+            json.dumps({
+                "subject": "Hello",
+                "message": "Bad message with fake claim " + " ".join(["x"] * 150),
+                "operator_claims_used": ["built 50 startups"],
+            }),
+            json.dumps({
+                "subject": "Hello v2",
+                "message": corrected_long_message,
+                "operator_claims_used": ["15 years experience"],
+            }),
+            json.dumps({
+                "subject": "Hello v2",
+                "message": "Hi Jane, I noticed you are scaling. With 15 years experience.",
+                "operator_claims_used": ["15 years experience"],
+            }),
+        ]
+
+        db = _make_mock_db()
+        result = generate_outreach(db, _make_company(), _make_analysis())
+
+        # Third call is the shorten call — must include the corrected message
+        assert mock_llm.complete.call_count == 3
+        shorten_prompt = mock_llm.complete.call_args_list[2][0][0]
+        assert corrected_long_message in shorten_prompt
+        assert "Shorten" in shorten_prompt or "140 words" in shorten_prompt
+        assert "15 years experience" in result["message"]
+

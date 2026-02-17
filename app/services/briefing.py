@@ -6,7 +6,6 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.llm.router import ModelRole, get_llm_provider
@@ -30,13 +29,22 @@ def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
     """Select the top N companies for today's briefing.
 
     Criteria:
-    1. Activity within 14 days (``last_scan_at`` OR signal ``created_at``).
-    2. Sorted by ``cto_need_score`` descending (nulls last).
-    3. Exclude companies that already have a ``BriefingItem`` in the last 7 days.
+    1. Activity within 14 days (last_scan_at OR signal created_at).
+    2. At least one AnalysisRecord (required for briefing generation).
+    3. Sorted by cto_need_score descending (nulls last).
+    4. Exclude companies with a BriefingItem in the last 7 days.
+
+    Returns up to ``limit`` companies (default 5). Fewer may be returned if
+    fewer qualify. No padding.
     """
     now = datetime.now(timezone.utc)
     activity_cutoff = now - timedelta(days=_ACTIVITY_WINDOW_DAYS)
     dedup_cutoff = now - timedelta(days=_DEDUP_WINDOW_DAYS)
+
+    # Sub-query: company IDs with at least one analysis (needed for briefing).
+    companies_with_analysis = (
+        db.query(AnalysisRecord.company_id).distinct().subquery()
+    )
 
     # Sub-query: company IDs with a signal created recently.
     recent_signal_ids = (
@@ -56,6 +64,7 @@ def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
 
     companies = (
         db.query(Company)
+        .filter(Company.id.in_(companies_with_analysis))
         .filter(
             (Company.last_scan_at >= activity_cutoff)
             | (Company.id.in_(recent_signal_ids))

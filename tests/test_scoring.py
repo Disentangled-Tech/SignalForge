@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.models.analysis_record import AnalysisRecord
 from app.models.app_settings import AppSettings
 from app.models.company import Company
@@ -374,4 +376,47 @@ class TestScoreCompany:
         score = score_company(db, 1, analysis)
         assert score == 99
         assert company.cto_need_score == 99
+
+
+# ── Integration: score_company updates company record in DB ─────────────
+
+
+@pytest.mark.integration
+class TestScoreCompanyIntegration:
+    """Integration tests proving company.cto_need_score is updated correctly (Issue #21)."""
+
+    def test_score_company_updates_company_record_in_db(self, db) -> None:
+        """Latest analysis updates company.cto_need_score and current_stage in DB."""
+        from app.models.analysis_record import AnalysisRecord
+        from app.models.company import Company
+
+        company = Company(
+            name="Integration Test Co",
+            website_url="https://example.com",
+            source="manual",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        analysis = AnalysisRecord(
+            company_id=company.id,
+            source_type="full_analysis",
+            stage="scaling_team",
+            pain_signals_json=_signals(["hiring_engineers", "compliance_security_pressure"]),
+        )
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+        # Before: company has no score
+        assert company.cto_need_score is None
+        assert company.current_stage is None
+
+        score_company(db, company.id, analysis)
+
+        # After: company record updated in DB
+        db.refresh(company)
+        assert company.cto_need_score == 60  # 15 + 25 (signals) + 20 (stage bonus)
+        assert company.current_stage == "scaling_team"
 

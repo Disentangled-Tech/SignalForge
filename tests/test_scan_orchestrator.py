@@ -70,6 +70,32 @@ class TestInferSourceType:
         assert infer_source_type(url) == expected
 
 
+# ── run_scan_company_full tests ───────────────────────────────────────
+
+
+class TestRunScanCompanyFull:
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_runs_scan_analysis_scoring(self, mock_scan, mock_analyze, mock_score):
+        """run_scan_company_full runs scan, analysis, and scoring; updates company score."""
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        db = MagicMock()
+        mock_scan.return_value = 2
+        analysis = MagicMock()
+        mock_analyze.return_value = analysis
+
+        new_count, result_analysis = await run_scan_company_full(db, 1)
+
+        assert new_count == 2
+        assert result_analysis is analysis
+        mock_scan.assert_awaited_once_with(db, 1)
+        mock_analyze.assert_called_once_with(db, 1)
+        mock_score.assert_called_once_with(db, 1, analysis)
+
+
 # ── run_scan_company tests ───────────────────────────────────────────
 
 
@@ -132,15 +158,16 @@ class TestRunScanCompany:
 
 class TestRunScanAll:
     @pytest.mark.asyncio
-    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
-    async def test_creates_job_run_and_completes(self, mock_scan_co):
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_creates_job_run_and_completes(self, mock_scan_full):
+        """run_scan_all runs full pipeline (scan+analysis+scoring) per company."""
         from app.services.scan_orchestrator import run_scan_all
 
         c1 = _company(1, "Alpha")
         c2 = _company(2, "Beta")
         db = MagicMock()
         db.query.return_value.all.return_value = [c1, c2]
-        mock_scan_co.return_value = 3
+        mock_scan_full.return_value = (3, MagicMock())  # (new_signals, analysis)
 
         job = await run_scan_all(db)
 
@@ -149,10 +176,11 @@ class TestRunScanAll:
         assert job.companies_processed == 2
         assert job.finished_at is not None
         assert job.error_message is None
+        assert mock_scan_full.await_count == 2
 
     @pytest.mark.asyncio
-    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
-    async def test_error_isolation(self, mock_scan_co):
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_error_isolation(self, mock_scan_full):
         """One company failure must NOT stop the others."""
         from app.services.scan_orchestrator import run_scan_all
 
@@ -162,7 +190,7 @@ class TestRunScanAll:
         db = MagicMock()
         db.query.return_value.all.return_value = [c1, c2, c3]
 
-        mock_scan_co.side_effect = [2, RuntimeError("network down"), 1]
+        mock_scan_full.side_effect = [(2, MagicMock()), RuntimeError("network down"), (1, MagicMock())]
 
         job = await run_scan_all(db)
 
@@ -173,8 +201,8 @@ class TestRunScanAll:
         assert "network down" in job.error_message
 
     @pytest.mark.asyncio
-    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
-    async def test_all_failed_status(self, mock_scan_co):
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_all_failed_status(self, mock_scan_full):
         """If every company with a URL fails, job status should be 'failed'."""
         from app.services.scan_orchestrator import run_scan_all
 
@@ -183,7 +211,7 @@ class TestRunScanAll:
         db = MagicMock()
         db.query.return_value.all.return_value = [c1, c2]
 
-        mock_scan_co.side_effect = RuntimeError("boom")
+        mock_scan_full.side_effect = RuntimeError("boom")
 
         job = await run_scan_all(db)
 
