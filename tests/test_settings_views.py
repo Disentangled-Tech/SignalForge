@@ -274,3 +274,81 @@ class TestSettingsSave:
 
         assert resp.status_code == 303
         assert "error" in resp.headers.get("location", "")
+
+
+class TestProfilePage:
+    """Tests for GET /settings/profile (issue #30)."""
+
+    def test_profile_returns_200_with_content(self, mock_db, mock_user):
+        """GET /settings/profile returns 200, shows textarea, pre-fills profile_content."""
+        with patch(
+            "app.api.settings_views.get_operator_profile"
+        ) as mock_get_profile:
+            mock_get_profile.return_value = "# My Profile\n15 years CTO experience"
+
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app)
+
+            resp = client.get("/settings/profile")
+
+        assert resp.status_code == 200
+        assert "Operator Profile" in resp.text
+        assert "Profile Content (Markdown)" in resp.text
+        assert "My Profile" in resp.text
+        assert "15 years CTO experience" in resp.text
+        mock_get_profile.assert_called_once()
+
+
+class TestProfileSave:
+    """Tests for POST /settings/profile (issue #30)."""
+
+    def test_profile_save_updates_and_redirects(self, mock_db, mock_user):
+        """POST with content calls update_operator_profile and redirects with success."""
+        with patch(
+            "app.api.settings_views.update_operator_profile"
+        ) as mock_update:
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app, follow_redirects=False)
+
+            resp = client.post(
+                "/settings/profile",
+                data={"content": "# Updated Profile\nNew content here"},
+            )
+
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/settings/profile?success=Profile+saved"
+        mock_update.assert_called_once_with(mock_db, "# Updated Profile\nNew content here")
+
+    def test_profile_save_allows_empty(self, mock_db, mock_user):
+        """POST with empty content is accepted (clears profile)."""
+        with patch(
+            "app.api.settings_views.update_operator_profile"
+        ) as mock_update:
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app, follow_redirects=False)
+
+            resp = client.post(
+                "/settings/profile",
+                data={"content": ""},
+            )
+
+        assert resp.status_code == 303
+        mock_update.assert_called_once_with(mock_db, "")
+
+    def test_profile_save_rejects_content_too_long(self, mock_db, mock_user):
+        """POST with content exceeding 50KB redirects with error."""
+        with patch(
+            "app.api.settings_views.update_operator_profile"
+        ) as mock_update:
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app, follow_redirects=False)
+
+            resp = client.post(
+                "/settings/profile",
+                data={"content": "x" * 50_001},
+            )
+
+        assert resp.status_code == 303
+        assert "error" in resp.headers.get("location", "")
+        assert "Profile+content+too+long" in resp.headers.get("location", "")
+        mock_update.assert_not_called()
