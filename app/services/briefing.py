@@ -129,43 +129,62 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
 
         companies = select_top_companies(db)
         items: list[BriefingItem] = []
+        errors: list[str] = []
 
         for company in companies:
             try:
                 item = _generate_for_company(db, company)
                 if item is not None:
                     items.append(item)
-            except Exception:
+            except Exception as exc:
+                msg = f"Company {company.id} ({company.name}): {exc}"
                 logger.exception(
                     "Briefing generation failed for company %s (id=%s)",
                     company.name,
                     company.id,
                 )
+                errors.append(msg)
 
         job.finished_at = datetime.now(timezone.utc)
         job.status = "completed"
         job.companies_processed = len(items)
-        job.error_message = None
+        job.error_message = "; ".join(errors) if errors else None
         db.commit()
 
-        # Send briefing email when enabled (issue #29)
-        if items and resolved.should_send_briefing_email():
-            _items_with_company = (
-                db.query(BriefingItem)
-                .options(joinedload(BriefingItem.company))
-                .filter(BriefingItem.id.in_([i.id for i in items]))
-                .all()
-            )
-            try:
-                ok = send_briefing_email(
-                    _items_with_company,
-                    resolved.briefing_email_recipient,
-                    settings=resolved,
+        # Send briefing email when enabled (issue #29, #32)
+        failure_summary = job.error_message[:2000] if job.error_message else None
+        if resolved.should_send_briefing_email():
+            if items:
+                _items_with_company = (
+                    db.query(BriefingItem)
+                    .options(joinedload(BriefingItem.company))
+                    .filter(BriefingItem.id.in_([i.id for i in items]))
+                    .all()
                 )
-                if not ok:
-                    logger.warning("Briefing email send returned False")
-            except Exception:
-                logger.exception("Briefing email send failed (job still completed)")
+                try:
+                    ok = send_briefing_email(
+                        _items_with_company,
+                        resolved.briefing_email_recipient,
+                        settings=resolved,
+                        failure_summary=failure_summary,
+                    )
+                    if not ok:
+                        logger.warning("Briefing email send returned False")
+                except Exception:
+                    logger.exception("Briefing email send failed (job still completed)")
+            elif failure_summary:
+                # All companies failed: send failure-only alert (issue #32)
+                try:
+                    ok = send_briefing_email(
+                        [],
+                        resolved.briefing_email_recipient,
+                        settings=resolved,
+                        failure_summary=failure_summary,
+                    )
+                    if not ok:
+                        logger.warning("Briefing failure email send returned False")
+                except Exception:
+                    logger.exception("Briefing failure email send failed")
 
         return items
 

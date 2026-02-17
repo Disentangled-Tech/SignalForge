@@ -55,6 +55,9 @@
 
 {% block content %}
 <div class="print-header">SignalForge Briefing — {{ briefing_date.strftime('%A, %B %d, %Y') }}</div>
+{% if job_has_failures %}
+<div class="flash error no-print" style="margin-bottom: 1rem;">Last briefing job had failures. <a href="/settings">See Settings → Recent Job Runs</a> for details.</div>
+{% endif %}
 <div class="briefing-header">
     <div>
         <h1>Daily Briefing</h1>

@@ -81,6 +81,20 @@ def test_build_html_email_empty_list() -> None:
     assert "<table" in html
 
 
+def test_build_html_email_includes_failure_summary() -> None:
+    """When failure_summary provided, it appears in HTML (issue #32)."""
+    html = _build_html_email([_make_item()], failure_summary="Company 1 (Acme): LLM failed")
+    assert "Some companies could not be processed" in html
+    assert "Company 1 (Acme): LLM failed" in html
+
+
+def test_build_text_email_includes_failure_summary() -> None:
+    """When failure_summary provided, it appears in text body (issue #32)."""
+    text = _build_text_email([_make_item()], failure_summary="Company 2 (Beta): timeout")
+    assert "Some companies could not be processed" in text
+    assert "Company 2 (Beta): timeout" in text
+
+
 # ── Text builder ─────────────────────────────────────────────
 
 

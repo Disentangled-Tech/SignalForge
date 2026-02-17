@@ -20,6 +20,7 @@ from app.api.deps import get_db, require_ui_auth  # noqa: E402
 from app.models.analysis_record import AnalysisRecord  # noqa: E402
 from app.models.briefing_item import BriefingItem  # noqa: E402
 from app.models.company import Company  # noqa: E402
+from app.models.job_run import JobRun  # noqa: E402
 from app.models.user import User  # noqa: E402
 
 
@@ -174,6 +175,7 @@ class TestBriefingPage:
         query_mock.join.return_value = query_mock
         query_mock.order_by.return_value = query_mock
         query_mock.all.return_value = []
+        query_mock.first.return_value = None  # JobRun query (issue #32)
         mock_db.query.return_value = query_mock
 
         app = _create_test_app(mock_db, mock_user)
@@ -183,6 +185,43 @@ class TestBriefingPage:
         assert resp.status_code == 200
         assert "No briefing" in resp.text
         assert "Generate Now" in resp.text
+
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_shows_failure_alert_when_job_had_failures(
+        self, mock_get_scores, mock_db, mock_user
+    ):
+        """When latest briefing job had failures, show alert banner (issue #32)."""
+        mock_get_scores.return_value = {}
+        item = _make_briefing_item()
+        briefing_chain = MagicMock()
+        briefing_chain.options.return_value = briefing_chain
+        briefing_chain.filter.return_value = briefing_chain
+        briefing_chain.join.return_value = briefing_chain
+        briefing_chain.order_by.return_value = briefing_chain
+        briefing_chain.all.return_value = [item]
+
+        job_with_error = MagicMock(spec=JobRun)
+        job_with_error.status = "completed"
+        job_with_error.error_message = "Company 1 (Acme): failed"
+        job_run_chain = MagicMock()
+        job_run_chain.filter.return_value = job_run_chain
+        job_run_chain.order_by.return_value = job_run_chain
+        job_run_chain.first.return_value = job_with_error
+
+        def query_side_effect(model):
+            if model is JobRun:
+                return job_run_chain
+            return briefing_chain
+
+        mock_db.query.side_effect = query_side_effect
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Last briefing job had failures" in resp.text
+        assert "Settings" in resp.text
 
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_briefing_multiple_items_ordered(
@@ -253,17 +292,43 @@ class TestBriefingGenerate:
     """Tests for POST /briefing/generate."""
 
     def test_generate_calls_service_and_redirects(self, mock_db, mock_user):
-        """Generate endpoint calls briefing service and redirects."""
+        """Generate endpoint calls briefing service and redirects (issue #32)."""
         app = _create_test_app(mock_db, mock_user)
         client = TestClient(app, raise_server_exceptions=False)
 
+        # Mock JobRun query: no error_message -> success redirect
+        job_without_error = MagicMock(spec=JobRun)
+        job_without_error.error_message = None
+        job_run_chain = MagicMock()
+        job_run_chain.filter.return_value = job_run_chain
+        job_run_chain.order_by.return_value = job_run_chain
+        job_run_chain.first.return_value = job_without_error
+        mock_db.query.return_value.filter.return_value.order_by.return_value = job_run_chain
+
         with patch("app.api.briefing_views.generate_briefing", create=True) as mock_gen:
-            # Patch the import inside the route
-            with patch.dict("sys.modules", {"app.services.briefing": MagicMock(generate_briefing=mock_gen)}):
-                resp = client.post("/briefing/generate", follow_redirects=False)
+            resp = client.post("/briefing/generate", follow_redirects=False)
 
         assert resp.status_code == 303
         assert "/briefing" in resp.headers["location"]
+        assert "error" not in resp.headers.get("location", "")
+
+    def test_generate_with_partial_failures_redirects_with_error(self, mock_db, mock_user):
+        """When briefing has partial failures, redirect with error param (issue #32)."""
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+
+        job_with_error = MagicMock(spec=JobRun)
+        job_with_error.error_message = "Company 1 (Acme): LLM failed"
+        job_run_chain = MagicMock()
+        job_run_chain.first.return_value = job_with_error
+        mock_db.query.return_value.filter.return_value.order_by.return_value = job_run_chain
+
+        with patch("app.api.briefing_views.generate_briefing", create=True) as mock_gen:
+            resp = client.post("/briefing/generate", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert "error=" in resp.headers.get("location", "")
+        assert "Partial" in resp.headers.get("location", "") or "failures" in resp.headers.get("location", "")
 
     def test_generate_import_error_redirects_with_error(self, mock_db, mock_user):
         """When service not available, redirects with error."""
