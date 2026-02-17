@@ -202,6 +202,117 @@ class TestCompaniesList:
         args = mock_scores.call_args[0]
         assert args[1] == [1]  # company_ids
 
+    @patch("app.api.views.list_companies")
+    def test_companies_list_sort_by_param(self, mock_list, views_client):
+        """GET /companies?sort_by=name passes sort_by to list_companies."""
+        mock_list.return_value = ([], 0)
+        views_client.get("/companies?sort_by=name")
+        mock_list.assert_called_once()
+        call_kwargs = mock_list.call_args[1]
+        assert call_kwargs.get("sort_by") == "name"
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_sort_by_invalid_defaults_to_score(self, mock_list, views_client):
+        """Invalid sort_by defaults to score."""
+        mock_list.return_value = ([], 0)
+        views_client.get("/companies?sort_by=invalid")
+        mock_list.assert_called_once()
+        call_kwargs = mock_list.call_args[1]
+        assert call_kwargs.get("sort_by") == "score"
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_pagination_params(self, mock_list, views_client):
+        """GET /companies?page=2 passes page and page_size to list_companies."""
+        mock_list.return_value = ([], 0)
+        views_client.get("/companies?page=2")
+        mock_list.assert_called_once()
+        call_kwargs = mock_list.call_args[1]
+        assert call_kwargs.get("page") == 2
+        assert call_kwargs.get("page_size") == 25
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_sort_order_param(self, mock_list, views_client):
+        """GET /companies?sort_by=name&order=asc passes sort_order to list_companies."""
+        mock_list.return_value = ([], 0)
+        views_client.get("/companies?sort_by=name&order=asc")
+        mock_list.assert_called_once()
+        call_kwargs = mock_list.call_args[1]
+        assert call_kwargs.get("sort_by") == "name"
+        assert call_kwargs.get("sort_order") == "asc"
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_sort_order_toggle_in_template(self, mock_list, views_client):
+        """Template shows order indicator (↑/↓) when sorted."""
+        mock_list.return_value = ([], 0)
+        resp = views_client.get("/companies?sort_by=score&order=desc")
+        assert resp.status_code == 200
+        assert "Score ↓" in resp.text
+        resp_asc = views_client.get("/companies?sort_by=score&order=asc")
+        assert "Score ↑" in resp_asc.text
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_sort_selector_in_template(self, mock_list, views_client):
+        """Companies list template shows sort selector with options."""
+        mock_list.return_value = ([], 0)
+        resp = views_client.get("/companies")
+        assert resp.status_code == 200
+        assert "Sort by" in resp.text
+        assert "score" in resp.text.lower() or "Score" in resp.text
+        assert "name" in resp.text.lower() or "Name" in resp.text
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_pagination_controls_when_multiple_pages(
+        self, mock_list, views_client
+    ):
+        """Pagination controls shown when total exceeds page_size."""
+        companies = [_make_company_read(id=i, company_name=f"Co{i}") for i in range(1, 26)]
+        mock_list.return_value = (companies, 30)  # 30 total, 25 per page
+        resp = views_client.get("/companies")
+        assert resp.status_code == 200
+        assert "Next" in resp.text or "next" in resp.text.lower()
+        assert "page=2" in resp.text or "?page=2" in resp.text
+
+    def test_companies_list_companies_visible_in_browser(self, client, db):
+        """Integration test: with companies in DB, GET /companies shows them."""
+        import uuid
+
+        from app.models.company import Company
+        from app.models.user import User
+        from app.schemas.company import CompanyCreate
+        from app.services.company import create_company
+
+        # Create test user with unique username to avoid clashes across runs
+        username = f"integration_test_{uuid.uuid4().hex[:12]}"
+        user = User(username=username)
+        user.set_password("testpass123")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Create companies with scores (set cto_need_score via model after create)
+        c1 = create_company(db, CompanyCreate(company_name="Visible Co Alpha"))
+        c2 = create_company(db, CompanyCreate(company_name="Visible Co Beta"))
+        db.query(Company).filter(Company.id == c1.id).update({"cto_need_score": 80})
+        db.query(Company).filter(Company.id == c2.id).update({"cto_need_score": 65})
+        db.commit()
+
+        # Login
+        login_resp = client.post(
+            "/login",
+            data={"username": username, "password": "testpass123"},
+            follow_redirects=False,
+        )
+        assert login_resp.status_code == 302
+        assert "/companies" in login_resp.headers.get("location", "")
+
+        # GET /companies and verify companies visible
+        resp = client.get("/companies")
+        assert resp.status_code == 200
+        assert "Visible Co Alpha" in resp.text
+        assert "Visible Co Beta" in resp.text
+        assert "80" in resp.text
+        assert "65" in resp.text
+
 
 # ── Add company tests ───────────────────────────────────────────────
 

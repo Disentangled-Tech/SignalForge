@@ -39,13 +39,19 @@ def api_list_companies(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort_by: str = Query("created_at", pattern="^(score|name|last_scan_at|created_at)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     search: str | None = Query(None),
     db: Session = Depends(get_db),
     _auth: None = Depends(require_auth),
 ) -> CompanyList:
     """List companies with pagination, sorting, and optional search."""
     items, total = list_companies(
-        db, page=page, page_size=page_size, sort_by=sort_by, search=search
+        db,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+        sort_order=order,
+        search=search,
     )
     return CompanyList(items=items, total=total, page=page, page_size=page_size)
 

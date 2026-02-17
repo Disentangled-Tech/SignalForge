@@ -108,17 +108,42 @@ def logout():
 
 # ── Companies: list ──────────────────────────────────────────────────
 
+_VALID_SORT_BY = frozenset({"score", "name", "last_scan_at", "created_at"})
+_VALID_SORT_ORDER = frozenset({"asc", "desc"})
+_DEFAULT_ORDER: dict[str, str] = {
+    "score": "desc",
+    "name": "asc",
+    "last_scan_at": "desc",
+    "created_at": "desc",
+}
+_PAGE_SIZE = 25
+
+
 @router.get("/companies", response_class=HTMLResponse)
 def companies_list(
     request: Request,
     search: str | None = None,
+    sort_by: str | None = None,
+    order: str | None = None,
+    page: int = 1,
     db: Session = Depends(get_db),
     user: User = Depends(_require_ui_auth),
 ):
     """Render companies list page."""
-    companies, total = list_companies(db, sort_by="score", search=search)
+    sort_by = sort_by if sort_by in _VALID_SORT_BY else "score"
+    sort_order = order if order in _VALID_SORT_ORDER else _DEFAULT_ORDER[sort_by]
+    page = max(1, page)
+    companies, total = list_companies(
+        db,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        search=search,
+        page=page,
+        page_size=_PAGE_SIZE,
+    )
     company_ids = [c.id for c in companies]
     company_scores = get_display_scores_for_companies(db, company_ids)
+    total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE) if total else 1
     return templates.TemplateResponse(
         "companies/list.html",
         {
@@ -127,6 +152,12 @@ def companies_list(
             "companies": companies,
             "company_scores": company_scores,
             "search": search,
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+            "total": total,
+            "page": page,
+            "page_size": _PAGE_SIZE,
+            "total_pages": total_pages,
         },
     )
 

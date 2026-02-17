@@ -6,6 +6,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.services.scoring import get_display_scores_for_companies
 from app.schemas.company import (
     BulkImportResponse,
     BulkImportRow,
@@ -66,12 +67,9 @@ def _model_to_read(company: Company) -> CompanyRead:
 
 # ── Sort helpers ─────────────────────────────────────────────────────
 
-_SORT_MAP = {
-    "score": Company.cto_need_score.desc(),
-    "name": Company.name.asc(),
-    "last_scan_at": Company.last_scan_at.desc(),
-    "created_at": Company.created_at.desc(),
-}
+def _order_clause(column, ascending: bool):
+    """Return SQLAlchemy order clause for column (asc or desc)."""
+    return column.asc() if ascending else column.desc()
 
 
 # ── CRUD operations ─────────────────────────────────────────────────
@@ -83,14 +81,20 @@ def list_companies(
     page: int = 1,
     page_size: int = 20,
     sort_by: str = "created_at",
+    sort_order: str = "desc",
     search: str | None = None,
 ) -> tuple[list[CompanyRead], int]:
-    """Return paginated list of companies with optional search and sort."""
-    query = db.query(Company)
+    """Return paginated list of companies with optional search and sort.
 
+    When sort_by='score', sorts by display score (recomputed from latest analysis)
+    so the order matches what users see. Other sorts use stored DB columns.
+    sort_order: 'asc' or 'desc'.
+    """
+    ascending = sort_order == "asc"
+    base_query = db.query(Company)
     if search:
         pattern = f"%{search}%"
-        query = query.filter(
+        base_query = base_query.filter(
             or_(
                 Company.name.ilike(pattern),
                 Company.founder_name.ilike(pattern),
@@ -98,13 +102,38 @@ def list_companies(
             )
         )
 
-    total = query.count()
+    total = base_query.count()
 
-    order = _SORT_MAP.get(sort_by, Company.created_at.desc())
-    query = query.order_by(order)
-
-    offset = (page - 1) * page_size
-    companies = query.offset(offset).limit(page_size).all()
+    if sort_by == "score":
+        # Sort by display score (from analysis) so order matches what users see
+        company_ids = [row[0] for row in base_query.with_entities(Company.id).all()]
+        display_scores = get_display_scores_for_companies(db, company_ids)
+        # Companies without score use -1; reverse for asc (low first)
+        mult = 1 if ascending else -1
+        sorted_ids = sorted(
+            company_ids,
+            key=lambda cid: (mult * (display_scores.get(cid) or -1), cid),
+        )
+        start = (page - 1) * page_size
+        page_ids = sorted_ids[start : start + page_size]
+        if not page_ids:
+            return [], total
+        # Fetch companies in page order (preserve sort)
+        id_to_company = {
+            c.id: c
+            for c in db.query(Company).filter(Company.id.in_(page_ids)).all()
+        }
+        companies = [id_to_company[cid] for cid in page_ids if cid in id_to_company]
+    else:
+        column_map = {
+            "name": Company.name,
+            "last_scan_at": Company.last_scan_at,
+            "created_at": Company.created_at,
+        }
+        col = column_map.get(sort_by, Company.created_at)
+        base_query = base_query.order_by(_order_clause(col, ascending))
+        offset = (page - 1) * page_size
+        companies = base_query.offset(offset).limit(page_size).all()
 
     return [_model_to_read(c) for c in companies], total
 
