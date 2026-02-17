@@ -7,7 +7,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.llm.router import get_llm_provider
+from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
@@ -102,7 +102,7 @@ def generate_outreach(
         return empty
 
     try:
-        llm = get_llm_provider()
+        llm = get_llm_provider(role=ModelRole.OUTREACH)
         raw = llm.complete(
             prompt,
             response_format={"type": "json_object"},

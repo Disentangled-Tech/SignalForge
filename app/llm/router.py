@@ -2,12 +2,13 @@
 LLM provider router / factory.
 
 Returns the correct LLMProvider implementation based on application settings.
-Provider instances are cached (one per provider type) to reuse connections.
+Provider instances are cached per (provider_name, role) to reuse connections.
 """
 
 from __future__ import annotations
 
 import logging
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from app.llm.provider import LLMProvider
@@ -17,18 +18,31 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Module-level cache: provider_name -> instance
+
+class ModelRole(str, Enum):
+    """Model role for task-based routing (issue #15)."""
+
+    REASONING = "reasoning"  # analyze_model: stage, pain, explanation
+    JSON = "json"  # cheap_model: briefing entry JSON
+    OUTREACH = "outreach"  # conversational_model: outreach draft
+
+
+# Module-level cache: "provider_name:role" -> instance
 _provider_cache: dict[str, LLMProvider] = {}
 
 
-def get_llm_provider(settings: Settings | None = None) -> LLMProvider:
-    """Return an LLMProvider instance for the configured provider.
+def get_llm_provider(
+    role: ModelRole = ModelRole.REASONING,
+    settings: Settings | None = None,
+) -> LLMProvider:
+    """Return an LLMProvider instance for the configured provider and role.
 
     Args:
+        role: Model role (REASONING, JSON, OUTREACH) for task-based routing.
         settings: Application settings. If *None*, loads from ``get_settings()``.
 
     Returns:
-        A cached LLMProvider instance.
+        A cached LLMProvider instance configured for the role.
 
     Raises:
         ValueError: If the configured provider is not supported or API key is missing.
@@ -39,9 +53,10 @@ def get_llm_provider(settings: Settings | None = None) -> LLMProvider:
         settings = get_settings()
 
     provider_name = settings.llm_provider.lower()
+    cache_key = f"{provider_name}:{role.value}"
 
-    if provider_name in _provider_cache:
-        return _provider_cache[provider_name]
+    if cache_key in _provider_cache:
+        return _provider_cache[cache_key]
 
     if provider_name == "openai":
         if not settings.llm_api_key:
@@ -52,9 +67,17 @@ def get_llm_provider(settings: Settings | None = None) -> LLMProvider:
 
         from app.llm.openai_provider import OpenAIProvider
 
+        model = {
+            ModelRole.REASONING: settings.llm_model_reasoning,
+            ModelRole.JSON: settings.llm_model_json,
+            ModelRole.OUTREACH: settings.llm_model_outreach,
+        }[role]
+
         provider = OpenAIProvider(
             api_key=settings.llm_api_key,
-            model=settings.llm_model,
+            model=model,
+            timeout=settings.llm_timeout,
+            max_retries=settings.llm_max_retries,
         )
     else:
         raise ValueError(
@@ -62,8 +85,8 @@ def get_llm_provider(settings: Settings | None = None) -> LLMProvider:
             f"Supported providers: openai"
         )
 
-    _provider_cache[provider_name] = provider
-    logger.info("Created LLM provider: %s (model=%s)", provider_name, settings.llm_model)
+    _provider_cache[cache_key] = provider
+    logger.info("Created LLM provider: %s role=%s model=%s", provider_name, role.value, model)
     return provider
 
 
