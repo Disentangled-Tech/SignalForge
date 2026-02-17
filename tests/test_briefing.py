@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, call, patch
 
 import pytest
+from sqlalchemy.orm import Session
 
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
@@ -89,15 +90,13 @@ class TestSelectTopCompanies:
         """select_top_companies issues a query; verify it returns results."""
         companies = [_make_company(id=1), _make_company(id=2)]
         db = MagicMock()
-        # Chain: db.query().filter().filter().order_by().limit().all()
-        (
-            db.query.return_value
-            .filter.return_value
-            .filter.return_value
-            .order_by.return_value
-            .limit.return_value
-            .all.return_value
-        ) = companies
+        # Chain: db.query().filter().filter().filter().order_by().limit().all()
+        chain = (
+            db.query.return_value.filter.return_value.filter.return_value
+        )
+        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+            companies
+        )
 
         result = select_top_companies(db, limit=5)
         assert len(result) == 2
@@ -111,32 +110,200 @@ class TestSelectTopCompanies:
 
     def test_respects_limit(self):
         db = MagicMock()
-        (
-            db.query.return_value
-            .filter.return_value
-            .filter.return_value
-            .order_by.return_value
-            .limit.return_value
-            .all.return_value
-        ) = []
+        chain = (
+            db.query.return_value.filter.return_value.filter.return_value
+        )
+        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+            []
+        )
 
         select_top_companies(db, limit=3)
         # Verify .limit(3) was called
-        db.query.return_value.filter.return_value.filter.return_value.order_by.return_value.limit.assert_called_once_with(3)
+        chain.filter.return_value.order_by.return_value.limit.assert_called_once_with(
+            3
+        )
 
     def test_returns_empty_when_no_companies(self):
         db = MagicMock()
-        (
-            db.query.return_value
-            .filter.return_value
-            .filter.return_value
-            .order_by.return_value
-            .limit.return_value
-            .all.return_value
-        ) = []
+        chain = (
+            db.query.return_value.filter.return_value.filter.return_value
+        )
+        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
+            []
+        )
 
         result = select_top_companies(db)
         assert result == []
+
+    def test_excludes_companies_without_analysis(self, db: Session):
+        """Companies without AnalysisRecord are excluded (issue #22)."""
+        now = datetime.now(timezone.utc)
+        # Company with analysis
+        c_with = Company(
+            name="With Analysis",
+            website_url="https://with.example.com",
+            cto_need_score=80,
+            last_scan_at=now - timedelta(days=2),
+        )
+        db.add(c_with)
+        db.flush()
+        db.add(
+            AnalysisRecord(
+                company_id=c_with.id,
+                stage="scaling_team",
+                pain_signals_json={},
+                evidence_bullets=[],
+                explanation="",
+            )
+        )
+        # Company without analysis (has activity)
+        c_without = Company(
+            name="Without Analysis",
+            website_url="https://without.example.com",
+            cto_need_score=90,  # Higher score but no analysis
+            last_scan_at=now - timedelta(days=2),
+        )
+        db.add(c_without)
+        db.commit()
+
+        result = select_top_companies(db, limit=5)
+        ids = [c.id for c in result]
+        assert c_with.id in ids
+        assert c_without.id not in ids
+
+    def test_exactly_up_to_limit(self, db: Session):
+        """Returns up to limit; fewer when fewer qualify."""
+        now = datetime.now(timezone.utc)
+        for i in range(3):
+            c = Company(
+                name=f"Company {i}",
+                website_url=f"https://c{i}.example.com",
+                cto_need_score=70 - i,
+                last_scan_at=now - timedelta(days=2),
+            )
+            db.add(c)
+            db.flush()
+            db.add(
+                AnalysisRecord(
+                    company_id=c.id,
+                    stage="scaling_team",
+                    pain_signals_json={},
+                    evidence_bullets=[],
+                    explanation="",
+                )
+            )
+        db.commit()
+
+        result = select_top_companies(db, limit=5)
+        assert len(result) == 3  # Only 3 qualify
+        result_2 = select_top_companies(db, limit=2)
+        assert len(result_2) == 2
+
+    def test_no_duplicates_in_7_days(self, db: Session):
+        """Companies briefed in last 7 days are excluded."""
+        now = datetime.now(timezone.utc)
+        c = Company(
+            name="Recently Briefed",
+            website_url="https://recent.example.com",
+            cto_need_score=95,
+            last_scan_at=now - timedelta(days=2),
+        )
+        db.add(c)
+        db.flush()
+        analysis = AnalysisRecord(
+            company_id=c.id,
+            stage="scaling_team",
+            pain_signals_json={},
+            evidence_bullets=[],
+            explanation="",
+        )
+        db.add(analysis)
+        db.flush()
+        db.add(
+            BriefingItem(
+                company_id=c.id,
+                analysis_id=analysis.id,
+                briefing_date=now.date(),
+                created_at=now - timedelta(days=3),
+            )
+        )
+        db.commit()
+
+        result = select_top_companies(db, limit=5)
+        assert c.id not in [x.id for x in result]
+
+    def test_activity_within_14_days(self, db: Session):
+        """Companies without recent activity are excluded."""
+        now = datetime.now(timezone.utc)
+        # Company with old last_scan_at and no recent signals
+        c_old = Company(
+            name="Old Activity",
+            website_url="https://old.example.com",
+            cto_need_score=90,
+            last_scan_at=now - timedelta(days=20),  # Outside 14-day window
+        )
+        db.add(c_old)
+        db.flush()
+        db.add(
+            AnalysisRecord(
+                company_id=c_old.id,
+                stage="scaling_team",
+                pain_signals_json={},
+                evidence_bullets=[],
+                explanation="",
+            )
+        )
+        # Company with recent activity
+        c_recent = Company(
+            name="Recent Activity",
+            website_url="https://recent.example.com",
+            cto_need_score=50,
+            last_scan_at=now - timedelta(days=5),
+        )
+        db.add(c_recent)
+        db.flush()
+        db.add(
+            AnalysisRecord(
+                company_id=c_recent.id,
+                stage="scaling_team",
+                pain_signals_json={},
+                evidence_bullets=[],
+                explanation="",
+            )
+        )
+        db.commit()
+
+        result = select_top_companies(db, limit=5)
+        ids = [x.id for x in result]
+        assert c_recent.id in ids
+        assert c_old.id not in ids
+
+    def test_ordered_by_score_desc(self, db: Session):
+        """Companies are ordered by cto_need_score descending."""
+        now = datetime.now(timezone.utc)
+        for score in [50, 90, 70]:
+            c = Company(
+                name=f"Score {score}",
+                website_url=f"https://s{score}.example.com",
+                cto_need_score=score,
+                last_scan_at=now - timedelta(days=2),
+            )
+            db.add(c)
+            db.flush()
+            db.add(
+                AnalysisRecord(
+                    company_id=c.id,
+                    stage="scaling_team",
+                    pain_signals_json={},
+                    evidence_bullets=[],
+                    explanation="",
+                )
+            )
+        db.commit()
+
+        result = select_top_companies(db, limit=5)
+        scores = [c.cto_need_score for c in result]
+        assert scores == [90, 70, 50]
 
 
 # ---------------------------------------------------------------------------
