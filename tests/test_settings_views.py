@@ -1,9 +1,9 @@
-"""Tests for settings page HTML routes (issue #27: recent job runs)."""
+"""Tests for settings page HTML routes (issue #27, #29)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -121,3 +121,156 @@ class TestSettingsPage:
 
         assert resp.status_code == 200
         assert "No job runs yet" in resp.text
+
+    def test_settings_shows_briefing_frequency_field(self, mock_db, mock_user):
+        """GET /settings shows briefing frequency and day-of-week (issue #29)."""
+        settings_rows = [
+            MagicMock(key="briefing_time", value="08:00"),
+            MagicMock(key="briefing_email", value=""),
+            MagicMock(key="briefing_frequency", value="weekly"),
+            MagicMock(key="briefing_day_of_week", value="2"),
+        ]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app)
+
+        resp = client.get("/settings")
+
+        assert resp.status_code == 200
+        assert "Briefing Frequency" in resp.text
+        assert "Daily" in resp.text
+        assert "Weekly" in resp.text
+        assert "Wednesday" in resp.text
+        assert "Enable briefing email" in resp.text
+
+
+class TestSettingsSave:
+    """Tests for POST /settings (issue #29)."""
+
+    def test_post_saves_briefing_frequency_weekly(self, mock_db, mock_user):
+        """POST with briefing_frequency=weekly updates AppSettings."""
+        settings_rows = [
+            MagicMock(key="briefing_time", value="08:00"),
+            MagicMock(key="briefing_email", value=""),
+        ]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+        base.filter.return_value.first.return_value = None
+
+        with patch(
+            "app.api.settings_views.update_app_settings"
+        ) as mock_update:
+            mock_update.return_value = {}
+
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app, follow_redirects=False)
+
+            resp = client.post(
+                "/settings",
+                data={
+                    "briefing_time": "09:00",
+                    "briefing_email": "ops@example.com",
+                    "briefing_email_enabled": "on",
+                    "briefing_frequency": "weekly",
+                    "briefing_day_of_week": "3",
+                    "scoring_weights": "{}",
+                },
+            )
+
+        assert resp.status_code == 303
+        assert "success" in resp.headers.get("location", "")
+        mock_update.assert_called_once()
+        updates = mock_update.call_args[0][1]
+        assert updates.get("briefing_frequency") == "weekly"
+        assert updates.get("briefing_day_of_week") == "3"
+        assert updates.get("briefing_email_enabled") == "true"
+
+    def test_post_invalid_briefing_time_redirects_with_error(self, mock_db, mock_user):
+        """POST with invalid briefing_time (e.g. 25:00) redirects with error."""
+        settings_rows = [MagicMock(key="briefing_time", value="08:00")]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, follow_redirects=False)
+
+        resp = client.post(
+            "/settings",
+            data={
+                "briefing_time": "25:00",
+                "briefing_email": "",
+                "briefing_email_enabled": "",
+                "briefing_frequency": "daily",
+                "briefing_day_of_week": "0",
+                "scoring_weights": "{}",
+            },
+        )
+
+        assert resp.status_code == 303
+        assert "error" in resp.headers.get("location", "")
+        assert "Invalid" in resp.headers.get("location", "")
+
+    def test_post_allows_clearing_briefing_email(self, mock_db, mock_user):
+        """POST with empty briefing_email clears the setting (issue #29)."""
+        settings_rows = [
+            MagicMock(key="briefing_email", value="old@example.com"),
+        ]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+        base.filter.return_value.first.return_value = MagicMock(value="old@example.com")
+
+        with patch(
+            "app.api.settings_views.update_app_settings"
+        ) as mock_update:
+            mock_update.return_value = {}
+
+            app = _create_test_app(mock_db, mock_user)
+            client = TestClient(app, follow_redirects=False)
+
+            resp = client.post(
+                "/settings",
+                data={
+                    "briefing_time": "08:00",
+                    "briefing_email": "",
+                    "briefing_email_enabled": "",
+                    "briefing_frequency": "daily",
+                    "briefing_day_of_week": "0",
+                    "scoring_weights": "{}",
+                },
+            )
+
+        assert resp.status_code == 303
+        mock_update.assert_called_once()
+        updates = mock_update.call_args[0][1]
+        assert updates.get("briefing_email") == ""
+
+    def test_post_invalid_email_redirects_with_error(self, mock_db, mock_user):
+        """POST with invalid email format redirects with error."""
+        settings_rows = [MagicMock(key="briefing_time", value="08:00")]
+        base = mock_db.query.return_value
+        base.all.return_value = settings_rows
+        base.order_by.return_value.limit.return_value.all.return_value = []
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, follow_redirects=False)
+
+        resp = client.post(
+            "/settings",
+            data={
+                "briefing_time": "08:00",
+                "briefing_email": "not-an-email",
+                "briefing_email_enabled": "",
+                "briefing_frequency": "daily",
+                "briefing_day_of_week": "0",
+                "scoring_weights": "{}",
+            },
+        )
+
+        assert resp.status_code == 303
+        assert "error" in resp.headers.get("location", "")

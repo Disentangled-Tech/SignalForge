@@ -19,6 +19,23 @@ from app.services.briefing import (
     generate_briefing,
     select_top_companies,
 )
+from app.services.settings_resolver import ResolvedSettings
+
+
+def _default_resolved() -> ResolvedSettings:
+    """Default ResolvedSettings for tests (daily, email disabled)."""
+    return ResolvedSettings(
+        briefing_time="08:00",
+        briefing_email="",
+        briefing_email_enabled=False,
+        briefing_frequency="daily",
+        briefing_day_of_week=0,
+        smtp_host="",
+        smtp_port=587,
+        smtp_user="",
+        smtp_password="",
+        smtp_from="",
+    )
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -237,13 +254,15 @@ class TestSelectTopCompanies:
 
 
 class TestGenerateBriefing:
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_briefing_items(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         company = _make_company()
         analysis = _make_analysis()
         mock_select.return_value = [company]
@@ -276,13 +295,15 @@ class TestGenerateBriefing:
         assert item.briefing_date == date.today()
         db.commit.assert_called()
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_company_without_analysis(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         company = _make_company()
         mock_select.return_value = [company]
 
@@ -298,13 +319,15 @@ class TestGenerateBriefing:
         assert result == []
         mock_outreach.assert_not_called()
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_one_failure_does_not_stop_others(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         """If one company fails, the others should still produce items."""
         good_company = _make_company(id=1, name="Good Corp")
         bad_company = _make_company(id=2, name="Bad Corp")
@@ -341,13 +364,15 @@ class TestGenerateBriefing:
         # Only the good company should have produced a briefing item.
         assert len(result) == 1
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_llm_called_with_correct_temperature(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         company = _make_company()
         analysis = _make_analysis()
         mock_select.return_value = [company]
@@ -372,13 +397,15 @@ class TestGenerateBriefing:
             temperature=0.5,
         )
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_empty_companies_returns_empty_list(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         mock_select.return_value = []
 
         db = MagicMock()
@@ -387,13 +414,15 @@ class TestGenerateBriefing:
         assert result == []
         mock_get_llm.assert_not_called()
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_when_briefing_item_already_exists(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         """When BriefingItem already exists for company+date, skip creation."""
         company = _make_company()
         mock_select.return_value = [company]
@@ -415,13 +444,15 @@ class TestGenerateBriefing:
         add_calls = db.add.call_args_list
         assert all(isinstance(c.args[0], JobRun) for c in add_calls)
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_job_run_on_success(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         """generate_briefing creates JobRun with status completed and companies_processed (issue #27)."""
         company = _make_company()
         analysis = _make_analysis()
@@ -459,13 +490,15 @@ class TestGenerateBriefing:
         assert job.finished_at is not None
         assert job.error_message is None
 
+    @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_job_run_on_exception(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):
+        mock_resolved.return_value = _default_resolved()
         """generate_briefing creates JobRun with status failed on exception (issue #27)."""
         mock_select.side_effect = RuntimeError("DB connection lost")
 
@@ -487,4 +520,178 @@ class TestGenerateBriefing:
         assert job.status == "failed"
         assert "DB connection lost" in (job.error_message or "")
         assert job.finished_at is not None
+
+    @patch("app.services.briefing.send_briefing_email")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_calls_send_briefing_email_when_enabled(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+    ):
+        """generate_briefing calls send_briefing_email when enabled (issue #29)."""
+        mock_resolved.return_value = ResolvedSettings(
+            briefing_time="08:00",
+            briefing_email="ops@example.com",
+            briefing_email_enabled=True,
+            briefing_frequency="daily",
+            briefing_day_of_week=0,
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_user="",
+            smtp_password="",
+            smtp_from="noreply@example.com",
+        )
+        mock_send.return_value = True
+
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.options.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+        # Query for items with company (for email)
+        fake_item = MagicMock()
+        fake_item.company = company
+        query_mock.all.return_value = [fake_item]
+
+        def set_id_on_refresh(obj):
+            if isinstance(obj, BriefingItem):
+                obj.id = 1
+
+        db.refresh.side_effect = set_id_on_refresh
+
+        result = generate_briefing(db)
+
+        assert len(result) == 1
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        assert len(call_args[0][0]) == 1
+        assert call_args[0][1] == "ops@example.com"
+
+    @patch("app.services.briefing.send_briefing_email")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_skips_email_when_disabled(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+    ):
+        """generate_briefing does not call send_briefing_email when disabled."""
+        mock_resolved.return_value = _default_resolved()
+
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+
+        result = generate_briefing(db)
+
+        assert len(result) == 1
+        mock_send.assert_not_called()
+
+    @patch("app.services.briefing.send_briefing_email")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_email_exception_does_not_fail_job(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+    ):
+        """When send_briefing_email raises, job still completes (issue #29)."""
+        mock_resolved.return_value = ResolvedSettings(
+            briefing_time="08:00",
+            briefing_email="ops@example.com",
+            briefing_email_enabled=True,
+            briefing_frequency="daily",
+            briefing_day_of_week=0,
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_user="",
+            smtp_password="",
+            smtp_from="noreply@example.com",
+        )
+        mock_send.side_effect = RuntimeError("SMTP failed")
+
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.options.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+        fake_item = MagicMock()
+        fake_item.company = company
+        query_mock.all.return_value = [fake_item]
+
+        def set_id_on_refresh(obj):
+            if isinstance(obj, BriefingItem):
+                obj.id = 1
+
+        db.refresh.side_effect = set_id_on_refresh
+
+        result = generate_briefing(db)
+
+        assert len(result) == 1
+        mock_send.assert_called_once()
+
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.select_top_companies")
+    def test_weekly_frequency_skips_when_wrong_day(
+        self, mock_select, mock_resolved
+    ):
+        """Weekly frequency skips generation when today is not configured day (issue #29)."""
+        mock_resolved.return_value = ResolvedSettings(
+            briefing_time="08:00",
+            briefing_email="",
+            briefing_email_enabled=False,
+            briefing_frequency="weekly",
+            briefing_day_of_week=0,  # Monday
+            smtp_host="",
+            smtp_port=587,
+            smtp_user="",
+            smtp_password="",
+            smtp_from="",
+        )
+        # Tuesday = weekday 1 (weekday() is a method)
+        with patch("app.services.briefing.date") as mock_date:
+            fake_today = MagicMock()
+            fake_today.weekday.return_value = 1
+            mock_date.today.return_value = fake_today
+
+            db = MagicMock()
+            result = generate_briefing(db)
+
+        assert result == []
+        mock_select.assert_not_called()
 
