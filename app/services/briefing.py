@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from app.llm.router import get_llm_provider
+from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
@@ -134,7 +134,7 @@ def _generate_for_company(db: Session, company: Company) -> BriefingItem | None:
         EVIDENCE_BULLETS=evidence_text,
     )
 
-    llm = get_llm_provider()
+    llm = get_llm_provider(role=ModelRole.JSON)
     raw = llm.complete(
         prompt,
         response_format={"type": "json_object"},

@@ -7,7 +7,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.llm.router import get_llm_provider
+from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
@@ -107,7 +107,7 @@ def analyze_company(db: Session, company_id: int) -> AnalysisRecord | None:
     op_profile = db.query(OperatorProfile).first()
     operator_profile_md = op_profile.content if op_profile and op_profile.content else ""
 
-    llm = get_llm_provider()
+    llm = get_llm_provider(role=ModelRole.REASONING)
 
     # ── Stage classification ──────────────────────────────────────────
     stage_prompt = render_prompt(

@@ -37,6 +37,12 @@ class Settings:
     llm_provider: str = "openai"
     llm_api_key: Optional[str] = None
     llm_model: str = "gpt-4o-mini"
+    # Model roles (issue #15): reasoning=analysis, json=cheap, outreach=conversational
+    llm_model_reasoning: str = "gpt-4o"
+    llm_model_json: str = "gpt-4o-mini"
+    llm_model_outreach: str = "gpt-4o-mini"
+    llm_timeout: float = 60.0
+    llm_max_retries: int = 3
 
     # Briefing
     briefing_time: str = "08:00"  # 24h format for cron
@@ -79,6 +85,19 @@ class Settings:
         self.llm_provider = os.getenv("LLM_PROVIDER", self.llm_provider)
         self.llm_api_key = os.getenv("LLM_API_KEY")
         self.llm_model = os.getenv("LLM_MODEL", self.llm_model)
+        # Role-specific models; legacy: LLM_MODEL used for all if role vars unset
+        legacy_model = os.getenv("LLM_MODEL")
+        self.llm_model_reasoning = (
+            os.getenv("LLM_MODEL_REASONING") or legacy_model or self.llm_model_reasoning
+        )
+        self.llm_model_json = (
+            os.getenv("LLM_MODEL_JSON") or legacy_model or self.llm_model_json
+        )
+        self.llm_model_outreach = (
+            os.getenv("LLM_MODEL_OUTREACH") or legacy_model or self.llm_model_outreach
+        )
+        self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
+        self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))
 
         self.briefing_time = os.getenv("BRIEFING_TIME", self.briefing_time)
         self.briefing_email_enabled = os.getenv(

@@ -2,7 +2,7 @@
 OpenAI LLM provider implementation.
 
 Uses the openai Python SDK (>=1.0.0) with synchronous client.
-Supports retry with exponential backoff for rate-limit errors.
+Supports retry with exponential backoff for rate-limit, timeout, and connection errors.
 """
 
 from __future__ import annotations
@@ -11,16 +11,18 @@ import logging
 import time
 from typing import Any
 
-from openai import APIError, OpenAI, RateLimitError
+from openai import APIError, APIConnectionError, APITimeoutError, OpenAI, RateLimitError
 
 from app.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
 # Retry configuration
-MAX_RETRIES = 3
 INITIAL_BACKOFF = 1.0  # seconds
 BACKOFF_MULTIPLIER = 2.0
+
+# Errors that trigger retry
+_RETRYABLE_ERRORS = (RateLimitError, APITimeoutError, APIConnectionError)
 
 
 class OpenAIProvider(LLMProvider):
@@ -31,9 +33,11 @@ class OpenAIProvider(LLMProvider):
         api_key: str,
         model: str = "gpt-4o-mini",
         timeout: float = 60.0,
+        max_retries: int = 3,
     ) -> None:
         self.model = model
         self.timeout = timeout
+        self.max_retries = max_retries
         self._client = OpenAI(api_key=api_key, timeout=timeout)
 
     # ------------------------------------------------------------------
@@ -75,10 +79,16 @@ class OpenAIProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def _call_with_retry(self, create_kwargs: dict[str, Any]) -> str:
-        """Call the OpenAI API with exponential-backoff retry on rate limits."""
+        """Call the OpenAI API with exponential-backoff retry on rate limit/timeout/connection."""
         backoff = INITIAL_BACKOFF
+        messages = create_kwargs.get("messages", [])
+        prompt = ""
+        for m in messages:
+            if isinstance(m, dict) and m.get("role") == "user":
+                prompt = m.get("content", "") or ""
+                break
 
-        for attempt in range(1, MAX_RETRIES + 1):
+        for attempt in range(1, self.max_retries + 1):
             try:
                 start = time.monotonic()
                 response = self._client.chat.completions.create(**create_kwargs)
@@ -86,35 +96,36 @@ class OpenAIProvider(LLMProvider):
 
                 text = response.choices[0].message.content or ""
 
-                # Log usage info
+                # Log usage and prompt preview (issue #15)
                 usage = response.usage
-                if usage:
-                    logger.info(
-                        "OpenAI call: model=%s tokens_in=%d tokens_out=%d latency=%.2fs",
-                        create_kwargs["model"],
-                        usage.prompt_tokens,
-                        usage.completion_tokens,
-                        elapsed,
-                    )
-                else:
-                    logger.info(
-                        "OpenAI call: model=%s latency=%.2fs (no usage data)",
-                        create_kwargs["model"],
-                        elapsed,
-                    )
+                prompt_tokens = usage.prompt_tokens if usage else 0
+                completion_tokens = usage.completion_tokens if usage else 0
+                prompt_preview = (prompt[:100] + "...") if len(prompt) > 100 else prompt
+                logger.info(
+                    "LLM call: model=%s prompt_preview=%r tokens_in=%d tokens_out=%d latency=%.2fs",
+                    create_kwargs["model"],
+                    prompt_preview,
+                    prompt_tokens,
+                    completion_tokens,
+                    elapsed,
+                )
+                logger.debug("LLM prompt (full): %s", prompt)
 
                 return text
 
-            except RateLimitError:
-                if attempt == MAX_RETRIES:
+            except _RETRYABLE_ERRORS as exc:
+                if attempt == self.max_retries:
                     logger.error(
-                        "OpenAI rate limit: giving up after %d attempts", MAX_RETRIES
+                        "OpenAI retryable error: giving up after %d attempts: %s",
+                        self.max_retries,
+                        exc,
                     )
                     raise
                 logger.warning(
-                    "OpenAI rate limit: retry %d/%d in %.1fs",
+                    "OpenAI %s: retry %d/%d in %.1fs",
+                    type(exc).__name__,
                     attempt,
-                    MAX_RETRIES,
+                    self.max_retries,
                     backoff,
                 )
                 time.sleep(backoff)
