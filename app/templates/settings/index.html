@@ -37,25 +37,27 @@
             <div class="form-group">
                 <label>Briefing Frequency</label>
                 <div class="settings-freq-row">
+                    {% set freq = settings.get('briefing_frequency') or 'daily' %}
                     <label class="settings-freq-option">
                         <input type="radio" name="briefing_frequency" value="daily"
-                               {% if settings.get('briefing_frequency', 'daily') == 'daily' %}checked{% endif %}>
+                               {% if freq == 'daily' %}checked{% endif %}>
                         Daily
                     </label>
                     <label class="settings-freq-option">
                         <input type="radio" name="briefing_frequency" value="weekly"
-                               {% if settings.get('briefing_frequency') == 'weekly' %}checked{% endif %}>
+                               {% if freq == 'weekly' %}checked{% endif %}>
                         Weekly
                     </label>
                     <span class="text-muted">on</span>
+                    {% set day = (settings.get('briefing_day_of_week') or '0')|string %}
                     <select name="briefing_day_of_week" id="briefing_day_of_week" style="width: auto; min-width: 8rem;">
-                        <option value="0" {% if settings.get('briefing_day_of_week', '0') == '0' %}selected{% endif %}>Monday</option>
-                        <option value="1" {% if settings.get('briefing_day_of_week') == '1' %}selected{% endif %}>Tuesday</option>
-                        <option value="2" {% if settings.get('briefing_day_of_week') == '2' %}selected{% endif %}>Wednesday</option>
-                        <option value="3" {% if settings.get('briefing_day_of_week') == '3' %}selected{% endif %}>Thursday</option>
-                        <option value="4" {% if settings.get('briefing_day_of_week') == '4' %}selected{% endif %}>Friday</option>
-                        <option value="5" {% if settings.get('briefing_day_of_week') == '5' %}selected{% endif %}>Saturday</option>
-                        <option value="6" {% if settings.get('briefing_day_of_week') == '6' %}selected{% endif %}>Sunday</option>
+                        <option value="0" {% if day == '0' %}selected{% endif %}>Monday</option>
+                        <option value="1" {% if day == '1' %}selected{% endif %}>Tuesday</option>
+                        <option value="2" {% if day == '2' %}selected{% endif %}>Wednesday</option>
+                        <option value="3" {% if day == '3' %}selected{% endif %}>Thursday</option>
+                        <option value="4" {% if day == '4' %}selected{% endif %}>Friday</option>
+                        <option value="5" {% if day == '5' %}selected{% endif %}>Saturday</option>
+                        <option value="6" {% if day == '6' %}selected{% endif %}>Sunday</option>
                     </select>
                 </div>
                 <span class="text-muted">When to generate briefings (cron runs daily; weekly skips non-configured days)</span>
