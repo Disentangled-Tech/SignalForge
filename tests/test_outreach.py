@@ -108,6 +108,13 @@ class TestTruncateToWordLimit:
         assert result.endswith(".")
         assert "First sentence." in result or result == "First sentence."
 
+    def test_boundary_at_position_zero(self):
+        """When sentence boundary is at start (e.g. '. First second'), truncate at it."""
+        text = ". First second third fourth fifth"
+        result = _truncate_to_word_limit(text, 4)
+        # Boundary ". " at index 0; should truncate to "." not full word-limited string
+        assert result == "."
+
 
 # ---------------------------------------------------------------------------
 # generate_outreach — happy path
