@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
@@ -13,7 +14,13 @@ from app.models.company import Company
 from app.models.job_run import JobRun
 from app.services.analysis import analyze_company
 from app.services.page_discovery import discover_pages
-from app.services.scoring import score_company
+from app.services.scoring import (
+    DEFAULT_SIGNAL_WEIGHTS,
+    _get_signal_value,
+    _is_signal_true,
+    _normalize_signals,
+    score_company,
+)
 from app.services.signal_storage import store_signal
 
 logger = logging.getLogger(__name__)
@@ -90,10 +97,50 @@ async def run_scan_company(db: Session, company_id: int) -> int:
     return new_count
 
 
+# ── Change detection (issue #61) ──────────────────────────────────────
+
+
+def _extract_signal_values(pain_signals_json: dict[str, Any] | None) -> dict[str, bool]:
+    """Extract canonical signal name -> bool for comparison. Uses scoring normalization."""
+    if not pain_signals_json:
+        return {}
+    signals = pain_signals_json.get("signals", pain_signals_json)
+    if not isinstance(signals, dict):
+        return {}
+    normalized = _normalize_signals(signals)
+    return {
+        k: _is_signal_true(_get_signal_value(v))
+        for k, v in normalized.items()
+        if k in DEFAULT_SIGNAL_WEIGHTS
+    }
+
+
+def _analysis_changed(
+    prev: AnalysisRecord | None, new: AnalysisRecord
+) -> bool:
+    """Return True if analysis output (stage or pain signals) changed from previous.
+
+    Companies with no prior analysis are not counted as changed.
+    """
+    if prev is None:
+        return False
+    if (prev.stage or "").strip().lower() != (new.stage or "").strip().lower():
+        return True
+    prev_vals = _extract_signal_values(prev.pain_signals_json)
+    new_vals = _extract_signal_values(new.pain_signals_json)
+    all_keys = set(prev_vals) | set(new_vals)
+    for k in all_keys:
+        if prev_vals.get(k, False) != new_vals.get(k, False):
+            return True
+    return False
+
+
 # ── Per-company full pipeline (scan + analysis + scoring) ─────────────
 
 
-async def run_scan_company_full(db: Session, company_id: int) -> tuple[int, AnalysisRecord | None]:
+async def run_scan_company_full(
+    db: Session, company_id: int
+) -> tuple[int, AnalysisRecord | None, bool]:
     """Run scan + analysis + scoring for a single company (no JobRun).
 
     Used by run_scan_all for bulk scans. Updates company.cto_need_score
@@ -101,14 +148,21 @@ async def run_scan_company_full(db: Session, company_id: int) -> tuple[int, Anal
 
     Returns
     -------
-    tuple[int, AnalysisRecord | None]
-        (new_signals_count, analysis_record or None)
+    tuple[int, AnalysisRecord | None, bool]
+        (new_signals_count, analysis_record or None, analysis_changed)
     """
+    prev_analysis = (
+        db.query(AnalysisRecord)
+        .filter(AnalysisRecord.company_id == company_id)
+        .order_by(AnalysisRecord.created_at.desc())
+        .first()
+    )
     new_count = await run_scan_company(db, company_id)
     analysis = analyze_company(db, company_id)
     if analysis is not None:
         score_company(db, company_id, analysis)
-    return new_count, analysis
+    changed = _analysis_changed(prev_analysis, analysis) if analysis else False
+    return new_count, analysis, changed
 
 
 # ── Per-company scan with job tracking ───────────────────────────────
@@ -206,14 +260,17 @@ async def run_scan_all(db: Session) -> JobRun:
 
     companies = db.query(Company).all()
     processed = 0
+    changed_count = 0
     errors: list[str] = []
 
     for company in companies:
         if not company.website_url:
             continue
         try:
-            await run_scan_company_full(db, company.id)
+            _, _, changed = await run_scan_company_full(db, company.id)
             processed += 1
+            if changed:
+                changed_count += 1
         except Exception as exc:  # noqa: BLE001
             msg = f"Company {company.id} ({company.name}): {exc}"
             logger.error("Scan failed – %s", msg)
@@ -222,6 +279,7 @@ async def run_scan_all(db: Session) -> JobRun:
     # Finalise JobRun
     job.finished_at = datetime.now(timezone.utc)
     job.companies_processed = processed
+    job.companies_analysis_changed = changed_count
 
     if errors:
         job.error_message = "; ".join(errors)

@@ -24,4 +24,7 @@ class JobRun(Base):
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     companies_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    companies_analysis_changed: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # scan jobs: count of companies whose analysis changed (issue #61)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

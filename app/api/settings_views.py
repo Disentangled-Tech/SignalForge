@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_ui_auth
 from app.models.job_run import JobRun
 from app.models.user import User
+from app.services.scan_metrics import get_scan_change_rate_30d
 from app.services.settings_service import (
     get_app_settings,
     get_operator_profile,
@@ -56,6 +57,8 @@ def settings_page(
         .all()
     )
 
+    scan_change_pct, scan_change_total, scan_change_denom = get_scan_change_rate_30d(db)
+
     return templates.TemplateResponse(
         request,
         "settings/index.html",
@@ -65,6 +68,9 @@ def settings_page(
             "flash_message": flash_message or error,
             "flash_type": "error" if error else "success" if flash_message else None,
             "recent_jobs": recent_jobs,
+            "scan_change_pct": scan_change_pct,
+            "scan_change_total": scan_change_total,
+            "scan_change_denom": scan_change_denom,
         },
     )
 

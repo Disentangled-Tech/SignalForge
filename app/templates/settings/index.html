@@ -95,6 +95,16 @@
     </div>
 
     <div class="card" style="margin-top: 1.5rem;">
+        <h2>Scan Change Rate (Last 30 Days)</h2>
+        {% if scan_change_denom and scan_change_denom > 0 %}
+        <p><strong>{{ scan_change_pct }}%</strong> of companies had analysis changes ({{ scan_change_total }} of {{ scan_change_denom }})</p>
+        <p class="text-muted">Use this to tune cron frequency. Low rate (&lt; 15%) suggests running scans less often; high rate (&gt; 40%) suggests daily or more.</p>
+        {% else %}
+        <p class="text-muted">No scan data in last 30 days. Run a full scan to populate this metric.</p>
+        {% endif %}
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
         <h2>Recent Job Runs</h2>
         {% if recent_jobs %}
         <table>
