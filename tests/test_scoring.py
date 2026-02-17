@@ -180,6 +180,18 @@ class TestCalculateScore:
         )
         assert score == 0
 
+    def test_returns_int_with_float_weights(self) -> None:
+        """Score is always int even when custom weights are floats (e.g. from JSON)."""
+        custom = {"hiring_engineers": 15.5, "founder_overload": 10.3}
+        score = calculate_score(
+            _signals(["hiring_engineers", "founder_overload"]),
+            "",
+            custom_weights=custom,
+        )
+        assert isinstance(score, int)
+        assert 0 <= score <= 100
+        assert score == 26  # 15.5 + 10.3 = 25.8, rounded to 26
+
 
 # ── get_custom_weights ───────────────────────────────────────────────
 
@@ -265,6 +277,26 @@ class TestGetDisplayScoresForCompanies:
         ]
         result = get_display_scores_for_companies(db, [1])
         assert result == {1: 35}  # From new_analysis, not old (which would be 0)
+
+    def test_uses_custom_weights_when_set(self) -> None:
+        """Display scores use custom weights from AppSettings when present."""
+        settings_row = MagicMock(spec=AppSettings)
+        settings_row.value = '{"hiring_engineers": 99}'
+
+        analysis = MagicMock(spec=AnalysisRecord)
+        analysis.company_id = 1
+        analysis.pain_signals_json = _signals(["hiring_engineers"])
+        analysis.stage = ""
+
+        db = MagicMock()
+        # First call: get_custom_weights; subsequent: analyses query
+        db.query.return_value.filter.return_value.first.return_value = settings_row
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            analysis
+        ]
+
+        result = get_display_scores_for_companies(db, [1])
+        assert result == {1: 99}  # Custom weight 99, not default 15
 
 
 # ── score_company ────────────────────────────────────────────────────
