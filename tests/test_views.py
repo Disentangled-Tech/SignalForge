@@ -849,6 +849,97 @@ class TestCompanyDetailScanStatus:
         assert "already in progress" in resp.text or "in progress" in resp.text.lower()
 
 
+# ── Edit company tests (issue #50) ────────────────────────────────────
+
+
+class TestCompanyEdit:
+    @patch("app.api.views.get_company")
+    def test_edit_form_renders_with_data(self, mock_get, views_client):
+        """GET /companies/1/edit renders form with company data pre-filled."""
+        mock_get.return_value = _make_company_read(
+            company_name="Acme Corp",
+            website_url="https://acme.example.com",
+            founder_name="Jane Doe",
+        )
+        resp = views_client.get("/companies/1/edit")
+        assert resp.status_code == 200
+        assert "Edit Company" in resp.text
+        assert "Acme Corp" in resp.text
+        assert "https://acme.example.com" in resp.text
+        assert "Jane Doe" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_edit_form_not_found(self, mock_get, views_client):
+        """GET /companies/999/edit returns 404."""
+        mock_get.return_value = None
+        resp = views_client.get("/companies/999/edit")
+        assert resp.status_code == 404
+
+    def test_edit_form_requires_auth(self, noauth_client):
+        """GET /companies/1/edit without auth redirects to login."""
+        resp = noauth_client.get("/companies/1/edit", follow_redirects=False)
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
+
+    @patch("app.api.views.update_company")
+    @patch("app.api.views.get_company")
+    def test_edit_success_redirects(self, mock_get, mock_update, views_client):
+        """POST /companies/1/edit with valid data updates and redirects to detail."""
+        mock_get.return_value = _make_company_read()
+        mock_update.return_value = _make_company_read(company_name="Updated Corp")
+        resp = views_client.post(
+            "/companies/1/edit",
+            data={
+                "company_name": "Updated Corp",
+                "website_url": "https://updated.example.com",
+                "source": "manual",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code in (302, 303)
+        assert "/companies/1" in resp.headers.get("location", "")
+        assert "success" in resp.headers.get("location", "").lower()
+        mock_update.assert_called_once()
+
+    def test_edit_empty_name_returns_422(self, views_client):
+        """POST /companies/1/edit with empty company_name returns 422."""
+        with patch("app.api.views.get_company") as mock_get:
+            mock_get.return_value = _make_company_read()
+            resp = views_client.post(
+                "/companies/1/edit",
+                data={"company_name": "", "source": "manual"},
+            )
+        assert resp.status_code == 422
+        assert "required" in resp.text.lower() or "name" in resp.text.lower()
+
+    def test_edit_invalid_url_returns_422(self, views_client):
+        """POST /companies/1/edit with invalid URL returns 422."""
+        with patch("app.api.views.get_company") as mock_get:
+            mock_get.return_value = _make_company_read()
+            resp = views_client.post(
+                "/companies/1/edit",
+                data={
+                    "company_name": "Valid Co",
+                    "website_url": "not-a-valid-url",
+                    "source": "manual",
+                },
+            )
+        assert resp.status_code == 422
+        assert "url" in resp.text.lower() or "invalid" in resp.text.lower()
+
+    @patch("app.api.views.update_company")
+    @patch("app.api.views.get_company")
+    def test_edit_not_found_returns_404(self, mock_get, mock_update, views_client):
+        """POST /companies/999/edit returns 404."""
+        mock_get.return_value = None
+        resp = views_client.post(
+            "/companies/999/edit",
+            data={"company_name": "Some Co", "source": "manual"},
+        )
+        assert resp.status_code == 404
+        mock_update.assert_not_called()
+
+
 # ── Delete tests ────────────────────────────────────────────────────
 
 
