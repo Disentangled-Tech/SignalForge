@@ -29,6 +29,7 @@ from app.services.company import (
     get_company,
     list_companies,
 )
+from app.services.scoring import get_display_scores_for_companies
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +117,17 @@ def companies_list(
 ):
     """Render companies list page."""
     companies, total = list_companies(db, sort_by="score", search=search)
+    company_ids = [c.id for c in companies]
+    company_scores = get_display_scores_for_companies(db, company_ids)
     return templates.TemplateResponse(
         "companies/list.html",
-        {"request": request, "user": user, "companies": companies, "search": search},
+        {
+            "request": request,
+            "user": user,
+            "companies": companies,
+            "company_scores": company_scores,
+            "search": search,
+        },
     )
 
 

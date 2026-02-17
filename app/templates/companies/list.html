@@ -38,9 +38,10 @@
         <tr>
             <td><a href="/companies/{{ c.id }}">{{ c.company_name }}</a></td>
             <td>
-                {% if c.cto_need_score is not none %}
-                <span class="badge {% if c.cto_need_score > 70 %}badge-green{% elif c.cto_need_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}">
-                    {{ c.cto_need_score }}
+                {% set display_score = company_scores[c.id] if c.id in company_scores else c.cto_need_score %}
+                {% if display_score is not none %}
+                <span class="badge {% if display_score > 70 %}badge-green{% elif display_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}">
+                    {{ display_score }}
                 </span>
                 {% else %}
                 <span class="badge badge-gray">—</span>
