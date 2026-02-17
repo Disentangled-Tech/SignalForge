@@ -73,6 +73,11 @@ def store_signal(
             company_id,
             content_hash,
         )
+        # AC #14: Last activity timestamp updates — even for duplicates
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if company is not None:
+            company.last_scan_at = datetime.now(timezone.utc)
+            db.commit()
         return None
 
     record = SignalRecord(
