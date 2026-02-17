@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from sqlalchemy.orm import Session
 
@@ -65,6 +66,27 @@ def _truncate_to_word_limit(text: str, max_words: int) -> str:
     return truncated
 
 
+# Patterns suggesting operator/experience claims (issue #31 Phase 3)
+# Conservative to avoid false positives (e.g. "I've noticed" is fine)
+_SUSPICIOUS_CLAIM_PATTERNS = [
+    re.compile(r"\d+\s*years?\s+of\s+(experience|expertise)", re.I),
+    re.compile(r"helped\s+\d+", re.I),
+    re.compile(r"I've\s+(built|scaled|raised|led)\s+", re.I),
+    re.compile(r"raised\s+\$", re.I),
+    re.compile(r"\d+\s+(companies|startups)\b", re.I),
+    re.compile(r"decades?\s+of", re.I),
+    re.compile(r"\b(certified|certification)\b", re.I),
+]
+
+
+def _message_has_suspicious_claims(text: str) -> bool:
+    """Return True if message contains phrases suggesting unbacked operator claims."""
+    if not text or not isinstance(text, str):
+        return False
+    lower = text.lower()
+    return any(p.search(lower) for p in _SUSPICIOUS_CLAIM_PATTERNS)
+
+
 def _extract_pain_field(pain_signals: dict | None, key: str) -> str:
     """Safely pull a string field from the pain_signals_json dict."""
     if not isinstance(pain_signals, dict):
@@ -73,6 +95,32 @@ def _extract_pain_field(pain_signals: dict | None, key: str) -> str:
     if isinstance(value, list):
         return ", ".join(str(v) for v in value)
     return str(value) if value else ""
+
+
+def _build_safe_fallback(
+    company: Company,
+    analysis: AnalysisRecord,
+) -> dict:
+    """Build a minimal outreach with no operator claims (issue #31).
+
+    Used when hallucination guardrail cannot produce a verified message.
+    References only company context: name, founder, evidence.
+    """
+    founder = (company.founder_name or "").strip() or "there"
+    company_name = (company.name or "").strip() or "your company"
+    evidence_bullets = analysis.evidence_bullets or []
+    hook = (
+        evidence_bullets[0]
+        if evidence_bullets and isinstance(evidence_bullets[0], str)
+        else "your recent activity"
+    )
+    subject = f"Quick question about {company_name}"
+    message = (
+        f"Hi {founder},\n\n"
+        f"I noticed {hook}. "
+        "Would you be open to a brief conversation?"
+    )
+    return {"subject": subject, "message": message}
 
 
 def generate_outreach(
@@ -100,6 +148,15 @@ def generate_outreach(
     evidence_bullets = analysis.evidence_bullets or []
     evidence_text = "\n".join(f"- {b}" for b in evidence_bullets) if evidence_bullets else ""
 
+    # Empty profile: append instruction to forbid operator claims (issue #31)
+    empty_profile_suffix = ""
+    if not operator_md.strip():
+        empty_profile_suffix = (
+            "\n\nIMPORTANT: The operator profile is empty. Do NOT make any claims "
+            "about the operator, experience, or credentials. Reference only company "
+            "context (evidence, stage, notes). operator_claims_used must be []."
+        )
+
     try:
         prompt = render_prompt(
             "outreach_v1",
@@ -114,6 +171,7 @@ def generate_outreach(
             RECOMMENDED_CONVERSATION_ANGLE=_extract_pain_field(pain, "recommended_conversation_angle"),
             EVIDENCE_BULLETS=evidence_text,
         )
+        prompt = prompt + empty_profile_suffix
     except Exception:
         logger.exception("Failed to render outreach_v1 prompt")
         return empty
@@ -139,6 +197,15 @@ def generate_outreach(
     claims = parsed.get("operator_claims_used", [])
 
     # ── Hallucination guardrail ──────────────────────────────────────
+    # Empty profile + any claims: invalid (issue #31)
+    if claims and not operator_md.strip():
+        logger.warning(
+            "Empty profile but LLM returned claims for %s: %s — using safe fallback",
+            company.name,
+            claims,
+        )
+        return _build_safe_fallback(company, analysis)
+
     if claims and operator_md:
         valid, invalid = _validate_claims(claims, operator_md)
         if invalid:
@@ -173,16 +240,54 @@ def generate_outreach(
                         claims = retry_claims
                     else:
                         logger.warning(
-                            "Retry still has hallucinated claims for %s: %s — removing them",
+                            "Retry still has hallucinated claims for %s: %s — using safe fallback",
                             company.name,
                             retry_invalid,
                         )
-                        # Keep original message but strip invalid claims
-                        claims = valid
+                        return _build_safe_fallback(company, analysis)
             except Exception:
                 logger.exception("LLM retry failed for outreach hallucination check")
-                # Keep original message but strip invalid claims
-                claims = valid
+                return _build_safe_fallback(company, analysis)
+
+    # ── Phase 3: Message has claim-like phrases but operator_claims_used empty ──
+    if (
+        operator_md.strip()
+        and not claims
+        and _message_has_suspicious_claims(message)
+    ):
+        logger.warning(
+            "Message for %s has suspicious claim phrases but operator_claims_used empty — retrying",
+            company.name,
+        )
+        retry_suffix = (
+            "\n\nIMPORTANT: The previous message may contain operator/experience/credential "
+            "claims. Rewrite with NO such claims. Reference ONLY company context "
+            "(evidence, stage, notes). operator_claims_used must be []."
+        )
+        try:
+            retry_raw = llm.complete(
+                prompt + retry_suffix,
+                response_format={"type": "json_object"},
+                temperature=0.5,
+            )
+            retry_parsed = _parse_json_safe(retry_raw)
+            if retry_parsed is not None:
+                retry_message = retry_parsed.get("message", "")
+                retry_claims = retry_parsed.get("operator_claims_used", [])
+                if not retry_claims and not _message_has_suspicious_claims(retry_message):
+                    subject = retry_parsed.get("subject", subject)
+                    message = retry_message
+                elif _message_has_suspicious_claims(retry_message):
+                    logger.warning(
+                        "Retry still has suspicious claims for %s — using safe fallback",
+                        company.name,
+                    )
+                    return _build_safe_fallback(company, analysis)
+            else:
+                return _build_safe_fallback(company, analysis)
+        except Exception:
+            logger.exception("LLM retry failed for suspicious-claims check")
+            return _build_safe_fallback(company, analysis)
 
     # ── Word-count enforcement (PRD: shorten once on violation) ─────
     word_count = len(message.split())
