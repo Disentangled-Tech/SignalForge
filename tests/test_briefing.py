@@ -363,6 +363,50 @@ class TestGenerateBriefing:
 
         # Only the good company should have produced a briefing item.
         assert len(result) == 1
+        # Per-company failures stored in job_runs (issue #32)
+        job_runs = [c.args[0] for c in db.add.call_args_list if isinstance(c.args[0], JobRun)]
+        assert len(job_runs) == 1
+        assert "Bad Corp" in (job_runs[0].error_message or "")
+        assert "LLM exploded" in (job_runs[0].error_message or "")
+
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_all_companies_fail_stores_errors_in_job_run(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+    ):
+        """When all companies fail, job stores error_message and companies_processed=0 (issue #32)."""
+        mock_resolved.return_value = _default_resolved()
+        c1 = _make_company(id=1, name="Fail1")
+        c2 = _make_company(id=2, name="Fail2")
+        mock_select.return_value = [c1, c2]
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [
+            None,  # c1 existing
+            RuntimeError("Analysis failed"),  # c1 analysis - but first() returns, doesn't raise
+        ]
+        # first() returns values; to raise we need side_effect to raise. So we need a callable.
+        def first_raise(*args, **kwargs):
+            raise RuntimeError("Analysis failed")
+
+        query_mock.first.side_effect = first_raise
+
+        result = generate_briefing(db)
+
+        assert result == []
+        job_runs = [c.args[0] for c in db.add.call_args_list if isinstance(c.args[0], JobRun)]
+        assert len(job_runs) == 1
+        job = job_runs[0]
+        assert job.companies_processed == 0
+        assert job.error_message is not None
+        assert "Fail1" in job.error_message or "Fail2" in job.error_message
+        assert "Analysis failed" in job.error_message
 
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
@@ -578,6 +622,80 @@ class TestGenerateBriefing:
         call_args = mock_send.call_args
         assert len(call_args[0][0]) == 1
         assert call_args[0][1] == "ops@example.com"
+        assert call_args[1].get("failure_summary") is None
+
+    @patch("app.services.briefing.send_briefing_email")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_email_includes_failure_summary_when_partial_failures(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+    ):
+        """When some companies fail, email includes failure_summary (issue #32)."""
+        mock_resolved.return_value = ResolvedSettings(
+            briefing_time="08:00",
+            briefing_email="ops@example.com",
+            briefing_email_enabled=True,
+            briefing_frequency="daily",
+            briefing_day_of_week=0,
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_user="",
+            smtp_password="",
+            smtp_from="noreply@example.com",
+        )
+        mock_send.return_value = True
+
+        good = _make_company(id=1, name="Good Corp")
+        bad = _make_company(id=2, name="Bad Corp")
+        mock_select.return_value = [bad, good]
+        mock_render.return_value = "prompt"
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        analysis = _make_analysis()
+        call_count = 0
+
+        def first_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return None
+            if call_count == 2:
+                raise RuntimeError("LLM failed")
+            if call_count == 3:
+                return None
+            return analysis
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.options.return_value = query_mock
+        query_mock.first.side_effect = first_side_effect
+        fake_item = MagicMock()
+        fake_item.company = good
+        fake_item.id = 1
+        query_mock.all.return_value = [fake_item]
+
+        def set_id_on_refresh(obj):
+            if isinstance(obj, BriefingItem):
+                obj.id = 1
+
+        db.refresh.side_effect = set_id_on_refresh
+
+        result = generate_briefing(db)
+
+        assert len(result) == 1
+        mock_send.assert_called_once()
+        call_kwargs = mock_send.call_args[1]
+        assert "failure_summary" in call_kwargs
+        assert "Bad Corp" in (call_kwargs["failure_summary"] or "")
+        assert "LLM failed" in (call_kwargs["failure_summary"] or "")
 
     @patch("app.services.briefing.send_briefing_email")
     @patch("app.services.briefing.get_resolved_settings")

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.api.deps import get_db, require_ui_auth
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.job_run import JobRun
 from app.models.user import User
 from app.services.scoring import get_display_scores_for_companies
 
@@ -57,11 +58,23 @@ def briefing_generate(
     user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
-    """Trigger briefing generation and redirect to briefing page."""
+    """Trigger briefing generation and redirect to briefing page (issue #32)."""
     try:
         from app.services.briefing import generate_briefing
 
         generate_briefing(db)
+        # Check for partial failures (issue #32)
+        latest = (
+            db.query(JobRun)
+            .filter(JobRun.job_type == "briefing")
+            .order_by(JobRun.started_at.desc())
+            .first()
+        )
+        if latest and latest.error_message:
+            return RedirectResponse(
+                url="/briefing?error=Partial+failures.+See+Settings+for+details",
+                status_code=303,
+            )
         return RedirectResponse(url="/briefing", status_code=303)
     except ImportError:
         logger.warning("Briefing service not available yet")
@@ -137,6 +150,21 @@ def _render_briefing(
     # Check for error flash from query params
     error = request.query_params.get("error")
 
+    # Latest briefing job for failure alert (issue #32)
+    latest_briefing_job = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "briefing")
+        .order_by(JobRun.started_at.desc())
+        .first()
+    )
+    job_has_failures = (
+        latest_briefing_job is not None
+        and (
+            latest_briefing_job.status == "failed"
+            or (latest_briefing_job.error_message or "").strip() != ""
+        )
+    )
+
     return templates.TemplateResponse(
         request,
         "briefing/today.html",
@@ -152,6 +180,7 @@ def _render_briefing(
             "display_scores": display_scores,
             "sort": sort,
             "briefing_path": briefing_path,
+            "job_has_failures": job_has_failures,
         },
     )
 
