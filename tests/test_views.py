@@ -333,15 +333,15 @@ class TestAddCompany:
 
     @patch("app.api.views.create_company")
     def test_add_company_success(self, mock_create, views_client):
-        """POST /companies/add with valid data redirects."""
-        mock_create.return_value = _make_company_read()
+        """POST /companies/add with valid data redirects to company detail."""
+        mock_create.return_value = _make_company_read(id=42)
         resp = views_client.post(
             "/companies/add",
             data={"company_name": "New Co", "source": "manual"},
             follow_redirects=False,
         )
         assert resp.status_code == 302
-        assert "/companies" in resp.headers.get("location", "")
+        assert resp.headers.get("location", "").endswith("/companies/42")
         mock_create.assert_called_once()
 
     def test_add_company_validation_error(self, views_client):
@@ -352,6 +352,40 @@ class TestAddCompany:
         )
         assert resp.status_code == 422
         assert "required" in resp.text.lower()
+
+    @patch("app.api.views.create_company")
+    def test_add_company_invalid_url_shows_error(self, mock_create, views_client):
+        """POST /companies/add with invalid website_url returns 422 and error."""
+        resp = views_client.post(
+            "/companies/add",
+            data={
+                "company_name": "Valid Co",
+                "website_url": "not-a-url",
+                "source": "manual",
+            },
+        )
+        assert resp.status_code == 422
+        assert "url" in resp.text.lower() or "invalid" in resp.text.lower()
+        mock_create.assert_not_called()
+
+    @patch("app.api.views.create_company")
+    def test_add_company_valid_urls_succeed(self, mock_create, views_client):
+        """POST /companies/add with valid URLs succeeds and redirects to detail."""
+        mock_create.return_value = _make_company_read(id=7)
+        resp = views_client.post(
+            "/companies/add",
+            data={
+                "company_name": "Valid Co",
+                "website_url": "https://example.com",
+                "founder_linkedin_url": "https://linkedin.com/in/johndoe",
+                "company_linkedin_url": "https://linkedin.com/company/validco",
+                "source": "manual",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert resp.headers.get("location", "").endswith("/companies/7")
+        mock_create.assert_called_once()
 
 
 # ── Import company tests ──────────────────────────────────────────
