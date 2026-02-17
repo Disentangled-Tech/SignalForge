@@ -191,7 +191,8 @@ class TestGenerateOutreachEdgeCases:
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.render_prompt")
     def test_word_count_over_140_triggers_retry(self, mock_render, mock_get_llm, caplog):
-        """When message > 140 words, retry once."""
+        """When message > 140 words, shorten retry includes the actual message."""
+        long_message = " ".join(["word"] * 200)
         short_response = json.dumps({
             "subject": "Short",
             "message": "Hi Jane. " + " ".join(["word"] * 70),
@@ -201,7 +202,15 @@ class TestGenerateOutreachEdgeCases:
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
-        mock_llm.complete.side_effect = [_LONG_MESSAGE_RESPONSE, short_response]
+        mock_llm.complete.side_effect = [
+            json.dumps({
+                "subject": "Subject",
+                "message": long_message,
+                "operator_claims_used": [],
+                "company_specific_hooks": [],
+            }),
+            short_response,
+        ]
 
         db = _make_mock_db(operator_profile=_make_operator_profile())
         import logging
@@ -211,8 +220,12 @@ class TestGenerateOutreachEdgeCases:
         assert result["subject"] == "Short"
         assert len(result["message"].split()) <= _MAX_MESSAGE_WORDS
         assert mock_llm.complete.call_count == 2
-        retry_prompt = mock_llm.complete.call_args_list[1][0][0]
-        assert "140 words" in retry_prompt or "Shorten" in retry_prompt
+        shorten_prompt = mock_llm.complete.call_args_list[1][0][0]
+        assert "140 words" in shorten_prompt or "Shorten" in shorten_prompt
+        # Bug fix: shorten prompt must include the actual message so LLM shortens it,
+        # not regenerate (which could reintroduce hallucinated claims)
+        assert long_message in shorten_prompt
+        assert "---BEGIN MESSAGE---" in shorten_prompt
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.render_prompt")

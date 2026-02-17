@@ -184,24 +184,32 @@ def generate_outreach(
                 # Keep original message but strip invalid claims
                 claims = valid
 
-    # ── Word-count enforcement (PRD: regenerate once on violation) ─────
+    # ── Word-count enforcement (PRD: shorten once on violation) ─────
     word_count = len(message.split())
     if word_count > _MAX_MESSAGE_WORDS:
         logger.warning(
-            "Outreach message for %s is %d words (limit %d), retrying once",
+            "Outreach message for %s is %d words (limit %d), shortening once",
             company.name,
             word_count,
             _MAX_MESSAGE_WORDS,
         )
-        word_count_retry_suffix = (
-            "\n\nIMPORTANT: Your previous message was over 140 words. "
-            "Shorten it to under 140 words."
+        # Include the actual message so the LLM shortens THIS message, not regenerate
+        # (regeneration could reintroduce hallucinated claims from earlier retry)
+        shorten_prompt = (
+            "Shorten the outreach message below to under 140 words. "
+            "Preserve key points, tone, and personalization. Do NOT add new claims or content.\n\n"
+            f"Current subject: {subject}\n\n"
+            "Message to shorten:\n"
+            "---BEGIN MESSAGE---\n"
+            f"{message}\n"
+            "---END MESSAGE---\n\n"
+            "Return ONLY valid JSON: {\"subject\": \"...\", \"message\": \"...\"}"
         )
         try:
             retry_raw = llm.complete(
-                prompt + word_count_retry_suffix,
+                shorten_prompt,
                 response_format={"type": "json_object"},
-                temperature=0.7,
+                temperature=0.3,
             )
             retry_parsed = _parse_json_safe(retry_raw)
             if retry_parsed is not None:
@@ -212,19 +220,19 @@ def generate_outreach(
                     subject = retry_parsed.get("subject", subject)
                 else:
                     logger.info(
-                        "Word-count retry for %s still %d words, truncating",
+                        "Shorten attempt for %s still %d words, truncating",
                         company.name,
                         retry_count,
                     )
                     message = _truncate_to_word_limit(retry_message, _MAX_MESSAGE_WORDS)
             else:
                 logger.warning(
-                    "Word-count retry returned invalid JSON for %s, truncating",
+                    "Shorten response invalid JSON for %s, truncating",
                     company.name,
                 )
                 message = _truncate_to_word_limit(message, _MAX_MESSAGE_WORDS)
         except Exception:
-            logger.exception("Word-count retry failed for %s, truncating", company.name)
+            logger.exception("Shorten attempt failed for %s, truncating", company.name)
             message = _truncate_to_word_limit(message, _MAX_MESSAGE_WORDS)
 
     return {"subject": subject, "message": message}
