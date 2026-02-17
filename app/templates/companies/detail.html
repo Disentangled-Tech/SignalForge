@@ -43,9 +43,26 @@
         <div style="grid-column: 1 / -1;"><strong>Notes:</strong> {{ company.notes }}</div>
         {% endif %}
     </div>
+    {# ── Rescan status and flash messages ── #}
+    {% if rescan_param == 'queued' %}
+    <div class="text-muted" style="margin-top: 0.5rem;">Scan queued. The page will refresh automatically.</div>
+    {% elif rescan_param == 'running' %}
+    <div class="text-muted" style="margin-top: 0.5rem;">Scan already in progress.</div>
+    {% endif %}
+    {% if scan_job and scan_job.status == 'running' %}
+    <div style="margin-top: 0.5rem; color: #0d9488;">Scan in progress…</div>
+    {% elif scan_job and scan_job.status == 'failed' %}
+    <div style="margin-top: 0.5rem; color: #dc2626;">Last scan failed: {{ scan_job.error_message or 'Unknown error' }}</div>
+    {% elif scan_job and scan_job.status == 'completed' and scan_job.finished_at %}
+    <div class="text-muted" style="margin-top: 0.5rem;">Last scan completed at {{ scan_job.finished_at.strftime('%Y-%m-%d %H:%M') }}</div>
+    {% endif %}
     <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
         <form method="POST" action="/companies/{{ company.id }}/rescan" style="display:inline;">
+            {% if scan_job and scan_job.status == 'running' %}
+            <button type="submit" class="btn btn-primary" disabled>⟳ Scanning…</button>
+            {% else %}
             <button type="submit" class="btn btn-primary">⟳ Rescan</button>
+            {% endif %}
         </form>
         <form method="POST" action="/companies/{{ company.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this company?');">
             <button type="submit" class="btn btn-danger">Delete</button>
@@ -133,7 +150,11 @@
     {% endif %}
 </div>
 
-{% block extra_head %}{% endblock %}
+{% block extra_head %}
+{% if scan_job and scan_job.status == 'running' %}
+<meta http-equiv="refresh" content="5">
+{% endif %}
+{% endblock %}
 
 <script>
 function copyOutreach() {
