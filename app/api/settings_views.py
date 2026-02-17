@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_ui_auth
+from app.models.job_run import JobRun
 from app.models.user import User
 from app.services.settings_service import (
     get_app_settings,
@@ -34,10 +35,18 @@ def settings_page(
     user: User = Depends(require_ui_auth),
     db: Session = Depends(get_db),
 ):
-    """Render settings page with current values."""
+    """Render settings page with current values and recent job runs (issue #27)."""
     settings = get_app_settings(db)
     flash_message = request.query_params.get("success")
     error = request.query_params.get("error")
+
+    recent_jobs = (
+        db.query(JobRun)
+        .order_by(JobRun.started_at.desc())
+        .limit(20)
+        .all()
+    )
+
     return templates.TemplateResponse(
         request,
         "settings/index.html",
@@ -46,6 +55,7 @@ def settings_page(
             "user": user,
             "flash_message": flash_message or error,
             "flash_type": "error" if error else "success" if flash_message else None,
+            "recent_jobs": recent_jobs,
         },
     )
 
