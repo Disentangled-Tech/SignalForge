@@ -418,6 +418,120 @@ class TestAnalyzeCompanyEdgeCases:
 
 
 # ---------------------------------------------------------------------------
+# Stage classification — Issue #16 acceptance criteria
+# ---------------------------------------------------------------------------
+
+
+class TestStageClassificationIssue16:
+    """Tests for Issue #16: returns one allowed stage, stored in AnalysisRecord."""
+
+    @pytest.mark.parametrize("stage", sorted(ALLOWED_STAGES))
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_each_allowed_stage_stored_in_analysis_record(
+        self, mock_render, mock_get_llm, stage
+    ):
+        """LLM returning each allowed stage results in correct stage in AnalysisRecord."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+
+        stage_response = json.dumps(
+            {
+                "stage": stage,
+                "confidence": 75,
+                "evidence_bullets": ["Evidence"],
+                "assumptions": [],
+            }
+        )
+        mock_llm.complete.side_effect = [
+            stage_response,
+            _VALID_PAIN_RESPONSE,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        result = analyze_company(db, company_id=1)
+
+        assert result is not None
+        assert result.stage == stage
+        add_call_args = db.add.call_args[0][0]
+        assert isinstance(add_call_args, AnalysisRecord)
+        assert add_call_args.stage == stage
+        db.commit.assert_called_once()
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_mixed_case_stage_normalized_to_lowercase(self, mock_render, mock_get_llm):
+        """LLM returning 'Scaling_Team' (mixed case) results in stored 'scaling_team'."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+
+        mixed_case_response = json.dumps(
+            {
+                "stage": "Scaling_Team",
+                "confidence": 80,
+                "evidence_bullets": ["Hiring"],
+                "assumptions": [],
+            }
+        )
+        mock_llm.complete.side_effect = [
+            mixed_case_response,
+            _VALID_PAIN_RESPONSE,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        result = analyze_company(db, company_id=1)
+
+        assert result is not None
+        assert result.stage == "scaling_team"
+        add_call_args = db.add.call_args[0][0]
+        assert add_call_args.stage == "scaling_team"
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_non_string_stage_defaults_to_early_customers(self, mock_render, mock_get_llm):
+        """LLM returning non-string stage (e.g. 123) defaults to early_customers."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+
+        non_string_response = json.dumps(
+            {
+                "stage": 123,
+                "confidence": 50,
+                "evidence_bullets": [],
+                "assumptions": [],
+            }
+        )
+        mock_llm.complete.side_effect = [
+            non_string_response,
+            _VALID_PAIN_RESPONSE,
+            _EXPLANATION_TEXT,
+        ]
+
+        db = _make_mock_db(
+            company=_make_company(),
+            signals=[_make_signal()],
+            operator_profile=_make_operator_profile(),
+        )
+        result = analyze_company(db, company_id=1)
+
+        assert result is not None
+        assert result.stage == _DEFAULT_STAGE
+
+
+# ---------------------------------------------------------------------------
 # ALLOWED_STAGES constant
 # ---------------------------------------------------------------------------
 

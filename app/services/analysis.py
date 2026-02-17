@@ -130,7 +130,9 @@ def analyze_company(db: Session, company_id: int) -> AnalysisRecord | None:
         }
 
     stage = stage_data.get("stage", _DEFAULT_STAGE)
-    if stage not in ALLOWED_STAGES:
+    if isinstance(stage, str):
+        stage = stage.strip().lower()
+    if not isinstance(stage, str) or stage not in ALLOWED_STAGES:
         logger.warning(
             "Invalid stage '%s' from LLM, defaulting to '%s'", stage, _DEFAULT_STAGE
         )
