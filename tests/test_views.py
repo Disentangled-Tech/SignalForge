@@ -600,6 +600,8 @@ class TestCompanyDetail:
         mock_analysis.explanation = "Scaling rapidly"
 
         mock_briefing = MagicMock()
+        mock_briefing.why_now = "Company is scaling fast and hiring engineers."
+        mock_briefing.risk_summary = "Team may outpace architecture."
         mock_briefing.outreach_subject = "Re: CTO opportunity"
         mock_briefing.outreach_message = "Hi, I noticed you're hiring..."
 
@@ -622,6 +624,10 @@ class TestCompanyDetail:
         assert "Hiring senior engineers" in resp.text
         assert "Re: CTO opportunity" in resp.text
         assert "hiring" in resp.text  # outreach message (apostrophe may be HTML-escaped)
+        assert "Why Now" in resp.text
+        assert "Company is scaling fast and hiring engineers." in resp.text
+        assert "Risk Summary" in resp.text
+        assert "Team may outpace architecture." in resp.text
 
     @patch("app.api.views.get_company")
     def test_detail_malformed_pain_signals_json_string(
