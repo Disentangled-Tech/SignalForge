@@ -130,6 +130,39 @@ def get_custom_weights(db: Session) -> dict[str, int] | None:
         return None
 
 
+def get_display_scores_for_companies(
+    db: Session, company_ids: list[int]
+) -> dict[int, int]:
+    """Compute display scores from latest analysis for each company.
+
+    Returns a dict mapping company_id -> score. Only includes companies that
+    have at least one analysis. Uses the same logic as the company detail page
+    (calculate_score from pain_signals + stage, default weights).
+    """
+    if not company_ids:
+        return {}
+
+    analyses = (
+        db.query(AnalysisRecord)
+        .filter(AnalysisRecord.company_id.in_(company_ids))
+        .order_by(AnalysisRecord.created_at.desc())
+        .all()
+    )
+    latest_by_company: dict[int, AnalysisRecord] = {}
+    for a in analyses:
+        if a.company_id not in latest_by_company:
+            latest_by_company[a.company_id] = a
+
+    result: dict[int, int] = {}
+    for cid, analysis in latest_by_company.items():
+        score = calculate_score(
+            pain_signals=analysis.pain_signals_json or {},
+            stage=analysis.stage or "",
+        )
+        result[cid] = score
+    return result
+
+
 def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int:
     """Score a company from its latest analysis and persist the result.
 

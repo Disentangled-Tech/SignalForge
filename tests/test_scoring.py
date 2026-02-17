@@ -13,6 +13,7 @@ from app.services.scoring import (
     _is_signal_true,
     calculate_score,
     get_custom_weights,
+    get_display_scores_for_companies,
     score_company,
 )
 
@@ -126,11 +127,6 @@ class TestCalculateScore:
         )
         assert score == 25  # hiring_engineers(15) + founder_overload(10)
 
-    def test_string_true_produces_non_zero_score(self) -> None:
-        """Regression: LLM may return string \"true\" — must not yield score 0."""
-        signals = {
-            "signals": {
-                k: {"value": "true" if k == "hiring_engineers" else "false", "why": "test"}
     def test_string_true_is_counted(self) -> None:
         """Regression: LLMs sometimes return string 'true' instead of boolean true.
 
@@ -147,7 +143,6 @@ class TestCalculateScore:
             "String \"true\" must be counted. Scoring likely uses 'is True' instead of "
             "_is_signal_true()."
         )
-        assert score == 15
         assert score == 25  # hiring_engineers(15) + founder_overload(10)
 
     def test_is_signal_true_accepts_various_formats(self) -> None:
@@ -224,6 +219,52 @@ class TestGetCustomWeights:
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = row
         assert get_custom_weights(db) is None
+
+
+# ── get_display_scores_for_companies ──────────────────────────────────
+
+class TestGetDisplayScoresForCompanies:
+    """Tests for get_display_scores_for_companies()."""
+
+    def test_empty_company_ids_returns_empty_dict(self) -> None:
+        db = MagicMock()
+        result = get_display_scores_for_companies(db, [])
+        assert result == {}
+
+    def test_returns_scores_from_latest_analysis_per_company(self) -> None:
+        db = MagicMock()
+        a1 = MagicMock(spec=AnalysisRecord)
+        a1.company_id = 1
+        a1.pain_signals_json = _signals(["hiring_engineers"])
+        a1.stage = "scaling_team"
+        a2 = MagicMock(spec=AnalysisRecord)
+        a2.company_id = 2
+        a2.pain_signals_json = _signals([])
+        a2.stage = "enterprise_transition"
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            a1,
+            a2,
+        ]
+        result = get_display_scores_for_companies(db, [1, 2])
+        assert result == {1: 35, 2: 30}  # 15+20 and 30 stage bonus
+
+    def test_uses_latest_analysis_when_multiple_exist(self) -> None:
+        """When a company has multiple analyses, use the most recent (first in desc order)."""
+        db = MagicMock()
+        old_analysis = MagicMock(spec=AnalysisRecord)
+        old_analysis.company_id = 1
+        old_analysis.pain_signals_json = _signals([])
+        old_analysis.stage = ""
+        new_analysis = MagicMock(spec=AnalysisRecord)
+        new_analysis.company_id = 1
+        new_analysis.pain_signals_json = _signals(["hiring_engineers"])
+        new_analysis.stage = "scaling_team"
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            new_analysis,
+            old_analysis,
+        ]
+        result = get_display_scores_for_companies(db, [1])
+        assert result == {1: 35}  # From new_analysis, not old (which would be 0)
 
 
 # ── score_company ────────────────────────────────────────────────────

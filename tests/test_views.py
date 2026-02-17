@@ -185,6 +185,23 @@ class TestCompaniesList:
         call_kwargs = mock_list.call_args
         assert call_kwargs[1].get("search") == "foo" or call_kwargs.kwargs.get("search") == "foo"
 
+    @patch("app.api.views.get_display_scores_for_companies")
+    @patch("app.api.views.list_companies")
+    def test_companies_list_uses_display_score_when_stored_is_zero(
+        self, mock_list, mock_scores, views_client
+    ):
+        """Companies list shows recomputed score when stored score is zero."""
+        company = _make_company_read(company_name="ZeroScoreCo", cto_need_score=0)
+        mock_list.return_value = ([company], 1)
+        mock_scores.return_value = {1: 75}  # Recomputed from analysis
+        resp = views_client.get("/companies")
+        assert resp.status_code == 200
+        assert "ZeroScoreCo" in resp.text
+        assert "75" in resp.text
+        mock_scores.assert_called_once()
+        args = mock_scores.call_args[0]
+        assert args[1] == [1]  # company_ids
+
 
 # ── Add company tests ───────────────────────────────────────────────
 
