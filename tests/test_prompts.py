@@ -48,6 +48,14 @@ TEMPLATE_PLACEHOLDERS = {
         "PAIN_SIGNALS_JSON",
         "EVIDENCE_BULLETS",
     },
+    "explanation_v1": {
+        "COMPANY_NAME",
+        "STAGE",
+        "EVIDENCE_BULLETS",
+        "PAIN_SIGNALS_SUMMARY",
+        "TOP_RISKS",
+        "MOST_LIKELY_NEXT_PROBLEM",
+    },
 }
 
 ALL_TEMPLATES = list(TEMPLATE_PLACEHOLDERS.keys())

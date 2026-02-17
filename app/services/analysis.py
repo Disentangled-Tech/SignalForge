@@ -163,16 +163,25 @@ def analyze_company(db: Session, company_id: int) -> AnalysisRecord | None:
         pain_data = {}
 
     # ── Explanation generation ────────────────────────────────────────
-    # Build a concise summary of active pain signals for the explanation prompt.
-    signal_summary = json.dumps(
-        {k: v for k, v in pain_data.get("signals", {}).items() if isinstance(v, dict) and v.get("value")},
-        indent=2,
-    ) if pain_data.get("signals") else "{}"
+    evidence_text = "\n".join(f"- {b}" for b in evidence_bullets) if evidence_bullets else "(none)"
+    pain_signals = pain_data.get("signals") or {}
+    active_signals = {
+        k: v for k, v in pain_signals.items()
+        if isinstance(v, dict) and v.get("value")
+    }
+    pain_signals_summary = json.dumps(active_signals, indent=2) if active_signals else "(none)"
+    top_risks = pain_data.get("top_risks") or []
+    top_risks_text = ", ".join(str(x) for x in top_risks) if isinstance(top_risks, list) else str(top_risks)
+    most_likely_next = pain_data.get("most_likely_next_problem") or ""
 
-    explanation_prompt = (
-        f"Based on stage '{stage}' and signals {signal_summary}, "
-        "write 2-6 sentences explaining why this company likely needs "
-        "technical leadership help. Be specific and cite evidence."
+    explanation_prompt = render_prompt(
+        "explanation_v1",
+        COMPANY_NAME=company.name or "",
+        STAGE=stage,
+        EVIDENCE_BULLETS=evidence_text,
+        PAIN_SIGNALS_SUMMARY=pain_signals_summary,
+        TOP_RISKS=top_risks_text,
+        MOST_LIKELY_NEXT_PROBLEM=most_likely_next,
     )
     explanation = llm.complete(explanation_prompt, temperature=0.7)
 
