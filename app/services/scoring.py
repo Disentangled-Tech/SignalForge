@@ -34,6 +34,40 @@ STAGE_BONUSES: dict[str, int] = {
     "struggling_execution": 30,
 }
 
+# Legacy keys from pre-schema-change analyses (Issue #64)
+_LEGACY_SIGNAL_KEY_MAP: dict[str, str] = {
+    "hiring_technical_roles": "hiring_engineers",
+    "recent_funding": "switching_from_agency",
+    "product_launch": "adding_enterprise_features",
+    "technical_debt_indicators": "architecture_scaling_risk",
+    "scaling_challenges": "architecture_scaling_risk",
+    "leadership_changes": "founder_overload",
+    "compliance_needs": "compliance_security_pressure",
+}
+
+
+def _get_signal_value(entry: dict) -> Any:
+    """Return the boolean value; supports legacy 'detected' key (Issue #64)."""
+    v = entry.get("value")
+    if v is not None:
+        return v
+    return entry.get("detected")
+
+
+def _normalize_signals(signals: dict[str, Any]) -> dict[str, Any]:
+    """Map legacy signal keys to canonical keys (Issue #64)."""
+    canonical: dict[str, Any] = {}
+    for k, v in signals.items():
+        canonical_key = _LEGACY_SIGNAL_KEY_MAP.get(k, k)
+        if canonical_key in DEFAULT_SIGNAL_WEIGHTS:
+            if canonical_key not in canonical:
+                canonical[canonical_key] = v
+            elif isinstance(v, dict) and _is_signal_true(_get_signal_value(v)):
+                canonical[canonical_key] = v  # prefer true when merging
+        elif k in DEFAULT_SIGNAL_WEIGHTS:
+            canonical[k] = v
+    return canonical
+
 
 def _is_signal_true(val: Any) -> bool:
     """Return True if value indicates a positive pain signal.
@@ -75,23 +109,32 @@ def calculate_score(
     stage:
         Company lifecycle stage string (e.g. ``"scaling_team"``).
     custom_weights:
-        If provided, **replaces** ``DEFAULT_SIGNAL_WEIGHTS`` entirely.
+        If provided, overrides defaults for matching keys only (Issue #64).
     """
     if not isinstance(pain_signals, dict):
         return 0
 
-    weights = custom_weights if custom_weights is not None else DEFAULT_SIGNAL_WEIGHTS
+    # Merge custom weights with defaults so we always use canonical keys (Issue #64)
+    if custom_weights is not None:
+        weights = {
+            k: custom_weights.get(k, v) for k, v in DEFAULT_SIGNAL_WEIGHTS.items()
+        }
+    else:
+        weights = DEFAULT_SIGNAL_WEIGHTS
 
     # Normalise: accept nested {"signals": {...}} or flat dict
     signals: dict[str, Any] = pain_signals.get("signals", pain_signals)
     if not isinstance(signals, dict):
         return 0
 
+    # Map legacy keys to canonical (Issue #64)
+    signals = _normalize_signals(signals)
+
     score = 0
     for key, weight in weights.items():
         entry = signals.get(key)
         if isinstance(entry, dict):
-            val = entry.get("value")
+            val = _get_signal_value(entry)
             if _is_signal_true(val):
                 score += weight
         elif _is_signal_true(entry):
@@ -115,7 +158,7 @@ def get_custom_weights(db: Session) -> dict[str, int] | None:
     """Load custom scoring weights from AppSettings.
 
     Returns ``None`` when the ``scoring_weights`` key is absent or the stored
-    value is not valid JSON.
+    value is not valid JSON. Legacy keys are mapped to canonical keys (Issue #64).
     """
     row = db.query(AppSettings).filter(AppSettings.key == "scoring_weights").first()
     if row is None or row.value is None:
@@ -123,10 +166,14 @@ def get_custom_weights(db: Session) -> dict[str, int] | None:
     try:
         parsed = json.loads(row.value)
         if isinstance(parsed, dict):
-            return {
-                k: int(round(float(v))) if isinstance(v, (int, float)) else 0
-                for k, v in parsed.items()
-            }
+            canonical: dict[str, int] = {}
+            for k, v in parsed.items():
+                ck = _LEGACY_SIGNAL_KEY_MAP.get(k, k)
+                if ck in DEFAULT_SIGNAL_WEIGHTS:
+                    canonical[ck] = (
+                        int(round(float(v))) if isinstance(v, (int, float)) else 0
+                    )
+            return canonical if canonical else None
         return None
     except (json.JSONDecodeError, TypeError):
         logger.warning("Invalid JSON in scoring_weights AppSettings row")
