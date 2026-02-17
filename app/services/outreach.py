@@ -60,7 +60,7 @@ def _truncate_to_word_limit(text: str, max_words: int) -> str:
         truncated.rfind("! "),
         truncated.rfind("? "),
     )
-    if last_boundary > 0:
+    if last_boundary >= 0:
         return truncated[: last_boundary + 1].rstrip()
     return truncated
 
