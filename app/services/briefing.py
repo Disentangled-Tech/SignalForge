@@ -117,6 +117,24 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
 
 def _generate_for_company(db: Session, company: Company) -> BriefingItem | None:
     """Build a single BriefingItem for *company*.  Returns ``None`` when skipped."""
+    today = date.today()
+    existing = (
+        db.query(BriefingItem)
+        .filter(
+            BriefingItem.company_id == company.id,
+            BriefingItem.briefing_date == today,
+        )
+        .first()
+    )
+    if existing:
+        logger.info(
+            "BriefingItem already exists for %s (id=%s) on %s — skipping",
+            company.name,
+            company.id,
+            today,
+        )
+        return None
+
     # Latest analysis record.
     analysis: AnalysisRecord | None = (
         db.query(AnalysisRecord)
@@ -166,7 +184,7 @@ def _generate_for_company(db: Session, company: Company) -> BriefingItem | None:
         suggested_angle=suggested_angle,
         outreach_subject=outreach.get("subject", ""),
         outreach_message=outreach.get("message", ""),
-        briefing_date=date.today(),
+        briefing_date=today,
     )
     db.add(item)
     db.commit()

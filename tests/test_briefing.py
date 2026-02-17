@@ -254,7 +254,11 @@ class TestGenerateBriefing:
         mock_outreach.return_value = _VALID_OUTREACH_RESULT
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = analysis
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        # First first() = existing check (None); second first() = analysis fetch
+        query_mock.first.side_effect = [None, analysis]
 
         result = generate_briefing(db)
 
@@ -282,8 +286,11 @@ class TestGenerateBriefing:
         mock_select.return_value = [company]
 
         db = MagicMock()
-        # No analysis record found.
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        # First first() = existing check (None); second first() = analysis (None)
+        query_mock.first.side_effect = [None, None]
 
         result = generate_briefing(db)
 
@@ -311,15 +318,22 @@ class TestGenerateBriefing:
         analysis = _make_analysis()
         call_count = 0
 
-        def analysis_side_effect(*args, **kwargs):
+        def first_side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise RuntimeError("LLM exploded")
-            return analysis
+                return None  # existing check for bad company
+            if call_count == 2:
+                raise RuntimeError("LLM exploded")  # analysis for bad company
+            if call_count == 3:
+                return None  # existing check for good company
+            return analysis  # analysis for good company
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.first.side_effect = analysis_side_effect
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = first_side_effect
 
         result = generate_briefing(db)
 
@@ -344,7 +358,10 @@ class TestGenerateBriefing:
         mock_outreach.return_value = _VALID_OUTREACH_RESULT
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = analysis
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
 
         generate_briefing(db)
 
@@ -368,4 +385,30 @@ class TestGenerateBriefing:
 
         assert result == []
         mock_get_llm.assert_not_called()
+
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_skips_when_briefing_item_already_exists(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach
+    ):
+        """When BriefingItem already exists for company+date, skip creation."""
+        company = _make_company()
+        mock_select.return_value = [company]
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        # First query (existing check) returns an existing item -> skip
+        query_mock.filter.return_value.filter.return_value.first.return_value = (
+            MagicMock()
+        )
+
+        result = generate_briefing(db)
+
+        assert result == []
+        mock_render.assert_not_called()
+        mock_outreach.assert_not_called()
+        db.add.assert_not_called()
 

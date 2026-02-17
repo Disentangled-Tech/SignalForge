@@ -15,6 +15,7 @@ from app.api.deps import get_db, require_ui_auth
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.user import User
+from app.services.scoring import get_display_scores_for_companies
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,13 @@ def briefing_generate(
         )
 
 
+# Sort options for briefing (Issue #24)
+_SORT_SCORE = "score"
+_SORT_RECENT = "recent"
+_SORT_OUTREACH = "outreach"
+_VALID_SORTS = frozenset({_SORT_SCORE, _SORT_RECENT, _SORT_OUTREACH})
+
+
 def _render_briefing(
     request: Request,
     db: Session,
@@ -83,18 +91,48 @@ def _render_briefing(
     user: User,
 ) -> HTMLResponse:
     """Query briefing items for a date and render the template."""
-    items = (
+    sort = request.query_params.get("sort", _SORT_SCORE)
+    if sort not in _VALID_SORTS:
+        sort = _SORT_SCORE
+
+    base_query = (
         db.query(BriefingItem)
         .options(joinedload(BriefingItem.company), joinedload(BriefingItem.analysis))
         .filter(BriefingItem.briefing_date == briefing_date)
         .join(Company, BriefingItem.company_id == Company.id)
-        .order_by(Company.cto_need_score.desc().nulls_last())
-        .all()
     )
+
+    if sort == _SORT_SCORE:
+        base_query = base_query.order_by(Company.cto_need_score.desc().nulls_last())
+    elif sort == _SORT_RECENT:
+        base_query = base_query.order_by(
+            Company.last_scan_at.desc().nulls_last()
+        )
+    else:  # _SORT_OUTREACH
+        base_query = base_query.order_by(BriefingItem.created_at.desc())
+
+    raw_items = base_query.all()
+
+    # Deduplicate by company_id (keep first = best per sort order; fixes existing duplicates)
+    seen: set[int] = set()
+    items: list[BriefingItem] = []
+    for item in raw_items:
+        if item.company_id not in seen:
+            seen.add(item.company_id)
+            items.append(item)
+
+    # CTO Score: same logic as company detail (Issue #24)
+    display_scores: dict[int, int] = {}
+    if items:
+        company_ids = [item.company_id for item in items]
+        display_scores = get_display_scores_for_companies(db, company_ids)
 
     today = date.today()
     prev_date = (briefing_date - timedelta(days=1)).isoformat()
     next_date = (briefing_date + timedelta(days=1)).isoformat() if briefing_date < today else None
+
+    # Base path for sort links (preserve date when viewing specific date)
+    briefing_path = "/briefing" if briefing_date == today else f"/briefing/{briefing_date.isoformat()}"
 
     # Check for error flash from query params
     error = request.query_params.get("error")
@@ -111,6 +149,9 @@ def _render_briefing(
             "user": user,
             "flash_message": error,
             "flash_type": "error" if error else None,
+            "display_scores": display_scores,
+            "sort": sort,
+            "briefing_path": briefing_path,
         },
     )
 
