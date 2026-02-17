@@ -27,6 +27,7 @@ from app.models.signal_record import SignalRecord
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanySource, CompanyUpdate
 from app.services.auth import authenticate_user, create_access_token
+from app.services.analysis import ALLOWED_STAGES
 from app.services.company import (
     bulk_import_companies,
     create_company,
@@ -472,6 +473,7 @@ def company_edit_form(
             "company": company,
             "form_data": form_data,
             "errors": [],
+            "allowed_stages": sorted(ALLOWED_STAGES),
         },
     )
 
@@ -529,6 +531,7 @@ def company_edit_submit(
                 "company": company,
                 "form_data": form_data,
                 "errors": errors,
+                "allowed_stages": sorted(ALLOWED_STAGES),
             },
             status_code=422,
         )

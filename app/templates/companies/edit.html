@@ -56,7 +56,12 @@
             </div>
             <div class="form-group">
                 <label for="current_stage">Current Stage</label>
-                <input type="text" id="current_stage" name="current_stage" placeholder="e.g. scaling_team, mvp_building" value="{{ form_data.current_stage|default('') }}">
+                <select id="current_stage" name="current_stage">
+                    <option value="" {% if not form_data.current_stage %}selected{% endif %}>— Not set</option>
+                    {% for stage in allowed_stages|default([]) %}
+                    <option value="{{ stage }}" {% if form_data.current_stage == stage %}selected{% endif %}>{{ stage|replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
                 <button type="submit" class="btn btn-primary">Save Changes</button>
