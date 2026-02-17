@@ -28,23 +28,23 @@ def _normalize_url(url: str) -> str:
     return url
 
 
-async def discover_pages(base_url: str) -> list[tuple[str, str]]:
+async def discover_pages(base_url: str) -> list[tuple[str, str, str | None]]:
     """Discover pages on a company website and extract text.
 
-    Returns a list of (url, clean_text) tuples.
+    Returns a list of (url, clean_text, raw_html) tuples.
     - Tries homepage first, then common sub-paths
     - Only keeps pages with meaningful content (>100 chars)
     - Returns at most 5 pages total
     """
     base_url = _normalize_url(base_url)
-    results: list[tuple[str, str]] = []
+    results: list[tuple[str, str, str | None]] = []
 
     # Try homepage first
     html = await fetch_page(base_url)
     if html:
         text = extract_text(html)
         if len(text) > _MIN_TEXT_LENGTH:
-            results.append((base_url, text))
+            results.append((base_url, text, html))
             logger.debug("discover_pages: %s OK (%d chars)", base_url, len(text))
         else:
             logger.debug("discover_pages: %s fetched but text too short (%d < %d)", base_url, len(text), _MIN_TEXT_LENGTH)
@@ -61,7 +61,7 @@ async def discover_pages(base_url: str) -> list[tuple[str, str]]:
         if html:
             text = extract_text(html)
             if len(text) > _MIN_TEXT_LENGTH:
-                results.append((page_url, text))
+                results.append((page_url, text, html))
                 logger.debug("discover_pages: %s OK (%d chars)", page_url, len(text))
         # Don't log every 404 for /blog, /news etc – many sites don't have them
 

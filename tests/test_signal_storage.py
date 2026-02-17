@@ -135,3 +135,40 @@ class TestStoreSignal:
         db.add.assert_called_once()
         db.commit.assert_called_once()
 
+    def test_store_signal_persists_raw_html_when_provided(self):
+        """When raw_html is provided, it is persisted on the SignalRecord."""
+        company = _make_company()
+        db = _make_query_mock(existing_record=None, company=company)
+
+        result = store_signal(
+            db,
+            company_id=1,
+            source_url="https://acme.example.com",
+            source_type="homepage",
+            content_text="Extracted text",
+            raw_html="<html><body><p>Raw HTML content</p></body></html>",
+        )
+
+        db.add.assert_called_once()
+        added = db.add.call_args[0][0]
+        assert isinstance(added, SignalRecord)
+        assert added.raw_html == "<html><body><p>Raw HTML content</p></body></html>"
+
+    def test_store_signal_accepts_none_raw_html(self):
+        """When raw_html is None (default), record is stored without raw_html (backward compat)."""
+        company = _make_company()
+        db = _make_query_mock(existing_record=None, company=company)
+
+        store_signal(
+            db,
+            company_id=1,
+            source_url="https://acme.example.com",
+            source_type="homepage",
+            content_text="Some text",
+        )
+
+        db.add.assert_called_once()
+        added = db.add.call_args[0][0]
+        assert isinstance(added, SignalRecord)
+        assert added.raw_html is None
+

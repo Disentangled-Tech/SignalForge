@@ -29,6 +29,7 @@ def store_signal(
     source_url: str,
     source_type: str,
     content_text: str,
+    raw_html: str | None = None,
 ) -> SignalRecord | None:
     """Store a signal record with deduplication.
 
@@ -50,6 +51,8 @@ def store_signal(
         One of: homepage, blog, jobs, careers, news, about, manual.
     content_text : str
         Extracted page text.
+    raw_html : str | None, optional
+        Raw HTML from the page; stored when provided.
 
     Returns
     -------
@@ -81,6 +84,7 @@ def store_signal(
         source_type=source_type,
         content_hash=content_hash,
         content_text=content_text,
+        raw_html=raw_html,
     )
     db.add(record)
 

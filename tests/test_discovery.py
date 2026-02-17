@@ -53,6 +53,7 @@ class TestDiscoverPages:
             assert len(results) >= 1
             assert results[0][0] == "https://example.com"
             assert len(results[0][1]) > 100
+            assert results[0][2] == _HOMEPAGE_HTML
 
     async def test_discovers_subpages(self):
         async def _mock_fetch(url: str) -> str | None:
@@ -64,6 +65,8 @@ class TestDiscoverPages:
             assert len(results) > 1
             urls = [r[0] for r in results]
             assert "https://example.com" in urls
+            for url, text, raw_html in results:
+                assert raw_html == _SUBPAGE_HTML
 
     async def test_respects_max_5_limit(self):
         """Even if all paths return content, we cap at 5 pages."""
@@ -120,8 +123,21 @@ class TestDiscoverPages:
             mock_fetch.return_value = _HOMEPAGE_HTML
 
             results = await discover_pages("https://example.com")
-            for url, text in results:
+            for url, text, raw_html in results:
                 assert isinstance(url, str)
                 assert isinstance(text, str)
+                assert isinstance(raw_html, str) or raw_html is None
                 assert url.startswith("http")
+
+    async def test_discover_pages_returns_raw_html_in_tuples(self):
+        """Each result tuple includes (url, content_text, raw_html)."""
+        with patch("app.services.page_discovery.fetch_page", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = _HOMEPAGE_HTML
+
+            results = await discover_pages("https://example.com")
+            assert len(results) >= 1
+            url, text, raw_html = results[0]
+            assert url == "https://example.com"
+            assert len(text) > 100
+            assert raw_html == _HOMEPAGE_HTML
 
