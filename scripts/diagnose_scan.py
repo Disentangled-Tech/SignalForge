@@ -27,9 +27,7 @@ from app.db.session import SessionLocal
 from app.models.company import Company
 from app.services.extractor import extract_text
 from app.services.fetcher import USER_AGENT, TIMEOUT, MAX_REDIRECTS
-
-_COMMON_PATHS = ["/blog", "/news", "/careers", "/jobs", "/about"]
-_MIN_TEXT_LENGTH = 100
+from app.services.page_discovery import COMMON_PATHS, MIN_TEXT_LENGTH
 
 
 def _normalize_url(url: str) -> str:
@@ -74,7 +72,7 @@ async def diagnose(company_id: int) -> None:
 
         base_url = _normalize_url(company.website_url)
         urls_to_try = [base_url] + [
-            urljoin(base_url + "/", p.lstrip("/")) for p in _COMMON_PATHS
+            urljoin(base_url + "/", p.lstrip("/")) for p in COMMON_PATHS
         ]
 
         print(f"\nDiagnosing scan for: {company.name} (id={company_id})")
@@ -89,10 +87,10 @@ async def diagnose(company_id: int) -> None:
             ok, html, msg = await _fetch_with_diagnostics(url)
             if ok and html:
                 text = extract_text(html)
-                passed = len(text) > _MIN_TEXT_LENGTH
+                passed = len(text) > MIN_TEXT_LENGTH
                 status = "OK" if passed else "SKIP (text too short)"
                 print(f"  {url}")
-                print(f"    -> {status} | len={len(text)} chars (min {_MIN_TEXT_LENGTH})")
+                print(f"    -> {status} | len={len(text)} chars (min {MIN_TEXT_LENGTH})")
                 if passed:
                     success_count += 1
             else:

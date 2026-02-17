@@ -23,6 +23,7 @@ class SignalRecord(Base):
     source_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
     )
