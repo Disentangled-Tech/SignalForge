@@ -1,7 +1,7 @@
 # SignalForge local development
 # Usage: make help
 
-.PHONY: help install dev migrate upgrade test lint diagnose-scan create-company
+.PHONY: help install dev migrate upgrade test lint diagnose-scan create-company rectify-alembic
 
 help:
 	@echo "SignalForge local development"
@@ -13,6 +13,7 @@ help:
 	@echo "  make test      - Run tests"
 	@echo "  make lint      - Run ruff"
 	@echo "  make create-company COMPANY_NAME=\"Acme\" - Insert a company via CLI script"
+	@echo "  make rectify-alembic - Fix alembic_version when DB has unknown revision"
 	@echo "  make diagnose-scan COMPANY_ID=N - Diagnose why a company scan fails"
 
 install:
@@ -39,6 +40,9 @@ lint:
 create-company:
 	@test -n "$(COMPANY_NAME)" || (echo "Usage: make create-company COMPANY_NAME=\"Acme Corp\""; exit 1)
 	.venv/bin/python -m app.scripts.create_company --company-name "$(COMPANY_NAME)"
+
+rectify-alembic:
+	.venv/bin/python scripts/rectify_alembic_version.py
 
 diagnose-scan:
 	@test -n "$(COMPANY_ID)" || (echo "Usage: make diagnose-scan COMPANY_ID=<id>"; exit 1)
