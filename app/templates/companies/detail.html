@@ -57,6 +57,7 @@
     <div class="text-muted" style="margin-top: 0.5rem;">Last scan completed at {{ scan_job.finished_at.strftime('%Y-%m-%d %H:%M') }}</div>
     {% endif %}
     <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+        <a href="/companies/{{ company.id }}/edit" class="btn btn-secondary">Edit</a>
         <form method="POST" action="/companies/{{ company.id }}/rescan" style="display:inline;">
             {% if scan_job and scan_job.status == 'running' %}
             <button type="submit" class="btn btn-primary" disabled>⟳ Scanning…</button>

@@ -25,14 +25,16 @@ from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.models.user import User
-from app.schemas.company import CompanyCreate, CompanySource
+from app.schemas.company import CompanyCreate, CompanySource, CompanyUpdate
 from app.services.auth import authenticate_user, create_access_token
+from app.services.analysis import ALLOWED_STAGES
 from app.services.company import (
     bulk_import_companies,
     create_company,
     delete_company,
     get_company,
     list_companies,
+    update_company,
 )
 from app.services.scoring import get_display_scores_for_companies
 
@@ -416,6 +418,8 @@ def company_detail(
 
     # Query param for one-time flash: ?rescan=queued | ?rescan=running
     rescan_param = request.query_params.get("rescan")
+    # Success flash from edit (issue #50)
+    success = request.query_params.get("success")
 
     return templates.TemplateResponse(
         "companies/detail.html",
@@ -429,7 +433,130 @@ def company_detail(
             "recomputed_score": recomputed_score,
             "scan_job": scan_job,
             "rescan_param": rescan_param,
+            "flash_message": success,
+            "flash_type": "success" if success else None,
         },
+    )
+
+
+# ── Companies: edit (issue #50) ──────────────────────────────────────
+
+
+@router.get("/companies/{company_id}/edit", response_class=HTMLResponse)
+def company_edit_form(
+    request: Request,
+    company_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+):
+    """Render edit company form with pre-filled data."""
+    company = get_company(db, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    # Map CompanyRead to form_data (same keys as add form)
+    form_data = {
+        "company_name": company.company_name,
+        "website_url": company.website_url or "",
+        "founder_name": company.founder_name or "",
+        "founder_linkedin_url": company.founder_linkedin_url or "",
+        "company_linkedin_url": company.company_linkedin_url or "",
+        "notes": company.notes or "",
+        "source": company.source.value if company.source else "manual",
+        "target_profile_match": "on" if company.target_profile_match else "",
+        "current_stage": company.current_stage or "",
+    }
+    return templates.TemplateResponse(
+        "companies/edit.html",
+        {
+            "request": request,
+            "user": user,
+            "company": company,
+            "form_data": form_data,
+            "errors": [],
+            "allowed_stages": sorted(ALLOWED_STAGES),
+        },
+    )
+
+
+@router.post("/companies/{company_id}/edit", response_class=HTMLResponse)
+def company_edit_submit(
+    request: Request,
+    company_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+    company_name: str = Form(""),
+    website_url: str = Form(""),
+    founder_name: str = Form(""),
+    founder_linkedin_url: str = Form(""),
+    company_linkedin_url: str = Form(""),
+    notes: str = Form(""),
+    source: str = Form("manual"),
+    target_profile_match: str = Form(""),
+    current_stage: str = Form(""),
+):
+    """Handle edit company form submission."""
+    company = get_company(db, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    form_data = {
+        "company_name": company_name,
+        "website_url": website_url,
+        "founder_name": founder_name,
+        "founder_linkedin_url": founder_linkedin_url,
+        "company_linkedin_url": company_linkedin_url,
+        "notes": notes,
+        "source": source,
+        "target_profile_match": target_profile_match,
+        "current_stage": current_stage,
+    }
+
+    errors: list[str] = []
+    if not company_name.strip():
+        errors.append("Company name is required.")
+
+    if website_url.strip() and not _is_valid_url(website_url):
+        errors.append("Website URL must be a valid URL (e.g. https://example.com).")
+    if founder_linkedin_url.strip() and not _is_valid_url(founder_linkedin_url):
+        errors.append("Founder LinkedIn URL must be a valid URL.")
+    if company_linkedin_url.strip() and not _is_valid_url(company_linkedin_url):
+        errors.append("Company LinkedIn URL must be a valid URL.")
+
+    if errors:
+        return templates.TemplateResponse(
+            "companies/edit.html",
+            {
+                "request": request,
+                "user": user,
+                "company": company,
+                "form_data": form_data,
+                "errors": errors,
+                "allowed_stages": sorted(ALLOWED_STAGES),
+            },
+            status_code=422,
+        )
+
+    try:
+        source_enum = CompanySource(source) if source else CompanySource.manual
+    except ValueError:
+        source_enum = CompanySource.manual
+
+    data = CompanyUpdate(
+        company_name=company_name.strip(),
+        website_url=website_url.strip() or None,
+        founder_name=founder_name.strip() or None,
+        founder_linkedin_url=founder_linkedin_url.strip() or None,
+        company_linkedin_url=company_linkedin_url.strip() or None,
+        notes=notes.strip() or None,
+        source=source_enum,
+        target_profile_match="on" if target_profile_match == "on" else None,
+        current_stage=current_stage.strip() or None,
+    )
+    result = update_company(db, company_id, data)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return RedirectResponse(
+        url=f"/companies/{company_id}?success=Company+updated", status_code=303
     )
 
 

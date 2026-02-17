@@ -274,10 +274,25 @@ def generate_outreach(
             if retry_parsed is not None:
                 retry_message = retry_parsed.get("message", "")
                 retry_claims = retry_parsed.get("operator_claims_used", [])
-                if not retry_claims and not _message_has_suspicious_claims(retry_message):
-                    subject = retry_parsed.get("subject", subject)
-                    message = retry_message
-                elif _message_has_suspicious_claims(retry_message):
+                if not _message_has_suspicious_claims(retry_message):
+                    if not retry_claims:
+                        subject = retry_parsed.get("subject", subject)
+                        message = retry_message
+                    else:
+                        retry_valid, retry_invalid = _validate_claims(
+                            retry_claims, operator_md
+                        )
+                        if not retry_invalid:
+                            subject = retry_parsed.get("subject", subject)
+                            message = retry_message
+                        else:
+                            logger.warning(
+                                "Retry has unbacked claims for %s: %s — using safe fallback",
+                                company.name,
+                                retry_invalid,
+                            )
+                            return _build_safe_fallback(company, analysis)
+                else:
                     logger.warning(
                         "Retry still has suspicious claims for %s — using safe fallback",
                         company.name,

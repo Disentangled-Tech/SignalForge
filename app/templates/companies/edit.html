@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Edit {{ company.company_name }} — SignalForge{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px;">
+    <h1>Edit Company</h1>
+
+    {% if errors %}
+    <div class="flash error">
+        {% for err in errors %}
+        <div>{{ err }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <form method="POST" action="/companies/{{ company.id }}/edit">
+            <div class="form-group">
+                <label for="company_name">Company Name *</label>
+                <input type="text" id="company_name" name="company_name" required value="{{ form_data.company_name|default('') }}">
+            </div>
+            <div class="form-group">
+                <label for="website_url">Website URL</label>
+                <input type="url" id="website_url" name="website_url" placeholder="https://example.com" value="{{ form_data.website_url|default('') }}">
+            </div>
+            <div class="form-group">
+                <label for="founder_name">Founder Name</label>
+                <input type="text" id="founder_name" name="founder_name" value="{{ form_data.founder_name|default('') }}">
+            </div>
+            <div class="form-group">
+                <label for="founder_linkedin_url">Founder LinkedIn URL</label>
+                <input type="url" id="founder_linkedin_url" name="founder_linkedin_url" placeholder="https://linkedin.com/in/..." value="{{ form_data.founder_linkedin_url|default('') }}">
+            </div>
+            <div class="form-group">
+                <label for="company_linkedin_url">Company LinkedIn URL</label>
+                <input type="url" id="company_linkedin_url" name="company_linkedin_url" placeholder="https://linkedin.com/company/..." value="{{ form_data.company_linkedin_url|default('') }}">
+            </div>
+            <div class="form-group">
+                <label for="notes">Notes</label>
+                <textarea id="notes" name="notes" rows="3">{{ form_data.notes|default('') }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="source">Source</label>
+                <select id="source" name="source">
+                    <option value="manual" {% if form_data.source|default('manual') == 'manual' %}selected{% endif %}>Manual</option>
+                    <option value="referral" {% if form_data.source|default('') == 'referral' %}selected{% endif %}>Referral</option>
+                    <option value="research" {% if form_data.source|default('') == 'research' %}selected{% endif %}>Research</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="target_profile_match" value="on" {% if form_data.target_profile_match %}checked{% endif %}>
+                    Target profile match
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="current_stage">Current Stage</label>
+                <select id="current_stage" name="current_stage">
+                    <option value="" {% if not form_data.current_stage %}selected{% endif %}>— Not set</option>
+                    {% for stage in allowed_stages|default([]) %}
+                    <option value="{{ stage }}" {% if form_data.current_stage == stage %}selected{% endif %}>{{ stage|replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <a href="/companies/{{ company.id }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

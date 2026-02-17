@@ -31,7 +31,7 @@ class CompanyCreate(BaseModel):
 
 
 class CompanyUpdate(BaseModel):
-    """Schema for updating a company. All fields optional."""
+    """Schema for updating a company. All fields optional (issue #50)."""
 
     company_name: Optional[str] = Field(None, min_length=1, max_length=255)
     website_url: Optional[str] = Field(None, max_length=2048)
@@ -41,6 +41,7 @@ class CompanyUpdate(BaseModel):
     notes: Optional[str] = None
     source: Optional[CompanySource] = None
     target_profile_match: Optional[str] = None
+    current_stage: Optional[str] = Field(None, max_length=64)
 
 
 class CompanyRead(BaseModel):
