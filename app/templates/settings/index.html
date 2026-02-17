@@ -123,6 +123,15 @@
         <p class="text-muted">No job runs yet. Scan and briefing jobs will appear here.</p>
         {% endif %}
     </div>
+
+    {% set failed_job = recent_jobs|selectattr('error_message')|first %}
+    {% if failed_job %}
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2>Failure Summary</h2>
+        <p class="text-muted">Most recent job with errors ({{ failed_job.job_type }}, {{ failed_job.started_at.strftime('%Y-%m-%d %H:%M') if failed_job.started_at else '—' }}):</p>
+        <pre style="background: #fef2f2; padding: 1rem; border-radius: 6px; font-size: 0.85rem; overflow-x: auto; white-space: pre-wrap; max-height: 20rem; overflow-y: auto;">{{ failed_job.error_message }}</pre>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 
