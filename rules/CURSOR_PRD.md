@@ -259,8 +259,8 @@ Internal Job Endpoints
 
 Cloudways cron will call:
 
-POST /internal/scan
-POST /internal/briefing
+POST /internal/run_scan
+POST /internal/run_briefing
 
 Requirements:
 	•	require secret token header

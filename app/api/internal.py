@@ -7,6 +7,7 @@ NOT cookie-based auth.  They are meant for automated triggers only.
 from __future__ import annotations
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/internal")
+router = APIRouter(prefix="/internal", include_in_schema=False)
 
 
 # ── Token dependency ────────────────────────────────────────────────
@@ -25,10 +26,12 @@ router = APIRouter(prefix="/internal")
 def _require_internal_token(x_internal_token: str = Header(...)) -> None:
     """Validate the internal job token from the request header.
 
+    Uses constant-time comparison to prevent timing attacks.
     Raises 403 if the token is empty or does not match the configured value.
     """
     expected = get_settings().internal_job_token
-    if not expected or x_internal_token != expected:
+    if not expected or not secrets.compare_digest(x_internal_token, expected):
+        logger.warning("Internal endpoint auth failed: invalid or missing token")
         raise HTTPException(status_code=403, detail="Invalid internal token")
 
 

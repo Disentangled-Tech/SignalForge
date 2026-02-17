@@ -113,8 +113,8 @@ tests/
 
 Cloudways cron will call:
 
-- `POST /internal/scan`
-- `POST /internal/briefing`
+- `POST /internal/run_scan`
+- `POST /internal/run_briefing`
 
 Both require the `X-Internal-Token` header matching `INTERNAL_JOB_TOKEN`.
 
