@@ -501,6 +501,103 @@ class TestBriefingSort:
         assert "sort=" in resp.text or "Sort" in resp.text
 
 
+class TestEmergingCompaniesSection:
+    """Tests for Emerging Companies to Watch section (Issue #93)."""
+
+    @patch("app.api.briefing_views.get_emerging_companies")
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_page_includes_emerging_section(
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
+    ):
+        """When emerging companies exist, section shows them."""
+        mock_get_scores.return_value = {}
+        co = MagicMock()
+        co.id = 1
+        co.name = "Emerging Corp"
+        co.website_url = "https://emerging.example.com"
+        snap = MagicMock()
+        snap.composite = 72
+        snap.momentum = 70
+        snap.complexity = 65
+        snap.pressure = 60
+        snap.leadership_gap = 55
+        snap.explain = {"top_events": [{"event_type": "funding_raised"}]}
+        mock_get_emerging.return_value = [(snap, co)]
+
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = []
+        query_mock.first.return_value = None
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Emerging Companies to Watch" in resp.text
+        assert "Emerging Corp" in resp.text
+        assert "Readiness: 72" in resp.text
+        assert "New funding" in resp.text
+
+    @patch("app.api.briefing_views.get_emerging_companies")
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_briefing_page_emerging_empty_state(
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
+    ):
+        """When no snapshots, emerging section shows empty message."""
+        mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
+
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = []
+        query_mock.first.return_value = None
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Emerging Companies to Watch" in resp.text
+        assert "No emerging companies for this date" in resp.text
+
+    @patch("app.api.briefing_views.get_emerging_companies")
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_emerging_section_does_not_affect_existing_briefing(
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
+    ):
+        """Existing BriefingItem section unchanged when emerging section added."""
+        mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
+
+        item = _make_briefing_item()
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = [item]
+        query_mock.first.return_value = None
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Acme Corp" in resp.text
+        assert "Daily Briefing" in resp.text
+        assert "Congrats on the raise" in resp.text
+
+
 class TestAuthRequired:
     """Tests that routes require authentication."""
 

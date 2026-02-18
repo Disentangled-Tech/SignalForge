@@ -41,6 +41,16 @@
     .sort-link:hover { background: #eff6ff; text-decoration: none; }
     .sort-link.active { font-weight: 600; background: #dbeafe; color: #1e40af; }
 
+    .emerging-section { margin-bottom: 2rem; }
+    .emerging-section h2 { font-size: 1.2rem; color: #334155; margin-bottom: 1rem; }
+    .emerging-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    .emerging-card .company-link { font-weight: 600; color: #1a1a2e; }
+    .emerging-card .company-link:hover { color: #2563eb; }
+    .emerging-dimensions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; font-size: 0.75rem; color: #64748b; }
+    .emerging-dim { padding: 0.15rem 0.4rem; background: #e2e8f0; border-radius: 4px; }
+    .emerging-signals { margin-top: 0.5rem; font-size: 0.85rem; color: #475569; }
+    .emerging-signals ul { margin: 0; padding-left: 1.25rem; }
+
     .print-header { display: none; }
     @media print {
         nav, .btn, .copy-btn, .date-nav, form, .no-print { display: none !important; }
@@ -75,6 +85,44 @@
         </form>
     </div>
 </div>
+
+<section class="emerging-section no-print">
+    <h2>Emerging Companies to Watch</h2>
+    {% if emerging_companies %}
+    {% for ec in emerging_companies %}
+    <div class="emerging-card">
+        <div class="company-header">
+            <div class="company-title">
+                <a href="/companies/{{ ec.company.id }}" class="company-link">{{ ec.company.name }}</a>
+                {% if ec.company.website_url %}
+                <a href="{{ ec.company.website_url }}" target="_blank" rel="noopener" style="font-size:0.85rem;color:#64748b;">Website</a>
+                {% endif %}
+            </div>
+            <span class="score-badge">Readiness: {{ ec.snapshot.composite }}</span>
+        </div>
+        <div class="emerging-dimensions">
+            <span class="emerging-dim">M {{ ec.snapshot.momentum }}</span>
+            <span class="emerging-dim">C {{ ec.snapshot.complexity }}</span>
+            <span class="emerging-dim">P {{ ec.snapshot.pressure }}</span>
+            <span class="emerging-dim">G {{ ec.snapshot.leadership_gap }}</span>
+        </div>
+        {% if ec.top_signals %}
+        <div class="emerging-signals">
+            <ul>
+            {% for signal in ec.top_signals %}
+                <li>{{ signal }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state" style="padding: 1.5rem 1rem;">
+        <p style="margin:0;color:#94a3b8;">No emerging companies for this date. Run score nightly to populate readiness snapshots.</p>
+    </div>
+    {% endif %}
+</section>
 
 {% if items %}
 <div class="briefing-toolbar no-print">
