@@ -91,7 +91,10 @@ def get_emerging_companies(
     limit: int = 5,
     outreach_score_threshold: int = 30,
 ) -> list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]]:
-    """Query top N companies by OutreachScore for a date (Issue #102).
+    """Query top N companies by OutreachScore for a date (Issue #102, #103).
+
+    Ranking contract (Issue #103): OutreachScore = round(TRS × ESL), 0–100.
+    Companies are ranked by OutreachScore descending; threshold filter applied.
 
     Joins ReadinessSnapshot with EngagementSnapshot. Returns (readiness_snapshot,
     engagement_snapshot, company) for companies with OutreachScore >= threshold,
@@ -119,6 +122,7 @@ def get_emerging_companies(
             continue
         results.append((rs, es, rs.company))
 
+    # Rank by OutreachScore = TRS × ESL descending (Issue #103)
     results.sort(key=lambda r: r[0].composite * r[1].esl_score, reverse=True)
     return results[:limit]
 

@@ -467,6 +467,35 @@ class TestBriefingSort:
 
     @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_sort_param_outreach_score_returns_200(
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
+    ):
+        """sort=outreach_score renders without error (Issue #103)."""
+        mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
+        item = _make_briefing_item()
+        query_mock = MagicMock()
+        join_mock = MagicMock()
+        order_mock = MagicMock()
+        order_mock.all.return_value = [item]
+        filter_mock = MagicMock()
+        filter_mock.all.return_value = []  # No ReadinessSnapshot+EngagementSnapshot
+        join_mock.order_by.return_value = order_mock
+        join_mock.filter.return_value = filter_mock
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = join_mock
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing?sort=outreach_score")
+
+        assert resp.status_code == 200
+        assert "outreach_score" in resp.text
+
+    @patch("app.api.briefing_views.get_emerging_companies")
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_duplicate_companies_deduplicated_in_display(
         self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):

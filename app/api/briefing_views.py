@@ -15,7 +15,9 @@ from app.api.deps import get_db, require_ui_auth
 from app.config import get_settings
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
+from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.user import User
 from app.services.briefing import get_emerging_companies
 from app.services.esl.esl_engine import compute_outreach_score
@@ -94,11 +96,12 @@ def briefing_generate(
         )
 
 
-# Sort options for briefing (Issue #24)
+# Sort options for briefing (Issue #24, #103)
 _SORT_SCORE = "score"
 _SORT_RECENT = "recent"
 _SORT_OUTREACH = "outreach"
-_VALID_SORTS = frozenset({_SORT_SCORE, _SORT_RECENT, _SORT_OUTREACH})
+_SORT_OUTREACH_SCORE = "outreach_score"
+_VALID_SORTS = frozenset({_SORT_SCORE, _SORT_RECENT, _SORT_OUTREACH, _SORT_OUTREACH_SCORE})
 
 
 def _render_briefing(
@@ -125,6 +128,9 @@ def _render_briefing(
         base_query = base_query.order_by(
             Company.last_scan_at.desc().nulls_last()
         )
+    elif sort == _SORT_OUTREACH_SCORE:
+        # Sort by OutreachScore (Issue #103); order applied after fetch
+        base_query = base_query.order_by(BriefingItem.id.asc())
     else:  # _SORT_OUTREACH
         base_query = base_query.order_by(BriefingItem.created_at.desc())
 
@@ -137,6 +143,33 @@ def _render_briefing(
         if item.company_id not in seen:
             seen.add(item.company_id)
             items.append(item)
+
+    # Sort by OutreachScore when requested (Issue #103)
+    if sort == _SORT_OUTREACH_SCORE and items:
+        company_ids = [item.company_id for item in items]
+        pairs = (
+            db.query(ReadinessSnapshot, EngagementSnapshot)
+            .join(
+                EngagementSnapshot,
+                (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
+                & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of),
+            )
+            .filter(
+                ReadinessSnapshot.company_id.in_(company_ids),
+                ReadinessSnapshot.as_of == briefing_date,
+            )
+            .all()
+        )
+        outreach_scores: dict[int, int] = {}
+        for rs, es in pairs:
+            outreach_scores[rs.company_id] = compute_outreach_score(
+                rs.composite, es.esl_score
+            )
+        # Companies without snapshots sort last (score -1)
+        items.sort(
+            key=lambda i: outreach_scores.get(i.company_id, -1),
+            reverse=True,
+        )
 
     # CTO Score: same logic as company detail (Issue #24)
     display_scores: dict[int, int] = {}

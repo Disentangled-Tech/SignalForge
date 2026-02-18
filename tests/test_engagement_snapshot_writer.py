@@ -58,6 +58,9 @@ def test_engagement_snapshot_writer_persists(db: Session) -> None:
     assert "stability_modifier" in result.explain
     assert "esl_composite" in result.explain
     assert "recommendation_type" in result.explain
+    # Issue #103: outreach_score = round(TRS × ESL)
+    assert result.outreach_score is not None
+    assert result.outreach_score == round(82 * result.esl_score)
 
 
 def test_engagement_snapshot_writer_upserts(db: Session) -> None:
