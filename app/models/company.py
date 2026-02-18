@@ -66,3 +66,6 @@ class Company(Base):
     outreach_history: Mapped[list["OutreachHistory"]] = relationship(
         "OutreachHistory", back_populates="company", cascade="all, delete-orphan"
     )
+    outreach_recommendations: Mapped[list["OutreachRecommendation"]] = relationship(
+        "OutreachRecommendation", back_populates="company", cascade="all, delete-orphan"
+    )

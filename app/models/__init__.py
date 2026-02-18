@@ -7,6 +7,7 @@ from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.outreach_history import OutreachHistory
+from app.models.outreach_recommendation import OutreachRecommendation
 from app.models.job_run import JobRun
 from app.models.operator_profile import OperatorProfile
 from app.models.readiness_snapshot import ReadinessSnapshot
@@ -23,6 +24,7 @@ __all__ = [
     "Company",
     "EngagementSnapshot",
     "OutreachHistory",
+    "OutreachRecommendation",
     "JobRun",
     "OperatorProfile",
     "ReadinessSnapshot",
