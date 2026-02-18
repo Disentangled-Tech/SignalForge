@@ -46,3 +46,6 @@ class Company(Base):
     briefing_items: Mapped[list["BriefingItem"]] = relationship(
         "BriefingItem", back_populates="company", cascade="all, delete-orphan"
     )
+    readiness_snapshots: Mapped[list["ReadinessSnapshot"]] = relationship(
+        "ReadinessSnapshot", back_populates="company", cascade="all, delete-orphan"
+    )
