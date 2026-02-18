@@ -23,6 +23,7 @@ class OutreachHistory(Base):
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    outcome: Mapped[str | None] = mapped_column(String(64), nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
