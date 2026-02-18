@@ -16,6 +16,7 @@ from app.services.readiness.readiness_engine import (
     compute_event_contributions,
     compute_readiness,
 )
+from app.services.readiness.scoring_constants import COMPOSITE_WEIGHTS
 from app.services.readiness.snapshot_writer import write_readiness_snapshot
 
 
@@ -79,6 +80,18 @@ class TestComputeComposite:
     def test_rounding_half_up(self) -> None:
         """0.30*33+0.30*33+0.25*33+0.15*33 = 33 exactly."""
         assert compute_composite(33, 33, 33, 33) == 33
+
+    def test_weights_sum_to_one(self) -> None:
+        """Composite weights sum to 1.0 (Issue #95)."""
+        total = COMPOSITE_WEIGHTS["M"] + COMPOSITE_WEIGHTS["C"] + COMPOSITE_WEIGHTS["P"] + COMPOSITE_WEIGHTS["G"]
+        assert abs(total - 1.0) < 1e-9
+
+    def test_single_dimension_dominance(self) -> None:
+        """M=100, C=P=G=0 → R=30 (Issue #95)."""
+        assert compute_composite(100, 0, 0, 0) == 30
+        assert compute_composite(0, 100, 0, 0) == 30
+        assert compute_composite(0, 0, 100, 0) == 25
+        assert compute_composite(0, 0, 0, 100) == 15
 
 
 # ── apply_global_suppressors ──────────────────────────────────────────────
@@ -211,6 +224,15 @@ class TestComputeEventContributions:
         events = [_event("funding_raised", i) for i in range(15)]
         top = compute_event_contributions(events, date.today(), limit=5)
         assert len(top) <= 5
+
+    def test_events_with_no_contribution_return_empty_or_partial(self) -> None:
+        """Events with no contribution (unknown types, out of window) → partial result (Issue #95)."""
+        # Only unknown/irrelevant events
+        events = [
+            MockEvent(event_type="unknown_type", event_time=_days_ago(5), confidence=1.0, source="test", url=None),
+        ]
+        top = compute_event_contributions(events, date.today(), limit=8)
+        assert top == []
 
 
 # ── write_readiness_snapshot (integration) ─────────────────────────────────

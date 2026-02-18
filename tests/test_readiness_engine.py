@@ -123,6 +123,78 @@ class TestScenarioCtoHiredSuppressor:
         g = compute_leadership_gap(events, date.today())
         assert g == 70
 
+    def test_cto_hired_exactly_at_60_days_suppresses_strongly(self) -> None:
+        """cto_hired at exactly 60 days → -70 suppressor (Issue #95)."""
+        as_of = date.today()
+        events = [
+            _event("cto_role_posted", 50),
+            _event("cto_hired", 60),
+        ]
+        g = compute_leadership_gap(events, as_of)
+        assert g == 0
+
+    def test_cto_hired_exactly_at_180_days_suppresses_moderately(self) -> None:
+        """cto_hired at exactly 180 days → -50 suppressor (Issue #95)."""
+        as_of = date.today()
+        events = [
+            _event("cto_role_posted", 50),
+            _event("cto_hired", 180),
+        ]
+        g = compute_leadership_gap(events, as_of)
+        # Raw G: 70; cto_hired in 61-180d: G = max(70 - 50, 0) = 20
+        assert g == 20
+
+    def test_cto_hired_at_181_days_no_suppression(self) -> None:
+        """cto_hired at 181 days → outside window, no suppression (Issue #95)."""
+        as_of = date.today()
+        events = [
+            _event("cto_role_posted", 50),
+            _event("cto_hired", 181),
+        ]
+        g = compute_leadership_gap(events, as_of)
+        # cto_hired outside 180d window; raw G = 70
+        assert g == 70
+
+    def test_multiple_cto_hired_uses_most_recent(self) -> None:
+        """Multiple cto_hired events → use most recent (closest to as_of) (Issue #95)."""
+        as_of = date.today()
+        events = [
+            _event("cto_role_posted", 50),
+            _event("cto_hired", 150),  # 61-180d: -50
+            _event("cto_hired", 45),   # 0-60d: -70 (most recent)
+        ]
+        g = compute_leadership_gap(events, as_of)
+        # Most recent cto_hired is 45d ago → -70 suppressor
+        assert g == 0
+
+    def test_fractional_request_outside_120_days_ignored(self) -> None:
+        """fractional_request outside 120-day window → ignored (Issue #95)."""
+        as_of = date.today()
+        events = [_event("fractional_request", 121)]
+        g = compute_leadership_gap(events, as_of)
+        assert g == 0
+
+    def test_advisor_request_outside_120_days_ignored(self) -> None:
+        """advisor_request outside 120-day window → ignored (Issue #95)."""
+        as_of = date.today()
+        events = [_event("advisor_request", 121)]
+        g = compute_leadership_gap(events, as_of)
+        assert g == 0
+
+    def test_no_cto_detected_at_365_days_in_window(self) -> None:
+        """no_cto_detected at 365 days → in window, contributes (Issue #95)."""
+        as_of = date.today()
+        events = [_event("no_cto_detected", 365)]
+        g = compute_leadership_gap(events, as_of)
+        assert g == 40
+
+    def test_no_cto_detected_at_366_days_out_of_window(self) -> None:
+        """no_cto_detected at 366 days → out of window, ignored (Issue #95)."""
+        as_of = date.today()
+        events = [_event("no_cto_detected", 366)]
+        g = compute_leadership_gap(events, as_of)
+        assert g == 0
+
 
 # ── Decay boundaries ───────────────────────────────────────────────────────
 
@@ -273,3 +345,23 @@ class TestEdgeCases:
         g = compute_leadership_gap(events, date.today())
         # 70 + 40 = 110, cap 100
         assert g == 100
+
+    def test_event_with_ev_time_none_skipped(self) -> None:
+        """Event with event_time=None is skipped, no crash (Issue #95)."""
+        ev_none_time = type("Ev", (), {"event_type": "funding_raised", "event_time": None, "confidence": 0.7})()
+        events = [ev_none_time, _event("funding_raised", 5)]
+        m = compute_momentum(events, date.today())
+        # Only the valid event contributes
+        assert m in (24, 25)
+
+    def test_confidence_clamped_above_one(self) -> None:
+        """Event with confidence > 1.0 is clamped to 1.0 (Issue #95)."""
+        ev_high_conf = MockEvent(event_type="funding_raised", event_time=_days_ago(5), confidence=1.5)
+        m = compute_momentum([ev_high_conf], date.today())
+        assert m == 35  # 35 * 1.0 * 1.0 = 35 (clamped)
+
+    def test_confidence_clamped_below_zero(self) -> None:
+        """Event with confidence < 0 is clamped to 0 (Issue #95)."""
+        ev_low_conf = MockEvent(event_type="funding_raised", event_time=_days_ago(5), confidence=-0.1)
+        m = compute_momentum([ev_low_conf], date.today())
+        assert m == 0
