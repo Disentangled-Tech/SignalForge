@@ -773,6 +773,62 @@ class TestCompanyRescan:
         assert resp.status_code == 404
 
 
+# ── Scan all tests ───────────────────────────────────────────────────
+
+
+class TestCompaniesScanAll:
+    def test_scan_all_queues_and_redirects(self, views_client, mock_db_session):
+        """POST /companies/scan-all with no running scan redirects with scan_all=queued."""
+        mock_first = MagicMock(return_value=None)
+        mock_filter = MagicMock()
+        mock_filter.first = mock_first
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post("/companies/scan-all", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/companies?scan_all=queued"
+
+    def test_scan_all_already_running_redirects(self, views_client, mock_db_session):
+        """POST /companies/scan-all when scan running redirects with scan_all=running."""
+        running_job = MagicMock()
+        mock_first = MagicMock(return_value=running_job)
+        mock_filter = MagicMock()
+        mock_filter.first = mock_first
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post("/companies/scan-all", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert "scan_all=running" in resp.headers.get("location", "")
+
+    def test_scan_all_requires_auth(self, noauth_client, mock_db_session):
+        """POST /companies/scan-all without auth redirects to login."""
+        mock_first = MagicMock(return_value=None)
+        mock_filter = MagicMock()
+        mock_filter.first = mock_first
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = noauth_client.post("/companies/scan-all", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert resp.headers.get("location") == "/login"
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_shows_scan_all_button(self, mock_list, views_client, mock_db_session):
+        """GET /companies renders Scan all button."""
+        mock_list.return_value = ([], 0)
+        mock_first = MagicMock(return_value=None)
+        mock_filter = MagicMock()
+        mock_filter.first = mock_first
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.get("/companies")
+        assert resp.status_code == 200
+        assert "Scan all" in resp.text
+        assert 'action="/companies/scan-all"' in resp.text
+
+
 # ── Company detail scan status tests ─────────────────────────────────
 
 
