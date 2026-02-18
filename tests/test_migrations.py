@@ -49,3 +49,4 @@ def test_alembic_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
     assert "users" in tables
     assert "operator_profiles" in tables
     assert "app_settings" in tables
+    assert "signal_events" in tables
