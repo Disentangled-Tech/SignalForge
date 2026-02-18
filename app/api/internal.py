@@ -79,3 +79,29 @@ async def run_briefing(
         logger.exception("Internal briefing generation failed")
         return {"status": "failed", "error": str(exc)}
 
+
+@router.post("/run_score")
+async def run_score(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+):
+    """Trigger nightly TRS scoring (Issue #104).
+
+    Scores all companies with SignalEvents in last 365 days or on watchlist.
+    Returns job summary with companies_scored, companies_skipped.
+    """
+    from app.services.readiness.score_nightly import run_score_nightly
+
+    try:
+        result = run_score_nightly(db)
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
+            "companies_scored": result["companies_scored"],
+            "companies_skipped": result["companies_skipped"],
+            "error": result.get("error"),
+        }
+    except Exception as exc:
+        logger.exception("Internal score job failed")
+        return {"status": "failed", "error": str(exc)}
+
