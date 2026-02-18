@@ -124,8 +124,9 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
     for c in [company1, company2, company3]:
         db.refresh(c)
 
-        # Use a date far in future to avoid collisions with leftover test data
-        as_of = date(2050, 1, 1)
+    # Use a unique far-future date to avoid collisions with leftover test data
+    as_of = date(2099, 12, 31)
+    company_ids = [company1.id, company2.id, company3.id]
     snapshots = [
         ReadinessSnapshot(company_id=company1.id, as_of=as_of, momentum=80, complexity=70, pressure=60, leadership_gap=50, composite=70),
         ReadinessSnapshot(company_id=company2.id, as_of=as_of, momentum=60, complexity=50, pressure=40, leadership_gap=30, composite=50),
@@ -134,9 +135,13 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
     db.add_all(snapshots)
     db.commit()
 
+    # Filter to our test companies only (db fixture does not rollback; other tests may leave data)
     top_n = (
         db.query(ReadinessSnapshot)
-        .filter(ReadinessSnapshot.as_of == as_of)
+        .filter(
+            ReadinessSnapshot.as_of == as_of,
+            ReadinessSnapshot.company_id.in_(company_ids),
+        )
         .order_by(ReadinessSnapshot.composite.desc())
         .limit(2)
         .all()
