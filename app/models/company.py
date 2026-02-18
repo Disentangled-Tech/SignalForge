@@ -49,3 +49,6 @@ class Company(Base):
     signal_events: Mapped[list["SignalEvent"]] = relationship(
         "SignalEvent", back_populates="company", passive_deletes=True
     )
+    readiness_snapshots: Mapped[list["ReadinessSnapshot"]] = relationship(
+        "ReadinessSnapshot", back_populates="company", cascade="all, delete-orphan"
+    )
