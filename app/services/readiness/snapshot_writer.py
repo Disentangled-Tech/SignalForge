@@ -46,6 +46,22 @@ def write_readiness_snapshot(
         company_status=company_status,
     )
 
+    # Delta: today.composite - prev.composite (v2-spec §6.4, Issue #104)
+    prev_snapshot = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company_id,
+            ReadinessSnapshot.as_of == as_of - timedelta(days=1),
+        )
+        .first()
+    )
+    delta_1d = (
+        result["composite"] - prev_snapshot.composite
+        if prev_snapshot is not None
+        else 0
+    )
+    result["explain"]["delta_1d"] = delta_1d
+
     existing = (
         db.query(ReadinessSnapshot)
         .filter(

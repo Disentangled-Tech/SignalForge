@@ -127,3 +127,62 @@ class TestRunBriefing:
         assert data["status"] == "failed"
         assert "LLM down" in data["error"]
 
+
+# ── /internal/run_score ────────────────────────────────────────────
+
+
+class TestRunScore:
+    @patch("app.services.readiness.score_nightly.run_score_nightly")
+    def test_valid_token_calls_run_score_nightly(
+        self, mock_score, client: TestClient
+    ):
+        """POST /internal/run_score with valid token triggers score job."""
+        mock_score.return_value = {
+            "status": "completed",
+            "job_run_id": 99,
+            "companies_scored": 5,
+            "companies_skipped": 2,
+            "error": None,
+        }
+
+        response = client.post(
+            "/internal/run_score",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["job_run_id"] == 99
+        assert data["companies_scored"] == 5
+        assert data["companies_skipped"] == 2
+        mock_score.assert_called_once()
+
+    def test_run_score_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_score without token header returns 422."""
+        response = client.post("/internal/run_score")
+        assert response.status_code == 422
+
+    def test_run_score_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_score with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_score",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
+    @patch("app.services.readiness.score_nightly.run_score_nightly")
+    def test_run_score_error_returns_failed(self, mock_score, client: TestClient):
+        """POST /internal/run_score returns failed status on exception."""
+        mock_score.side_effect = RuntimeError("DB error")
+
+        response = client.post(
+            "/internal/run_score",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert "DB error" in data["error"]
+

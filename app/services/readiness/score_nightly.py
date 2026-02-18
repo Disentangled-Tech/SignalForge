@@ -1,0 +1,111 @@
+"""Nightly TRS scoring job (Issue #104).
+
+Scores all companies with SignalEvents in last 365 days OR on watchlist.
+Writes readiness snapshots with explain payload and delta_1d.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy.orm import Session
+
+from app.models import JobRun, SignalEvent, Watchlist
+from app.services.readiness.snapshot_writer import write_readiness_snapshot
+
+logger = logging.getLogger(__name__)
+
+
+def run_score_nightly(db: Session) -> dict:
+    """Run nightly TRS scoring for all eligible companies (v2-spec §12, Issue #104).
+
+    Companies to score:
+    - Companies with any SignalEvent in last 365 days
+    - OR companies on watchlist (is_active=True)
+
+    One company failure does not stop the run (PRD error handling).
+    Creates JobRun record for audit.
+
+    Returns:
+        dict with status, job_run_id, companies_scored, companies_skipped, error
+    """
+    job = JobRun(job_type="score", status="running")
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    try:
+        as_of = date.today()
+        cutoff_dt = datetime.combine(
+            as_of - timedelta(days=365), datetime.min.time()
+        ).replace(tzinfo=timezone.utc)
+
+        # Company IDs with SignalEvents in last 365 days
+        ids_from_events = {
+            row[0]
+            for row in db.query(SignalEvent.company_id)
+            .filter(
+                SignalEvent.company_id.isnot(None),
+                SignalEvent.event_time >= cutoff_dt,
+            )
+            .distinct()
+            .all()
+            if row[0] is not None
+        }
+
+        # Company IDs on watchlist (v2-spec §12: OR on watchlist)
+        ids_from_watchlist = {
+            row[0]
+            for row in db.query(Watchlist.company_id)
+            .filter(Watchlist.is_active == True)
+            .distinct()
+            .all()
+        }
+
+        company_ids = ids_from_events | ids_from_watchlist
+
+        companies_scored = 0
+        companies_skipped = 0
+        errors: list[str] = []
+
+        for company_id in company_ids:
+            try:
+                snapshot = write_readiness_snapshot(db, company_id, as_of)
+                if snapshot is not None:
+                    companies_scored += 1
+                else:
+                    companies_skipped += 1
+            except Exception as exc:
+                msg = f"Company {company_id}: {exc}"
+                logger.exception("Score failed for company %s", company_id)
+                errors.append(msg)
+                companies_skipped += 1
+
+        job.finished_at = datetime.now(timezone.utc)
+        job.status = "completed"
+        job.companies_processed = companies_scored
+        job.error_message = "; ".join(errors[:10]) if errors else None
+        db.commit()
+
+        return {
+            "status": "completed",
+            "job_run_id": job.id,
+            "companies_scored": companies_scored,
+            "companies_skipped": companies_skipped,
+            "error": "; ".join(errors) if errors else None,
+        }
+
+    except Exception as exc:
+        logger.exception("Nightly score job failed")
+        job.finished_at = datetime.now(timezone.utc)
+        job.status = "failed"
+        job.error_message = str(exc)
+        db.commit()
+        return {
+            "status": "failed",
+            "job_run_id": job.id,
+            "companies_scored": 0,
+            "companies_skipped": 0,
+            "error": str(exc),
+        }

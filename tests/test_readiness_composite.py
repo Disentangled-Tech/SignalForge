@@ -253,6 +253,8 @@ class TestWriteReadinessSnapshotPersists:
         assert "dimensions" in snapshot.explain
         assert "top_events" in snapshot.explain
         assert "suppressors_applied" in snapshot.explain
+        assert "delta_1d" in snapshot.explain
+        assert snapshot.explain["delta_1d"] == 0  # no prev snapshot
 
     def test_no_events_returns_none(self, db: Session) -> None:
         """Company with no SignalEvents returns None."""
@@ -263,3 +265,36 @@ class TestWriteReadinessSnapshotPersists:
 
         snapshot = write_readiness_snapshot(db, company.id, date.today())
         assert snapshot is None
+
+    def test_explain_includes_delta_1d_when_prev_exists(self, db: Session) -> None:
+        """Second snapshot includes delta_1d when previous day snapshot exists."""
+        company = Company(name="DeltaTestCo", website_url="https://delta.example.com")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        # Seed SignalEvents
+        for i, etype in enumerate(["funding_raised", "api_launched", "enterprise_customer"]):
+            ev = SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type=etype,
+                event_time=datetime.now(timezone.utc) - timedelta(days=i * 10),
+                confidence=0.8,
+            )
+            db.add(ev)
+        db.commit()
+
+        # Day 1 snapshot (composite will be some value)
+        as_of_1 = date.today() - timedelta(days=1)
+        snap1 = write_readiness_snapshot(db, company.id, as_of_1)
+        assert snap1 is not None
+        composite_1 = snap1.composite
+
+        # Day 2 snapshot - should have delta_1d = composite_2 - composite_1
+        as_of_2 = date.today()
+        snap2 = write_readiness_snapshot(db, company.id, as_of_2)
+        assert snap2 is not None
+        assert "delta_1d" in snap2.explain
+        expected_delta = snap2.composite - composite_1
+        assert snap2.explain["delta_1d"] == expected_delta
