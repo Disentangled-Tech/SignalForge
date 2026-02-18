@@ -50,6 +50,9 @@
     .emerging-dim { padding: 0.15rem 0.4rem; background: #e2e8f0; border-radius: 4px; }
     .emerging-signals { margin-top: 0.5rem; font-size: 0.85rem; color: #475569; }
     .emerging-signals ul { margin: 0; padding-left: 1.25rem; }
+    .emerging-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
+    .emerging-recommendation { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #e0e7ff; color: #3730a3; }
+    .emerging-cooldown { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #fef3c7; color: #92400e; }
 
     .print-header { display: none; }
     @media print {
@@ -98,9 +101,17 @@
                 <a href="{{ ec.company.website_url }}" target="_blank" rel="noopener" style="font-size:0.85rem;color:#64748b;">Website</a>
                 {% endif %}
             </div>
-            <span class="score-badge">Readiness: {{ ec.snapshot.composite }}</span>
+            <span class="score-badge">Outreach: {{ ec.outreach_score }}</span>
+        </div>
+        <div class="emerging-badges">
+            <span class="emerging-recommendation">{{ ec.engagement_type }}</span>
+            {% if ec.cadence_blocked %}
+            <span class="emerging-cooldown">Cooldown active</span>
+            {% endif %}
         </div>
         <div class="emerging-dimensions">
+            <span class="emerging-dim">TRS {{ ec.snapshot.composite }}</span>
+            <span class="emerging-dim">ESL {{ "%.2f"|format(ec.esl_score) }}</span>
             <span class="emerging-dim">M {{ ec.snapshot.momentum }}</span>
             <span class="emerging-dim">C {{ ec.snapshot.complexity }}</span>
             <span class="emerging-dim">P {{ ec.snapshot.pressure }}</span>
@@ -119,7 +130,7 @@
     {% endfor %}
     {% else %}
     <div class="empty-state" style="padding: 1.5rem 1rem;">
-        <p style="margin:0;color:#94a3b8;">No emerging companies for this date. Run score nightly to populate readiness snapshots.</p>
+        <p style="margin:0;color:#94a3b8;">No emerging companies for this date. Run score nightly to populate readiness and engagement snapshots.</p>
     </div>
     {% endif %}
 </section>

@@ -50,6 +50,10 @@ class Settings:
     # Readiness (Issue #93, v2-spec §13)
     readiness_threshold: int = 60  # composite >= this for Emerging Companies section
 
+    # Outreach (Issue #102) — Emerging Companies section
+    outreach_score_threshold: int = 30  # min OutreachScore (TRS × ESL) to show
+    weekly_review_limit: int = 5  # max companies in Emerging section (ORE spec: 3–5/week)
+
     # Briefing
     briefing_time: str = "08:00"  # 24h format for cron
     briefing_email_enabled: bool = False
@@ -112,6 +116,12 @@ class Settings:
         )
         self.readiness_threshold = int(
             os.getenv("READINESS_THRESHOLD", str(self.readiness_threshold))
+        )
+        self.outreach_score_threshold = int(
+            os.getenv("OUTREACH_SCORE_THRESHOLD", str(self.outreach_score_threshold))
+        )
+        self.weekly_review_limit = int(
+            os.getenv("WEEKLY_REVIEW_LIMIT", str(self.weekly_review_limit))
         )
 
         self.briefing_time = os.getenv("BRIEFING_TIME", self.briefing_time)

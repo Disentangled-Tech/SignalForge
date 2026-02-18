@@ -18,6 +18,7 @@ from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.user import User
 from app.services.briefing import get_emerging_companies
+from app.services.esl.esl_engine import compute_outreach_score
 from app.services.readiness.human_labels import event_type_to_label
 from app.services.scoring import get_display_scores_for_companies
 
@@ -168,24 +169,32 @@ def _render_briefing(
         )
     )
 
-    # Emerging Companies to Watch (Issue #93): readiness_snapshots, composite >= threshold
+    # Emerging Companies to Watch (Issue #102): OutreachScore, ESL, recommendation category
     settings = get_settings()
-    emerging_pairs = get_emerging_companies(
+    emerging_triples = get_emerging_companies(
         db,
         briefing_date,
-        limit=10,
-        threshold=settings.readiness_threshold,
+        limit=settings.weekly_review_limit,
+        outreach_score_threshold=settings.outreach_score_threshold,
     )
     emerging_companies: list[dict] = []
-    for snapshot, company in emerging_pairs:
-        top_events = (snapshot.explain or {}).get("top_events") or []
+    for readiness_snap, engagement_snap, company in emerging_triples:
+        top_events = (readiness_snap.explain or {}).get("top_events") or []
         top_signals = [
             event_type_to_label(ev.get("event_type", ""))
             for ev in top_events[:3]
         ]
+        outreach_score = compute_outreach_score(
+            readiness_snap.composite, engagement_snap.esl_score
+        )
         emerging_companies.append({
             "company": company,
-            "snapshot": snapshot,
+            "snapshot": readiness_snap,
+            "engagement_snapshot": engagement_snap,
+            "outreach_score": outreach_score,
+            "esl_score": engagement_snap.esl_score,
+            "engagement_type": engagement_snap.engagement_type,
+            "cadence_blocked": engagement_snap.cadence_blocked,
             "top_signals": top_signals,
         })
 
