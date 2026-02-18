@@ -7,7 +7,9 @@ import csv
 import io
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import re
 
@@ -35,6 +37,12 @@ from app.services.company import (
     get_company,
     list_companies,
     update_company,
+)
+from app.services.outreach_history import (
+    create_outreach_record,
+    delete_outreach_record,
+    get_draft_for_company,
+    list_outreach_for_company,
 )
 from app.services.scoring import get_display_scores_for_companies
 
@@ -417,6 +425,10 @@ def company_detail(
         .first()
     )
 
+    # Outreach history and draft for pre-fill
+    outreach_history = list_outreach_for_company(db, company_id)
+    draft_message = get_draft_for_company(db, company_id)
+
     # Recompute score from analysis; use for display and repair if stored score is wrong
     recomputed_score: int | None = None
     if analysis is not None:
@@ -442,6 +454,10 @@ def company_detail(
     rescan_param = request.query_params.get("rescan")
     # Success flash from edit (issue #50)
     success = request.query_params.get("success")
+    # Outreach form validation error
+    outreach_error = request.query_params.get("outreach_error")
+    # Default for datetime-local input (current time in local format)
+    now_for_datetime_local = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
 
     return templates.TemplateResponse(
         "companies/detail.html",
@@ -452,12 +468,99 @@ def company_detail(
             "signals": signals,
             "analysis": analysis,
             "briefing": briefing,
+            "outreach_history": outreach_history,
+            "draft_message": draft_message,
             "recomputed_score": recomputed_score,
             "scan_job": scan_job,
             "rescan_param": rescan_param,
             "flash_message": success,
             "flash_type": "success" if success else None,
+            "outreach_error": outreach_error,
+            "now_for_datetime_local": now_for_datetime_local,
         },
+    )
+
+
+# ── Companies: outreach ──────────────────────────────────────────────
+
+_OUTREACH_TYPES = frozenset({"email", "linkedin_dm", "warm_intro", "other"})
+
+
+@router.post("/companies/{company_id}/outreach")
+def company_outreach_add(
+    company_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+    sent_at: str = Form(""),
+    outreach_type: str = Form(""),
+    message: str = Form(""),
+    notes: str = Form(""),
+):
+    """Add an outreach record for a company."""
+    company = get_company(db, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    errors: list[str] = []
+    if not sent_at.strip():
+        errors.append("Sent date/time is required.")
+    if not outreach_type.strip():
+        errors.append("Outreach type is required.")
+    elif outreach_type.strip() not in _OUTREACH_TYPES:
+        errors.append(
+            f"Outreach type must be one of: {', '.join(sorted(_OUTREACH_TYPES))}"
+        )
+
+    if errors:
+        return RedirectResponse(
+            url=f"/companies/{company_id}?outreach_error={quote(errors[0])}",
+            status_code=303,
+        )
+
+    # Parse sent_at (datetime-local format: YYYY-MM-DDTHH:MM)
+    try:
+        sent_dt = datetime.fromisoformat(sent_at.strip().replace("Z", "+00:00"))
+        if sent_dt.tzinfo is None:
+            sent_dt = sent_dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return RedirectResponse(
+            url=f"/companies/{company_id}?outreach_error=Invalid+date+time+format",
+            status_code=303,
+        )
+
+    create_outreach_record(
+        db,
+        company_id=company_id,
+        sent_at=sent_dt,
+        outreach_type=outreach_type.strip(),
+        message=message.strip() or None,
+        notes=notes.strip() or None,
+    )
+    return RedirectResponse(
+        url=f"/companies/{company_id}?success=Outreach+recorded",
+        status_code=303,
+    )
+
+
+@router.post("/companies/{company_id}/outreach/{outreach_id}/delete")
+def company_outreach_delete(
+    company_id: int,
+    outreach_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+):
+    """Delete an outreach record."""
+    company = get_company(db, company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    deleted = delete_outreach_record(db, company_id, outreach_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Outreach record not found")
+
+    return RedirectResponse(
+        url=f"/companies/{company_id}?success=Outreach+deleted",
+        status_code=303,
     )
 
 

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.job_run import JobRun
+from app.models.outreach_history import OutreachHistory
 from app.models.signal_record import SignalRecord
 from app.models.user import User
 
@@ -508,9 +509,11 @@ class TestCompanyDetail:
         analysis=None,
         briefing=None,
         scan_job=None,
+        outreach_history=None,
     ):
         """Configure mock DB session for company_detail view queries."""
         signals = signals if signals is not None else []
+        outreach_history = outreach_history if outreach_history is not None else []
 
         def query_side_effect(model):
             mock_q = MagicMock()
@@ -526,6 +529,8 @@ class TestCompanyDetail:
                 mock_o.first.return_value = analysis
             elif model is BriefingItem:
                 mock_o.first.return_value = briefing
+            elif model is OutreachHistory:
+                mock_o.all.return_value = outreach_history
             return mock_q
 
         mock_db_session.query.side_effect = query_side_effect
@@ -706,6 +711,57 @@ class TestCompanyDetail:
         assert "scaling_team" in resp.text
         assert "80" in resp.text
         assert "Hiring Engineers" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_outreach_form_prefill(self, mock_get, views_client, mock_db_session):
+        """Company detail with briefing passes draft_message to template for pre-fill."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        mock_briefing = MagicMock()
+        mock_briefing.outreach_message = "Hi {{founder}}, I noticed your hiring..."
+        self._setup_query_mock(
+            mock_db_session,
+            signals=[],
+            analysis=None,
+            briefing=mock_briefing,
+            outreach_history=[],
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Outreach History" in resp.text
+        assert "Hi {{founder}}, I noticed your hiring..." in resp.text
+        assert "Record Outreach" in resp.text
+
+    @patch("app.api.views.get_company")
+    def test_outreach_history_section_renders(self, mock_get, views_client, mock_db_session):
+        """Company detail renders Outreach History section with past records."""
+        company = _make_company_read()
+        mock_get.return_value = company
+
+        mock_outreach = MagicMock()
+        mock_outreach.id = 1
+        mock_outreach.sent_at = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+        mock_outreach.outreach_type = "email"
+        mock_outreach.message = "Follow-up message sent"
+        mock_outreach.notes = "Will follow up next week"
+
+        self._setup_query_mock(
+            mock_db_session,
+            signals=[],
+            analysis=None,
+            briefing=None,
+            outreach_history=[mock_outreach],
+        )
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "Outreach History" in resp.text
+        assert "2026-02-18" in resp.text
+        assert "email" in resp.text
+        assert "Follow-up message sent" in resp.text
+        assert "Will follow up next week" in resp.text
 
 
 # ── Rescan tests ────────────────────────────────────────────────────
@@ -1013,6 +1069,93 @@ class TestCompanyDelete:
         """POST /companies/999/delete returns 404."""
         mock_del.return_value = False
         resp = views_client.post("/companies/999/delete")
+        assert resp.status_code == 404
+
+
+# ── Outreach tests ────────────────────────────────────────────────────
+
+
+class TestCompanyOutreach:
+    @patch("app.api.views.create_outreach_record")
+    @patch("app.api.views.get_company")
+    def test_post_outreach_redirects_on_success(
+        self, mock_get, mock_create, views_client
+    ):
+        """POST /companies/1/outreach with valid data redirects with success."""
+        mock_get.return_value = _make_company_read()
+        mock_create.return_value = MagicMock(id=1)
+        resp = views_client.post(
+            "/companies/1/outreach",
+            data={
+                "sent_at": "2026-02-18T14:30",
+                "outreach_type": "email",
+                "message": "Hi, following up...",
+                "notes": "No response yet",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "/companies/1" in resp.headers.get("location", "")
+        assert "success" in resp.headers.get("location", "").lower()
+        mock_create.assert_called_once()
+
+    @patch("app.api.views.get_company")
+    def test_post_outreach_missing_sent_at_redirects_with_error(
+        self, mock_get, views_client
+    ):
+        """POST /companies/1/outreach with empty sent_at redirects with error."""
+        mock_get.return_value = _make_company_read()
+        resp = views_client.post(
+            "/companies/1/outreach",
+            data={
+                "sent_at": "",
+                "outreach_type": "email",
+                "message": "",
+                "notes": "",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "outreach_error" in resp.headers.get("location", "")
+
+    @patch("app.api.views.get_company")
+    def test_post_outreach_company_not_found(self, mock_get, views_client):
+        """POST /companies/999/outreach returns 404."""
+        mock_get.return_value = None
+        resp = views_client.post(
+            "/companies/999/outreach",
+            data={
+                "sent_at": "2026-02-18T14:30",
+                "outreach_type": "email",
+                "message": "",
+                "notes": "",
+            },
+        )
+        assert resp.status_code == 404
+
+    @patch("app.api.views.delete_outreach_record")
+    @patch("app.api.views.get_company")
+    def test_post_outreach_delete_redirects(
+        self, mock_get, mock_delete, views_client
+    ):
+        """POST /companies/1/outreach/5/delete redirects with success."""
+        mock_get.return_value = _make_company_read()
+        mock_delete.return_value = True
+        resp = views_client.post(
+            "/companies/1/outreach/5/delete",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "/companies/1" in resp.headers.get("location", "")
+        assert "success" in resp.headers.get("location", "").lower()
+
+    @patch("app.api.views.delete_outreach_record")
+    @patch("app.api.views.get_company")
+    def test_post_outreach_delete_not_found(self, mock_get, mock_delete, views_client):
+        """POST /companies/1/outreach/999/delete returns 404 when record not found."""
+        mock_get.return_value = _make_company_read()
+        mock_delete.return_value = False
+        resp = views_client.post("/companies/1/outreach/999/delete")
         assert resp.status_code == 404
 
 

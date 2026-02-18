@@ -58,3 +58,6 @@ class Company(Base):
     alerts: Mapped[list["Alert"]] = relationship(
         "Alert", back_populates="company", cascade="all, delete-orphan"
     )
+    outreach_history: Mapped[list["OutreachHistory"]] = relationship(
+        "OutreachHistory", back_populates="company", cascade="all, delete-orphan"
+    )
