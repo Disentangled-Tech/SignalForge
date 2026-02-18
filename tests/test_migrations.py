@@ -53,3 +53,5 @@ def test_alembic_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
     assert "operator_profiles" in tables
     assert "app_settings" in tables
     assert "signal_events" in tables
+    assert "engagement_snapshots" in tables
+    assert "outreach_history" in tables
