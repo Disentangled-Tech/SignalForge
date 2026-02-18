@@ -22,6 +22,11 @@ from app.schemas.settings import (
     SettingsUpdate,
 )
 from app.schemas.signal import RawEvent, SignalRecordList, SignalRecordRead
+from app.schemas.watchlist import (
+    WatchlistAddRequest,
+    WatchlistItemResponse,
+    WatchlistListResponse,
+)
 
 __all__ = [
     # Company
@@ -51,4 +56,8 @@ __all__ = [
     "SettingsRead",
     "OperatorProfileUpdate",
     "OperatorProfileRead",
+    # Watchlist
+    "WatchlistAddRequest",
+    "WatchlistItemResponse",
+    "WatchlistListResponse",
 ]
