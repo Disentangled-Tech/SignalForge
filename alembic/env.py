@@ -30,6 +30,7 @@ from app.models import (  # noqa: F401
     JobRun,
     OperatorProfile,
     ReadinessSnapshot,
+    SignalEvent,
     SignalRecord,
     User,
 )

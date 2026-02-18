@@ -1,7 +1,7 @@
 """add readiness_snapshots table (Issue #82)
 
-Revision ID: b2c3d4e5f6a7
-Revises: a1b2c3d4e5f6
+Revision ID: c3d4e5f6a7b8
+Revises: b2c3d4e5f6a7
 Create Date: 2026-02-18
 
 Stores daily readiness scoring outputs for v2 readiness engine.
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "b2c3d4e5f6a7"
-down_revision: Union[str, None] = "a1b2c3d4e5f6"
+revision: str = "c3d4e5f6a7b8"
+down_revision: Union[str, None] = "b2c3d4e5f6a7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

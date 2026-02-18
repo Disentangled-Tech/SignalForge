@@ -160,8 +160,8 @@ class TestRunScanCompany:
         db.query.return_value.filter.return_value.first.return_value = company
 
         mock_discover.return_value = [
-            ("https://acme.com/", "Homepage text"),
-            ("https://acme.com/blog/post", "Blog text"),
+            ("https://acme.com/", "Homepage text", "<html>home</html>"),
+            ("https://acme.com/blog/post", "Blog text", "<html>blog</html>"),
         ]
         # First is new, second is duplicate (None)
         mock_store.side_effect = [MagicMock(), None]
@@ -169,6 +169,23 @@ class TestRunScanCompany:
         count = await run_scan_company(db, 1)
         assert count == 1
         assert mock_store.call_count == 2
+        # Verify raw_html is passed through
+        mock_store.assert_any_call(
+            db,
+            company_id=1,
+            source_url="https://acme.com/",
+            source_type="homepage",
+            content_text="Homepage text",
+            raw_html="<html>home</html>",
+        )
+        mock_store.assert_any_call(
+            db,
+            company_id=1,
+            source_url="https://acme.com/blog/post",
+            source_type="blog",
+            content_text="Blog text",
+            raw_html="<html>blog</html>",
+        )
 
     @pytest.mark.asyncio
     @patch("app.services.scan_orchestrator.discover_pages", new_callable=AsyncMock)
