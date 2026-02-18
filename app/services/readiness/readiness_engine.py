@@ -17,6 +17,7 @@ from app.services.readiness.scoring_constants import (
     BASE_SCORES_MOMENTUM,
     BASE_SCORES_PRESSURE,
     CAP_DIMENSION_MAX,
+    COMPOSITE_WEIGHTS,
     CAP_FOUNDER_URGENCY,
     CAP_JOBS_COMPLEXITY,
     CAP_JOBS_MOMENTUM,
@@ -218,3 +219,146 @@ def compute_leadership_gap(events: list[Any], as_of: date) -> int:
             g = max(0, g - SUPPRESS_CTO_HIRED_180_DAYS)
 
     return g
+
+
+def compute_composite(M: int, C: int, P: int, G: int) -> int:
+    """Compute composite readiness R from dimensions (v2-spec §4.1).
+
+    R = round(0.30*M + 0.30*C + 0.25*P + 0.15*G), clamped 0..100.
+    """
+    raw = (
+        COMPOSITE_WEIGHTS["M"] * M
+        + COMPOSITE_WEIGHTS["C"] * C
+        + COMPOSITE_WEIGHTS["P"] * P
+        + COMPOSITE_WEIGHTS["G"] * G
+    )
+    return int(round(max(0, min(raw, CAP_DIMENSION_MAX))))
+
+
+def apply_global_suppressors(
+    M: int, C: int, P: int, G: int, company_status: str | None = None
+) -> tuple[int, int, int, int, list[str]]:
+    """Apply global suppressors (v2-spec §4.4).
+
+    If company_status in (acquired, dead): zero all dimensions.
+    Returns (M, C, P, G, suppressors_applied).
+    """
+    if company_status and company_status.strip().lower() in ("acquired", "dead"):
+        return (0, 0, 0, 0, ["company_status_suppressed"])
+    return (M, C, P, G, [])
+
+
+def _event_contribution_to_dimension(
+    ev: Any, etype: str, days: int, dimension: str
+) -> float:
+    """Compute single event's contribution to a dimension (base * decay * confidence)."""
+    conf = _get_confidence(ev)
+    if dimension == "M" and etype in BASE_SCORES_MOMENTUM:
+        base = BASE_SCORES_MOMENTUM[etype]
+        return base * decay_momentum(days) * conf
+    if dimension == "C" and etype in BASE_SCORES_COMPLEXITY:
+        base = BASE_SCORES_COMPLEXITY[etype]
+        return base * decay_complexity(days) * conf
+    if dimension == "P" and etype in BASE_SCORES_PRESSURE:
+        base = BASE_SCORES_PRESSURE[etype]
+        return base * decay_pressure(days) * conf
+    if dimension == "G" and etype in BASE_SCORES_LEADERSHIP_GAP and etype != "cto_hired":
+        base = BASE_SCORES_LEADERSHIP_GAP[etype]
+        return base  # state-based, no decay
+    return 0.0
+
+
+def compute_event_contributions(
+    events: list[Any], as_of: date, limit: int = 8
+) -> list[dict[str, Any]]:
+    """Compute per-event contribution points for top_events (v2-spec §4.5).
+
+    Each event's contribution is the sum of its contributions across dimensions.
+    Returns up to limit items, sorted by contribution desc.
+    """
+    scored: list[tuple[float, Any]] = []
+
+    for ev in events:
+        etype = getattr(ev, "event_type", None)
+        ev_time = getattr(ev, "event_time", None)
+        if etype is None or ev_time is None:
+            continue
+        days = _days_since(ev_time, as_of)
+
+        total = 0.0
+        for dim in ("M", "C", "P", "G"):
+            total += _event_contribution_to_dimension(ev, etype, days, dim)
+
+        if total > 0:
+            scored.append((total, ev))
+
+    scored.sort(key=lambda x: -x[0])
+
+    result: list[dict[str, Any]] = []
+    for contrib, ev in scored[:limit]:
+        ev_time = getattr(ev, "event_time", None)
+        event_time_iso = (
+            ev_time.isoformat() if ev_time and hasattr(ev_time, "isoformat") else ""
+        )
+        result.append({
+            "event_type": getattr(ev, "event_type", ""),
+            "event_time": event_time_iso,
+            "source": getattr(ev, "source", "") or "",
+            "url": getattr(ev, "url", "") or "",
+            "contribution_points": round(contrib, 1),
+            "confidence": _get_confidence(ev),
+        })
+    return result
+
+
+def build_explain_payload(
+    M: int,
+    C: int,
+    P: int,
+    G: int,
+    R: int,
+    top_events: list[dict[str, Any]],
+    suppressors_applied: list[str],
+) -> dict[str, Any]:
+    """Build explain JSON payload (v2-spec §4.5)."""
+    return {
+        "weights": dict(COMPOSITE_WEIGHTS),
+        "dimensions": {"M": M, "C": C, "P": P, "G": G, "R": R},
+        "top_events": top_events,
+        "suppressors_applied": suppressors_applied,
+    }
+
+
+def compute_readiness(
+    events: list[Any],
+    as_of: date,
+    company_status: str | None = None,
+    top_events_limit: int = 8,
+) -> dict[str, Any]:
+    """Compute M, C, P, G, composite, and explain payload (Issue #87).
+
+    Returns dict suitable for ReadinessSnapshot: momentum, complexity, pressure,
+    leadership_gap, composite, explain.
+    """
+    M = compute_momentum(events, as_of)
+    C = compute_complexity(events, as_of)
+    P = compute_pressure(events, as_of)
+    G = compute_leadership_gap(events, as_of)
+
+    M, C, P, G, suppressors_applied = apply_global_suppressors(
+        M, C, P, G, company_status
+    )
+
+    R = compute_composite(M, C, P, G)
+
+    top_events = compute_event_contributions(events, as_of, limit=top_events_limit)
+    explain = build_explain_payload(M, C, P, G, R, top_events, suppressors_applied)
+
+    return {
+        "momentum": M,
+        "complexity": C,
+        "pressure": P,
+        "leadership_gap": G,
+        "composite": R,
+        "explain": explain,
+    }

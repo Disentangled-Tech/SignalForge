@@ -124,8 +124,8 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
     for c in [company1, company2, company3]:
         db.refresh(c)
 
-    # Use a unique date to avoid collisions with other tests
-    as_of = date(2026, 3, 15)
+        # Use a date far in future to avoid collisions with leftover test data
+        as_of = date(2050, 1, 1)
     snapshots = [
         ReadinessSnapshot(company_id=company1.id, as_of=as_of, momentum=80, complexity=70, pressure=60, leadership_gap=50, composite=70),
         ReadinessSnapshot(company_id=company2.id, as_of=as_of, momentum=60, complexity=50, pressure=40, leadership_gap=30, composite=50),
