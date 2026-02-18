@@ -261,6 +261,7 @@ Cloudways cron will call:
 
 POST /internal/run_scan
 POST /internal/run_briefing
+POST /internal/run_score
 
 Requirements:
 	•	require secret token header
