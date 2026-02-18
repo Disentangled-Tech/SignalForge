@@ -95,6 +95,7 @@ class TestSettingsPage:
 
         assert resp.status_code == 200
         assert "Recent Job Runs" in resp.text
+        assert "Run ingest" in resp.text
         assert "briefing" in resp.text
         assert "scan" in resp.text
         assert "completed" in resp.text
@@ -359,6 +360,48 @@ class TestSettingsSave:
 
         assert resp.status_code == 303
         assert "error" in resp.headers.get("location", "")
+
+
+class TestSettingsRunIngest:
+    """Tests for POST /settings/run-ingest (Issue #90)."""
+
+    def test_run_ingest_queues_and_redirects(self, mock_db, mock_user):
+        """POST /settings/run-ingest with no running ingest redirects with success."""
+        base = mock_db.query.return_value
+        base.filter.return_value.first.return_value = None  # no ingest running
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app)
+
+        resp = client.post("/settings/run-ingest", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert "success=Ingest+queued" in resp.headers.get("location", "")
+
+    def test_run_ingest_already_running_redirects_with_error(
+        self, mock_db, mock_user
+    ):
+        """POST /settings/run-ingest when ingest running redirects with error."""
+        base = mock_db.query.return_value
+        base.filter.return_value.first.return_value = MagicMock()  # ingest running
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app)
+
+        resp = client.post("/settings/run-ingest", follow_redirects=False)
+
+        assert resp.status_code == 303
+        assert "error=Ingest+already+running" in resp.headers.get("location", "")
+
+    def test_run_ingest_requires_auth(self, mock_db):
+        """POST /settings/run-ingest without auth redirects to login."""
+        app = _create_test_app(mock_db, mock_user=None)  # no auth override
+        client = TestClient(app)
+
+        resp = client.post("/settings/run-ingest", follow_redirects=False)
+
+        assert resp.status_code in (302, 303, 307)
+        assert "login" in resp.headers.get("location", "").lower()
 
 
 class TestProfilePage:

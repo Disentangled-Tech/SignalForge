@@ -21,6 +21,7 @@ from app.schemas import (
     OperatorProfileUpdate,
     PainSignalItem,
     PainSignals,
+    RawEvent,
     SettingsRead,
     SettingsUpdate,
     SignalRecordRead,
@@ -97,6 +98,50 @@ class TestCompanyRead:
 
 
 # ── Signal ───────────────────────────────────────────────────────────
+
+
+class TestRawEvent:
+    """RawEvent schema for ingestion adapters (Issue #89)."""
+
+    def test_valid_minimal(self) -> None:
+        ev = RawEvent(
+            company_name="Acme Corp",
+            event_type_candidate="funding_raised",
+            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+        )
+        assert ev.company_name == "Acme Corp"
+        assert ev.event_type_candidate == "funding_raised"
+        assert ev.domain is None
+        assert ev.source_event_id is None
+
+    def test_valid_full(self) -> None:
+        ev = RawEvent(
+            company_name="Acme Corp",
+            domain="acme.example.com",
+            website_url="https://acme.example.com",
+            event_type_candidate="job_posted_engineering",
+            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+            title="Senior Engineer",
+            summary="Hiring for growth",
+            url="https://acme.example.com/jobs",
+            source_event_id="cb-123",
+            raw_payload={"amount": 1000000},
+        )
+        assert ev.domain == "acme.example.com"
+        assert ev.source_event_id == "cb-123"
+        assert ev.raw_payload == {"amount": 1000000}
+
+    def test_rejects_empty_company_name(self) -> None:
+        with pytest.raises(ValidationError):
+            RawEvent(
+                company_name="",
+                event_type_candidate="funding_raised",
+                event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+            )
+
+    def test_rejects_missing_required_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            RawEvent()  # type: ignore[call-arg]
 
 
 class TestSignalRecordRead:
