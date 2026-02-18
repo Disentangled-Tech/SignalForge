@@ -134,6 +134,76 @@
     {% endif %}
 </div>
 
+{# ── Outreach History ── #}
+<div class="card">
+    <h2>Outreach History</h2>
+    {% if outreach_error %}
+    <div class="text-muted" style="margin-bottom: 1rem; color: #dc2626;">{{ outreach_error }}</div>
+    {% endif %}
+    <form method="POST" action="/companies/{{ company.id }}/outreach" style="margin-bottom: 1.5rem;">
+        <div style="display: grid; gap: 1rem; max-width: 600px;">
+            <div>
+                <label for="outreach_sent_at" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Sent date/time</label>
+                <input type="datetime-local" id="outreach_sent_at" name="sent_at" required
+                    value="{{ now_for_datetime_local or '' }}" style="width: 100%; padding: 0.5rem;">
+            </div>
+            <div>
+                <label for="outreach_type" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Outreach type</label>
+                <select id="outreach_type" name="outreach_type" required style="width: 100%; padding: 0.5rem;">
+                    <option value="">— Select —</option>
+                    <option value="email">Email</option>
+                    <option value="linkedin_dm">LinkedIn DM</option>
+                    <option value="warm_intro">Warm intro</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div>
+                <label for="outreach_message" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Message</label>
+                <textarea id="outreach_message" name="message" rows="4" placeholder="Optional: paste or type what you sent"
+                    style="width: 100%; padding: 0.5rem;">{{ draft_message or '' }}</textarea>
+            </div>
+            <div>
+                <label for="outreach_notes" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Notes (optional)</label>
+                <textarea id="outreach_notes" name="notes" rows="2" placeholder="Outcome, follow-up, etc."
+                    style="width: 100%; padding: 0.5rem;"></textarea>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary">Record Outreach</button>
+            </div>
+        </div>
+    </form>
+    {% if outreach_history %}
+    <table>
+        <thead>
+            <tr>
+                <th>Sent</th>
+                <th>Type</th>
+                <th>Message</th>
+                <th>Notes</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for o in outreach_history %}
+            <tr>
+                <td class="text-muted">{{ o.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td><span class="badge badge-gray">{{ o.outreach_type|replace('_', ' ') }}</span></td>
+                <td style="max-width: 250px;">{% set msg = o.message or '' %}{{ msg[:100] }}{% if msg|length > 100 %}…{% endif %}</td>
+                <td style="max-width: 150px;">{% set n = o.notes or '' %}{{ n[:80] }}{% if n|length > 80 %}…{% endif %}</td>
+                <td>
+                    <form method="POST" action="/companies/{{ company.id }}/outreach/{{ o.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this outreach record?');">
+                        <button type="submit" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No outreach recorded yet. Use the form above to log outreach you send manually.</p>
+    {% endif %}
+</div>
+
 {# ── Latest Signals ── #}
 <div class="card">
     <h2>Latest Signals</h2>
