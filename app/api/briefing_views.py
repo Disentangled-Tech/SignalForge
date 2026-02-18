@@ -228,6 +228,9 @@ def _render_briefing(
             "esl_score": engagement_snap.esl_score,
             "engagement_type": engagement_snap.engagement_type,
             "cadence_blocked": engagement_snap.cadence_blocked,
+            "stability_cap_triggered": (engagement_snap.explain or {}).get(
+                "stability_cap_triggered", False
+            ),
             "top_signals": top_signals,
         })
 

@@ -218,8 +218,9 @@ def build_esl_explain(
     esl_composite: float,
     recommendation_type: str,
     cadence_blocked: bool | None = None,
+    stability_cap_triggered: bool = False,
 ) -> dict[str, Any]:
-    """Build explain payload with all ESL components (Issue #106)."""
+    """Build explain payload with all ESL components (Issue #106, #111)."""
     if cadence_blocked is None:
         cadence_blocked = cadence_modifier == 0.0
     return {
@@ -233,5 +234,6 @@ def build_esl_explain(
         "esl_composite": esl_composite,
         "cadence_blocked": cadence_blocked,
         "recommendation_type": recommendation_type,
+        "stability_cap_triggered": stability_cap_triggered,
         "weights": {"be": 1.0, "sm": 1.0, "cm": 1.0, "am": 1.0},
     }

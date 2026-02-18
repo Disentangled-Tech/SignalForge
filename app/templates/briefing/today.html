@@ -53,6 +53,7 @@
     .emerging-badges { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
     .emerging-recommendation { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #e0e7ff; color: #3730a3; }
     .emerging-cooldown { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #fef3c7; color: #92400e; }
+    .emerging-stability-cap { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #fef3c7; color: #92400e; }
 
     .print-header { display: none; }
     @media print {
@@ -107,6 +108,9 @@
             <span class="emerging-recommendation">{{ ec.engagement_type }}</span>
             {% if ec.cadence_blocked %}
             <span class="emerging-cooldown">Cooldown active</span>
+            {% endif %}
+            {% if ec.stability_cap_triggered %}
+            <span class="emerging-stability-cap">Stability cap — Soft Value Share only</span>
             {% endif %}
         </div>
         <div class="emerging-dimensions">
