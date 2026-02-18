@@ -11,9 +11,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 # Ensure env vars are set before importing app modules
+from tests.test_constants import (
+    TEST_INTERNAL_JOB_TOKEN,
+    TEST_SECRET_KEY,
+    TEST_USERNAME_VIEWS,
+)
+
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://localhost:5432/signalforge_test")
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("INTERNAL_JOB_TOKEN", "test-internal-token")
+os.environ.setdefault("SECRET_KEY", TEST_SECRET_KEY)
+os.environ.setdefault("INTERNAL_JOB_TOKEN", TEST_INTERNAL_JOB_TOKEN)
 
 from app.api.briefing_views import router  # noqa: E402
 from app.api.deps import get_db, require_ui_auth  # noqa: E402
@@ -31,7 +37,7 @@ def _make_user() -> MagicMock:
     """Create a mock User."""
     user = MagicMock(spec=User)
     user.id = 1
-    user.username = "testuser"
+    user.username = TEST_USERNAME_VIEWS
     return user
 
 

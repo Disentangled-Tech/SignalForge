@@ -188,12 +188,14 @@ class TestBriefingResponse:
 
 class TestLoginRequest:
     def test_valid(self) -> None:
-        lr = LoginRequest(username="admin", password="secret123")
+        from tests.test_constants import TEST_PASSWORD
+
+        lr = LoginRequest(username="admin", password=TEST_PASSWORD)
         assert lr.username == "admin"
 
     def test_rejects_empty_username(self) -> None:
         with pytest.raises(ValidationError):
-            LoginRequest(username="", password="secret")
+            LoginRequest(username="", password="x")
 
     def test_rejects_empty_password(self) -> None:
         with pytest.raises(ValidationError):
@@ -206,7 +208,9 @@ class TestLoginRequest:
 
 class TestTokenResponse:
     def test_valid(self) -> None:
-        t = TokenResponse(access_token="abc.def.ghi")
+        from tests.test_constants import TEST_ACCESS_TOKEN_PLACEHOLDER
+
+        t = TokenResponse(access_token=TEST_ACCESS_TOKEN_PLACEHOLDER)
         assert t.token_type == "bearer"
 
 

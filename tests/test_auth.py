@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_WRONG
 from app.models.user import User
 from app.services.auth import (
     ALGORITHM,
@@ -22,10 +23,10 @@ from app.services.auth import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_user(username: str = "admin", password: str = "secret123") -> User:
+def _make_user(username: str = "admin", password: str | None = None) -> User:
     """Create a User instance with a hashed password (no DB)."""
     user = User(id=1, username=username)
-    user.set_password(password)
+    user.set_password(password if password is not None else TEST_PASSWORD)
     return user
 
 
@@ -36,12 +37,12 @@ def _make_user(username: str = "admin", password: str = "secret123") -> User:
 
 class TestPasswordVerification:
     def test_correct_password(self):
-        user = _make_user(password="correct")
-        assert user.verify_password("correct") is True
+        user = _make_user(password=TEST_PASSWORD)
+        assert user.verify_password(TEST_PASSWORD) is True
 
     def test_wrong_password(self):
-        user = _make_user(password="correct")
-        assert user.verify_password("wrong") is False
+        user = _make_user(password=TEST_PASSWORD)
+        assert user.verify_password(TEST_PASSWORD_WRONG) is False
 
 
 class TestAccessToken:
@@ -71,7 +72,7 @@ class TestAccessToken:
 @pytest.fixture
 def mock_db_user():
     """Create a mock user and patch DB dependency."""
-    user = _make_user(username="admin", password="secret123")
+    user = _make_user(username="admin", password=TEST_PASSWORD)
     return user
 
 
@@ -128,7 +129,7 @@ class TestLoginEndpoint:
     def test_login_success(self, auth_client):
         resp = auth_client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "secret123"},
+            json={"username": "admin", "password": TEST_PASSWORD},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -140,14 +141,14 @@ class TestLoginEndpoint:
     def test_login_wrong_password(self, auth_client):
         resp = auth_client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "wrongpass"},
+            json={"username": "admin", "password": TEST_PASSWORD_WRONG},
         )
         assert resp.status_code == 401
 
     def test_login_unknown_user(self, auth_client_no_user):
         resp = auth_client_no_user.post(
             "/api/auth/login",
-            json={"username": "nobody", "password": "anything"},
+            json={"username": "nobody", "password": TEST_PASSWORD_WRONG},
         )
         assert resp.status_code == 401
 
@@ -157,7 +158,7 @@ class TestLogoutEndpoint:
         # Login first
         resp = auth_client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "secret123"},
+            json={"username": "admin", "password": TEST_PASSWORD},
         )
         assert resp.status_code == 200
 
@@ -172,7 +173,7 @@ class TestMeEndpoint:
         # Login to get token
         resp = auth_client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "secret123"},
+            json={"username": "admin", "password": TEST_PASSWORD},
         )
         token = resp.json()["access_token"]
 
@@ -194,7 +195,7 @@ class TestMeEndpoint:
         # Login (sets cookie)
         resp = auth_client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "secret123"},
+            json={"username": "admin", "password": TEST_PASSWORD},
         )
         assert resp.status_code == 200
 

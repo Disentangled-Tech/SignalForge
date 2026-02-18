@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.test_constants import TEST_USERNAME_VIEWS
 from app.api.deps import get_db, require_ui_auth
 from app.api.settings_views import router
 from app.models.job_run import JobRun
@@ -18,7 +19,7 @@ from app.models.user import User
 def _make_user() -> MagicMock:
     user = MagicMock(spec=User)
     user.id = 1
-    user.username = "testuser"
+    user.username = TEST_USERNAME_VIEWS
     return user
 
 
