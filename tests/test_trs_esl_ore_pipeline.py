@@ -104,3 +104,56 @@ def test_trs_esl_ore_pipeline_integration(db: Session) -> None:
     # Stored in outreach_recommendations
     assert rec.company_id == company.id
     assert rec.as_of == as_of
+
+
+def test_ore_pipeline_uses_computed_esl(db: Session) -> None:
+    """ORE computes ESL from context when stability_modifier not passed (Issue #106).
+
+    With no SignalEvents, no OutreachHistory: SVI=0, SPI=0, CSI=1 → SM high.
+    ESL composite ≈ BE (TRS/100). Recommendation and outreach_score from computed ESL.
+    """
+    company = Company(
+        name="ComputedESLCo",
+        website_url="https://computed.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 18)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=80,
+        complexity=80,
+        pressure=50,
+        leadership_gap=70,
+        composite=75,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            # No stability_modifier → compute from context
+        )
+
+    assert rec is not None
+    # No stress signals → SM high → not capped at Soft Value Share
+    assert rec.recommendation_type in (
+        "Low-Pressure Intro",
+        "Standard Outreach",
+        "Direct Strategic Outreach",
+    )
+    # OutreachScore = round(TRS * ESL_composite)
+    assert rec.outreach_score >= 50
+    assert rec.company_id == company.id

@@ -1,4 +1,4 @@
-"""ORE pipeline — TRS → ESL → policy gate → draft → critic → persist (Issue #124)."""
+"""ORE pipeline — TRS → ESL → policy gate → draft → critic → persist (Issue #124, #106)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot
 from app.services.esl.esl_engine import compute_outreach_score
+from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
 from app.services.ore.critic import check_critic
 from app.services.ore.draft_generator import (
     CTAS,
@@ -23,11 +24,14 @@ def generate_ore_recommendation(
     company_id: int,
     as_of: date,
     *,
-    stability_modifier: float,
-    cooldown_active: bool = False,
-    alignment_high: bool = True,
+    stability_modifier: float | None = None,
+    cooldown_active: bool | None = None,
+    alignment_high: bool | None = None,
 ) -> OutreachRecommendation | None:
     """Run full ORE pipeline: policy gate → ESL → draft → critic → persist.
+
+    When stability_modifier is None, computes ESL from context (ReadinessSnapshot,
+    SignalEvents, OutreachHistory, Company). Pass explicit values for tests.
 
     Returns OutreachRecommendation or None if company/snapshot not found.
     """
@@ -47,12 +51,28 @@ def generate_ore_recommendation(
         return None
 
     trs = snapshot.composite
-    outreach_score = compute_outreach_score(trs, stability_modifier)
+
+    # Compute or use provided ESL (Issue #106)
+    if stability_modifier is not None:
+        sm = stability_modifier
+        esl_composite = sm
+        cooldown = cooldown_active if cooldown_active is not None else False
+        align = alignment_high if alignment_high is not None else True
+    else:
+        ctx = compute_esl_from_context(db, company_id, as_of)
+        if not ctx:
+            return None
+        sm = ctx["stability_modifier"]
+        esl_composite = ctx["esl_composite"]
+        cooldown = ctx["cadence_blocked"] if cooldown_active is None else cooldown_active
+        align = ctx["alignment_high"] if alignment_high is None else alignment_high
+
+    outreach_score = compute_outreach_score(trs, esl_composite)
 
     gate = check_policy_gate(
-        cooldown_active=cooldown_active,
-        stability_modifier=stability_modifier,
-        alignment_high=alignment_high,
+        cooldown_active=cooldown,
+        stability_modifier=sm,
+        alignment_high=align,
     )
 
     draft_variants: list[dict] = []

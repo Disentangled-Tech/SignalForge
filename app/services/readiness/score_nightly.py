@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.models import JobRun, SignalEvent, Watchlist
+from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
 from app.services.readiness.snapshot_writer import write_readiness_snapshot
 
 logger = logging.getLogger(__name__)
@@ -69,11 +70,16 @@ def run_score_nightly(db: Session) -> dict:
         companies_skipped = 0
         errors: list[str] = []
 
+        companies_engagement = 0
         for company_id in company_ids:
             try:
                 snapshot = write_readiness_snapshot(db, company_id, as_of)
                 if snapshot is not None:
                     companies_scored += 1
+                    # Write EngagementSnapshot after ReadinessSnapshot (Issue #106)
+                    eng_snap = write_engagement_snapshot(db, company_id, as_of)
+                    if eng_snap is not None:
+                        companies_engagement += 1
                 else:
                     companies_skipped += 1
             except Exception as exc:
@@ -92,6 +98,7 @@ def run_score_nightly(db: Session) -> dict:
             "status": "completed",
             "job_run_id": job.id,
             "companies_scored": companies_scored,
+            "companies_engagement": companies_engagement,
             "companies_skipped": companies_skipped,
             "error": "; ".join(errors) if errors else None,
         }
@@ -106,6 +113,7 @@ def run_score_nightly(db: Session) -> dict:
             "status": "failed",
             "job_run_id": job.id,
             "companies_scored": 0,
+            "companies_engagement": 0,
             "companies_skipped": 0,
             "error": str(exc),
         }
