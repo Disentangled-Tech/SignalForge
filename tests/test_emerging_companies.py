@@ -1,4 +1,4 @@
-"""Tests for get_emerging_companies (Issue #93, #102)."""
+"""Tests for get_emerging_companies (Issue #93, #102, #103)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, EngagementSnapshot, ReadinessSnapshot
 from app.services.briefing import get_emerging_companies
+from app.services.esl.esl_engine import compute_outreach_score
 
 
 @pytest.fixture(autouse=True)
@@ -84,6 +85,48 @@ def test_get_emerging_companies_returns_top_by_outreach_score(db: Session) -> No
         for rs, es, _ in result
     ]
     assert outreach_scores == [64, 60, 58, 54, 35]
+
+
+def test_outreach_score_formula_matches_ranking(db: Session) -> None:
+    """OutreachScore = round(TRS × ESL); ranking uses this formula (Issue #103)."""
+    companies = [
+        Company(name=f"Formula Co {i}", website_url=f"https://formula{i}.example.com")
+        for i in range(3)
+    ]
+    db.add_all(companies)
+    db.commit()
+    for c in companies:
+        db.refresh(c)
+
+    as_of = date(2099, 1, 20)
+    # TRS 50, 80, 90 with ESL 0.5, 0.75, 0.9 -> OutreachScore 25, 60, 81
+    # Distinct scores ensure deterministic ordering
+    trs_esl_pairs = [(50, 0.5), (80, 0.75), (90, 0.9)]
+    for c, (trs, esl) in zip(companies, trs_esl_pairs):
+        rs = ReadinessSnapshot(
+            company_id=c.id,
+            as_of=as_of,
+            momentum=50,
+            complexity=50,
+            pressure=50,
+            leadership_gap=50,
+            composite=trs,
+        )
+        db.add(rs)
+        _add_engagement_snapshot(db, c.id, as_of, esl_score=esl)
+    db.commit()
+
+    result = get_emerging_companies(
+        db, as_of, limit=5, outreach_score_threshold=20
+    )
+
+    actual_scores = [
+        compute_outreach_score(rs.composite, es.esl_score)
+        for rs, es, _ in result
+    ]
+    # 90*0.9=81, 80*0.75=60, 50*0.5=25
+    assert actual_scores == [81, 60, 25]
+    assert actual_scores == sorted(actual_scores, reverse=True)
 
 
 def test_get_emerging_companies_respects_outreach_threshold(db: Session) -> None:

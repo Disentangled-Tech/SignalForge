@@ -32,6 +32,7 @@ class EngagementSnapshot(Base):
     )
     as_of: Mapped[date] = mapped_column(Date, nullable=False)
     esl_score: Mapped[float] = mapped_column(Float, nullable=False)
+    outreach_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # round(TRS × ESL), Issue #103
     engagement_type: Mapped[str] = mapped_column(String(64), nullable=False)
     stress_volatility_index: Mapped[float | None] = mapped_column(Float, nullable=True)
     communication_stability_index: Mapped[float | None] = mapped_column(Float, nullable=True)

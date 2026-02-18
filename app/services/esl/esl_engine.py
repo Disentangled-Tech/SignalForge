@@ -44,7 +44,10 @@ class _SnapshotLike(Protocol):
 
 
 def compute_outreach_score(trs: int, stability_modifier: float) -> int:
-    """Compute OutreachScore from TRS and ESL composite (or stability modifier).
+    """Compute OutreachScore from TRS and ESL composite (Issue #103).
+
+    Formula: OutreachScore = round(TRS × ESL), 0–100. Used for ranking
+    Emerging Companies and ORE recommendations.
 
     Args:
         trs: Total Readiness Score (0–100).

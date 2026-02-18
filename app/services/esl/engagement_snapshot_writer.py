@@ -19,6 +19,7 @@ from app.services.esl.esl_engine import (
     compute_cadence_modifier,
     compute_csi,
     compute_esl_composite,
+    compute_outreach_score,
     compute_spi,
     compute_stability_modifier,
     compute_svi,
@@ -138,6 +139,8 @@ def write_engagement_snapshot(
     svi = explain["svi"]
     spi = explain["spi"]
     csi = explain["csi"]
+    trs = ctx["trs"]
+    outreach_score = compute_outreach_score(trs, esl_composite)
 
     cadence_blocked = ctx["cadence_blocked"]
 
@@ -158,6 +161,7 @@ def write_engagement_snapshot(
         existing.sustained_pressure_index = spi
         existing.cadence_blocked = cadence_blocked
         existing.explain = explain
+        existing.outreach_score = outreach_score
         db.commit()
         db.refresh(existing)
         return existing
@@ -172,6 +176,7 @@ def write_engagement_snapshot(
         sustained_pressure_index=spi,
         cadence_blocked=cadence_blocked,
         explain=explain,
+        outreach_score=outreach_score,
     )
     db.add(snapshot)
     db.commit()
