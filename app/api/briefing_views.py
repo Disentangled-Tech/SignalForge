@@ -12,10 +12,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_ui_auth
+from app.config import get_settings
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.user import User
+from app.services.briefing import get_emerging_companies
+from app.services.readiness.human_labels import event_type_to_label
 from app.services.scoring import get_display_scores_for_companies
 
 logger = logging.getLogger(__name__)
@@ -165,6 +168,27 @@ def _render_briefing(
         )
     )
 
+    # Emerging Companies to Watch (Issue #93): readiness_snapshots, composite >= threshold
+    settings = get_settings()
+    emerging_pairs = get_emerging_companies(
+        db,
+        briefing_date,
+        limit=10,
+        threshold=settings.readiness_threshold,
+    )
+    emerging_companies: list[dict] = []
+    for snapshot, company in emerging_pairs:
+        top_events = (snapshot.explain or {}).get("top_events") or []
+        top_signals = [
+            event_type_to_label(ev.get("event_type", ""))
+            for ev in top_events[:3]
+        ]
+        emerging_companies.append({
+            "company": company,
+            "snapshot": snapshot,
+            "top_signals": top_signals,
+        })
+
     return templates.TemplateResponse(
         request,
         "briefing/today.html",
@@ -181,6 +205,7 @@ def _render_briefing(
             "sort": sort,
             "briefing_path": briefing_path,
             "job_has_failures": job_has_failures,
+            "emerging_companies": emerging_companies,
         },
     )
 

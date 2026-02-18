@@ -106,6 +106,27 @@ async def run_score(
         return {"status": "failed", "error": str(exc)}
 
 
+@router.post("/run_alert_scan")
+async def run_alert_scan(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+):
+    """Trigger daily readiness delta alert scan (Issue #92).
+
+    Run after score_nightly. Creates alerts when |delta| >= threshold.
+    Returns alerts_created, companies_scanned.
+    """
+    from app.services.readiness.alert_scan import run_alert_scan
+
+    try:
+        result = run_alert_scan(db)
+        return {
+            "status": result["status"],
+            "alerts_created": result["alerts_created"],
+            "companies_scanned": result["companies_scanned"],
+        }
+    except Exception as exc:
+        logger.exception("Internal alert scan failed")
 @router.post("/run_ingest")
 async def run_ingest_endpoint(
     db: Session = Depends(get_db),

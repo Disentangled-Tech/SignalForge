@@ -187,6 +187,23 @@ class TestRunScore:
         assert "DB error" in data["error"]
 
 
+# ── /internal/run_alert_scan ──────────────────────────────────────────
+
+
+class TestRunAlertScan:
+    @patch("app.services.readiness.alert_scan.run_alert_scan")
+    def test_valid_token_calls_run_alert_scan(
+        self, mock_alert_scan, client: TestClient
+    ):
+        """POST /internal/run_alert_scan with valid token triggers alert scan."""
+        mock_alert_scan.return_value = {
+            "status": "completed",
+            "alerts_created": 2,
+            "companies_scanned": 10,
+        }
+
+        response = client.post(
+            "/internal/run_alert_scan",
 # ── /internal/run_ingest ────────────────────────────────────────────
 
 
@@ -214,6 +231,19 @@ class TestRunIngest:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "completed"
+        assert data["alerts_created"] == 2
+        assert data["companies_scanned"] == 10
+        mock_alert_scan.assert_called_once()
+
+    def test_run_alert_scan_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_alert_scan without token header returns 422."""
+        response = client.post("/internal/run_alert_scan")
+        assert response.status_code == 422
+
+    def test_run_alert_scan_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_alert_scan with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_alert_scan",
         assert data["job_run_id"] == 42
         assert data["inserted"] == 3
         assert data["skipped_duplicate"] == 0
@@ -233,6 +263,15 @@ class TestRunIngest:
         )
         assert response.status_code == 403
 
+    @patch("app.services.readiness.alert_scan.run_alert_scan")
+    def test_run_alert_scan_error_returns_failed(
+        self, mock_alert_scan, client: TestClient
+    ):
+        """POST /internal/run_alert_scan returns failed status on exception."""
+        mock_alert_scan.side_effect = RuntimeError("Alert scan error")
+
+        response = client.post(
+            "/internal/run_alert_scan",
     @patch("app.services.ingestion.ingest_daily.run_ingest_daily")
     def test_run_ingest_error_returns_failed(self, mock_ingest, client: TestClient):
         """POST /internal/run_ingest returns failed status on exception."""
@@ -246,5 +285,6 @@ class TestRunIngest:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "failed"
+        assert "Alert scan error" in data["error"]
         assert "Ingest failed" in data["error"]
 

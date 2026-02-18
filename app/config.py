@@ -44,6 +44,12 @@ class Settings:
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
+    # Alerts (Issue #92, v2-spec §13)
+    alert_delta_threshold: int = 15  # readiness_jump when |delta| >= this
+
+    # Readiness (Issue #93, v2-spec §13)
+    readiness_threshold: int = 60  # composite >= this for Emerging Companies section
+
     # Briefing
     briefing_time: str = "08:00"  # 24h format for cron
     briefing_email_enabled: bool = False
@@ -100,6 +106,13 @@ class Settings:
         )
         self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
         self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))
+
+        self.alert_delta_threshold = int(
+            os.getenv("ALERT_DELTA_THRESHOLD", str(self.alert_delta_threshold))
+        )
+        self.readiness_threshold = int(
+            os.getenv("READINESS_THRESHOLD", str(self.readiness_threshold))
+        )
 
         self.briefing_time = os.getenv("BRIEFING_TIME", self.briefing_time)
         self.briefing_email_enabled = os.getenv(
