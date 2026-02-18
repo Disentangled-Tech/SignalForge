@@ -1,7 +1,7 @@
 """add raw_html to signal_records
 
-Revision ID: f1a2b3c4d5e6
-Revises: e77e9209fe33
+Revision ID: a2b3c4d5e6f7
+Revises: f1a2b3c4d5e6
 Create Date: 2026-02-17
 
 """
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'f1a2b3c4d5e6'
-down_revision: Union[str, None] = 'e77e9209fe33'
+revision: str = 'a2b3c4d5e6f7'
+down_revision: Union[str, None] = 'f1a2b3c4d5e6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
