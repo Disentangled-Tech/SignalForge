@@ -307,8 +307,8 @@ class TestCompaniesList:
         assert login_resp.status_code == 302
         assert "/companies" in login_resp.headers.get("location", "")
 
-        # GET /companies and verify companies visible
-        resp = client.get("/companies")
+        # GET /companies and verify companies visible (search isolates from shared DB)
+        resp = client.get("/companies?search=Visible+Co")
         assert resp.status_code == 200
         assert "Visible Co Alpha" in resp.text
         assert "Visible Co Beta" in resp.text
