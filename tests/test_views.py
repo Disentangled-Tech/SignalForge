@@ -13,16 +13,17 @@ from app.models.briefing_item import BriefingItem
 from app.models.job_run import JobRun
 from app.models.outreach_history import OutreachHistory
 from app.models.signal_record import SignalRecord
+from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_INTEGRATION
 from app.models.user import User
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
-def _make_user(username: str = "admin", password: str = "secret123") -> User:
+def _make_user(username: str = "admin", password: str | None = None) -> User:
     """Create a User with a hashed password (no DB)."""
     user = User(id=1, username=username)
-    user.set_password(password)
+    user.set_password(password if password is not None else TEST_PASSWORD)
     return user
 
 
@@ -142,7 +143,7 @@ class TestLoginPage:
         """POST /login with valid credentials sets cookie and redirects."""
         mock_db_session.query.return_value.filter.return_value.first.return_value = test_user
         resp = noauth_client.post(
-            "/login", data={"username": "admin", "password": "secret123"},
+            "/login", data={"username": "admin", "password": TEST_PASSWORD},
             follow_redirects=False,
         )
         assert resp.status_code == 302
@@ -286,7 +287,7 @@ class TestCompaniesList:
         # Create test user with unique username to avoid clashes across runs
         username = f"integration_test_{uuid.uuid4().hex[:12]}"
         user = User(username=username)
-        user.set_password("testpass123")
+        user.set_password(TEST_PASSWORD_INTEGRATION)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -301,7 +302,7 @@ class TestCompaniesList:
         # Login
         login_resp = client.post(
             "/login",
-            data={"username": username, "password": "testpass123"},
+            data={"username": username, "password": TEST_PASSWORD_INTEGRATION},
             follow_redirects=False,
         )
         assert login_resp.status_code == 302

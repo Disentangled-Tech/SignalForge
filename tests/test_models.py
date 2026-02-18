@@ -154,13 +154,15 @@ def test_briefing_item_model_creation() -> None:
 
 def test_user_model_creation() -> None:
     """User model can be instantiated and hash/verify passwords."""
+    from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_WRONG
+
     user = User(username="admin")
-    user.set_password("secret123")
+    user.set_password(TEST_PASSWORD)
     assert user.username == "admin"
     assert user.password_hash is not None
-    assert user.password_hash != "secret123"
-    assert user.verify_password("secret123") is True
-    assert user.verify_password("wrong") is False
+    assert user.password_hash != TEST_PASSWORD
+    assert user.verify_password(TEST_PASSWORD) is True
+    assert user.verify_password(TEST_PASSWORD_WRONG) is False
 
 
 def test_operator_profile_model_creation() -> None:

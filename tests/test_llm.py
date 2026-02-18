@@ -41,9 +41,11 @@ def _make_mock_response(content: str = "Hello!", prompt_tokens: int = 10, comple
 
 def _make_settings(**overrides) -> Settings:
     """Create a Settings instance with LLM defaults, without reading env."""
+    from tests.test_constants import TEST_LLM_API_KEY
+
     s = object.__new__(Settings)  # skip __init__ (avoids env reads)
     s.llm_provider = "openai"
-    s.llm_api_key = "test-key-123"
+    s.llm_api_key = TEST_LLM_API_KEY
     s.llm_model = "gpt-4o-mini"
     s.llm_model_reasoning = "gpt-4o"
     s.llm_model_json = "gpt-4o-mini"

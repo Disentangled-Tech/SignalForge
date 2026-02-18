@@ -10,12 +10,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from tests.test_constants import TEST_INTERNAL_JOB_TOKEN, TEST_SECRET_KEY
+
 # Load .env for tests (macOS often uses $USER, not "postgres")
 _test_user = os.getenv("PGUSER") or os.getenv("USER") or "postgres"
 _test_url = f"postgresql+psycopg://{_test_user}@localhost:5432/signalforge_test"
 os.environ.setdefault("DATABASE_URL", _test_url)
-os.environ.setdefault("SECRET_KEY", "test-secret-key")
-os.environ.setdefault("INTERNAL_JOB_TOKEN", "test-internal-token")
+os.environ.setdefault("SECRET_KEY", TEST_SECRET_KEY)
+os.environ.setdefault("INTERNAL_JOB_TOKEN", TEST_INTERNAL_JOB_TOKEN)
 
 
 @pytest.fixture

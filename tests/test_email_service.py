@@ -40,11 +40,13 @@ def _make_item(
 
 def _make_settings(**overrides) -> SimpleNamespace:
     """Create mock settings with SMTP defaults."""
+    from tests.test_constants import TEST_SMTP_PASSWORD
+
     defaults = dict(
         smtp_host="smtp.example.com",
         smtp_port=587,
         smtp_user="user@example.com",
-        smtp_password="secret",
+        smtp_password=TEST_SMTP_PASSWORD,
         smtp_from="noreply@example.com",
         briefing_email_to="boss@example.com",
     )
@@ -120,6 +122,8 @@ def test_build_text_email_empty_list() -> None:
 
 @patch("app.services.email_service.smtplib.SMTP")
 def test_send_email_success(mock_smtp_cls: MagicMock) -> None:
+    from tests.test_constants import TEST_SMTP_PASSWORD
+
     mock_server = MagicMock()
     mock_smtp_cls.return_value.__enter__ = MagicMock(return_value=mock_server)
     mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -131,7 +135,7 @@ def test_send_email_success(mock_smtp_cls: MagicMock) -> None:
     assert result is True
     mock_smtp_cls.assert_called_once_with("smtp.example.com", 587)
     mock_server.starttls.assert_called_once()
-    mock_server.login.assert_called_once_with("user@example.com", "secret")
+    mock_server.login.assert_called_once_with("user@example.com", TEST_SMTP_PASSWORD)
     mock_server.sendmail.assert_called_once()
 
 
