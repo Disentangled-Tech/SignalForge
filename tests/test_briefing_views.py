@@ -147,12 +147,14 @@ def noauth_client(mock_db):
 class TestBriefingPage:
     """Tests for GET /briefing."""
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_briefing_renders_with_items(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """Briefing page renders when items exist."""
         mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
         item = _make_briefing_item()
         query_mock = MagicMock()
         query_mock.options.return_value = query_mock
@@ -192,12 +194,14 @@ class TestBriefingPage:
         assert "No briefing" in resp.text
         assert "Generate Now" in resp.text
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_briefing_shows_failure_alert_when_job_had_failures(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """When latest briefing job had failures, show alert banner (issue #32)."""
         mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
         item = _make_briefing_item()
         briefing_chain = MagicMock()
         briefing_chain.options.return_value = briefing_chain
@@ -229,12 +233,14 @@ class TestBriefingPage:
         assert "Last briefing job had failures" in resp.text
         assert "Settings" in resp.text
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_briefing_multiple_items_ordered(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """Briefing page renders multiple items."""
         mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
         co1 = _make_company(id=1, name="Alpha Co", cto_need_score=90)
         co2 = _make_company(id=2, name="Beta Co", cto_need_score=60)
         item1 = _make_briefing_item(id=1, company=co1)
@@ -260,12 +266,14 @@ class TestBriefingPage:
 class TestBriefingByDate:
     """Tests for GET /briefing/{date_str}."""
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_date_specific_briefing(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """Briefing page renders for a specific date."""
         mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
         target = date(2026, 1, 15)
         item = _make_briefing_item(briefing_date=target)
 
@@ -359,11 +367,13 @@ class TestBriefingGenerate:
 class TestBriefingDisplayScores:
     """Tests for CTO Score display (Issue #24: same logic as company detail)."""
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_briefing_uses_display_scores_when_available(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """Briefing page shows recomputed score from get_display_scores_for_companies."""
+        mock_get_emerging.return_value = []
         co = _make_company(id=1, cto_need_score=70)  # stored score
         item = _make_briefing_item(company=co)
         mock_get_scores.return_value = {1: 88}  # recomputed score
@@ -387,11 +397,13 @@ class TestBriefingDisplayScores:
         call_args = mock_get_scores.call_args[0]
         assert call_args[1] == [1]
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_briefing_falls_back_to_stored_score_when_no_recomputed(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """When get_display_scores returns empty, use company.cto_need_score."""
+        mock_get_emerging.return_value = []
         co = _make_company(id=1, cto_need_score=75)
         item = _make_briefing_item(company=co)
         mock_get_scores.return_value = {}  # no recomputed scores
@@ -453,12 +465,14 @@ class TestBriefingSort:
 
         assert resp.status_code == 200
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_duplicate_companies_deduplicated_in_display(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """When same company has multiple BriefingItems, display shows only one."""
         mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
         co = _make_company(id=1, name="Acme Corp")
         analysis = _make_analysis()
         item1 = _make_briefing_item(
@@ -484,12 +498,14 @@ class TestBriefingSort:
         # Acme Corp should appear only once (deduplication keeps first per sort)
         assert resp.text.count("Acme Corp") == 1
 
+    @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_sort_ui_present_when_items_exist(
-        self, mock_get_scores, mock_db, mock_user
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
         """Sort dropdown/links visible when briefing has items."""
         mock_get_scores.return_value = {}
+        mock_get_emerging.return_value = []
         item = _make_briefing_item()
         query_mock = MagicMock()
         query_mock.options.return_value = query_mock
@@ -515,7 +531,7 @@ class TestEmergingCompaniesSection:
     def test_briefing_page_includes_emerging_section(
         self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):
-        """When emerging companies exist, section shows them."""
+        """When emerging companies exist, section shows OutreachScore and ESL (Issue #102)."""
         mock_get_scores.return_value = {}
         co = MagicMock()
         co.id = 1
@@ -528,7 +544,11 @@ class TestEmergingCompaniesSection:
         snap.pressure = 60
         snap.leadership_gap = 55
         snap.explain = {"top_events": [{"event_type": "funding_raised"}]}
-        mock_get_emerging.return_value = [(snap, co)]
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 1.0
+        eng_snap.engagement_type = "Standard Outreach"
+        eng_snap.cadence_blocked = False
+        mock_get_emerging.return_value = [(snap, eng_snap, co)]
 
         query_mock = MagicMock()
         query_mock.options.return_value = query_mock
@@ -546,7 +566,8 @@ class TestEmergingCompaniesSection:
         assert resp.status_code == 200
         assert "Emerging Companies to Watch" in resp.text
         assert "Emerging Corp" in resp.text
-        assert "Readiness: 72" in resp.text
+        assert "Outreach: 72" in resp.text
+        assert "Standard Outreach" in resp.text
         assert "New funding" in resp.text
 
     @patch("app.api.briefing_views.get_emerging_companies")
@@ -574,6 +595,48 @@ class TestEmergingCompaniesSection:
         assert resp.status_code == 200
         assert "Emerging Companies to Watch" in resp.text
         assert "No emerging companies for this date" in resp.text
+
+    @patch("app.api.briefing_views.get_emerging_companies")
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_emerging_section_shows_esl_and_cooldown(
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
+    ):
+        """Emerging section displays ESL score, recommendation category, cooldown badge."""
+        mock_get_scores.return_value = {}
+        co = MagicMock()
+        co.id = 2
+        co.name = "Cooldown Co"
+        co.website_url = "https://cooldown.example.com"
+        snap = MagicMock()
+        snap.composite = 60
+        snap.momentum = 50
+        snap.complexity = 55
+        snap.pressure = 50
+        snap.leadership_gap = 45
+        snap.explain = {}
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 0.5
+        eng_snap.engagement_type = "Observe Only"
+        eng_snap.cadence_blocked = True
+        mock_get_emerging.return_value = [(snap, eng_snap, co)]
+
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = []
+        query_mock.first.return_value = None
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Observe Only" in resp.text
+        assert "Cooldown active" in resp.text
+        assert "Outreach: 30" in resp.text
 
     @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")

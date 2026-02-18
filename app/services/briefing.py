@@ -12,9 +12,11 @@ from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_record import SignalRecord
+from app.services.esl.esl_engine import compute_outreach_score
 from app.prompts.loader import render_prompt
 from app.services.email_service import send_briefing_email
 from app.services.outreach import generate_outreach
@@ -85,24 +87,40 @@ def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
 def get_emerging_companies(
     db: Session,
     as_of: date,
-    limit: int = 10,
-    threshold: int = 60,
-) -> list[tuple[ReadinessSnapshot, Company]]:
-    """Query top N companies by readiness composite for a date (Issue #93).
+    *,
+    limit: int = 5,
+    outreach_score_threshold: int = 30,
+) -> list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]]:
+    """Query top N companies by OutreachScore for a date (Issue #102).
 
-    Returns (snapshot, company) pairs for companies with composite >= threshold,
-    sorted by composite descending. Uses readiness_snapshots.
+    Joins ReadinessSnapshot with EngagementSnapshot. Returns (readiness_snapshot,
+    engagement_snapshot, company) for companies with OutreachScore >= threshold,
+    sorted by OutreachScore descending. Companies without EngagementSnapshot are
+    excluded. Cooldown (cadence_blocked) companies are included with Observe Only
+    badge; OutreachScore may be 0.
     """
-    snapshots = (
-        db.query(ReadinessSnapshot)
+    pairs = (
+        db.query(ReadinessSnapshot, EngagementSnapshot)
+        .join(
+            EngagementSnapshot,
+            (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
+            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of),
+        )
         .options(joinedload(ReadinessSnapshot.company))
         .filter(ReadinessSnapshot.as_of == as_of)
-        .filter(ReadinessSnapshot.composite >= threshold)
-        .order_by(ReadinessSnapshot.composite.desc())
-        .limit(limit)
         .all()
     )
-    return [(s, s.company) for s in snapshots if s.company]
+    results: list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]] = []
+    for rs, es in pairs:
+        if not rs.company:
+            continue
+        outreach_score = compute_outreach_score(rs.composite, es.esl_score)
+        if outreach_score < outreach_score_threshold:
+            continue
+        results.append((rs, es, rs.company))
+
+    results.sort(key=lambda r: r[0].composite * r[1].esl_score, reverse=True)
+    return results[:limit]
 
 
 def _parse_json_safe(text: str) -> dict | None:
