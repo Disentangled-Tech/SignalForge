@@ -105,7 +105,12 @@
     </div>
 
     <div class="card" style="margin-top: 1.5rem;">
-        <h2>Recent Job Runs</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem;">
+            <h2 style="margin: 0;">Recent Job Runs</h2>
+            <form method="post" action="/settings/run-ingest" style="display: inline;">
+                <button type="submit" class="btn btn-secondary" {% if ingest_running %}disabled{% endif %}>Run ingest</button>
+            </form>
+        </div>
         {% if recent_jobs %}
         <table>
             <thead>

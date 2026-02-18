@@ -105,3 +105,31 @@ async def run_score(
         logger.exception("Internal score job failed")
         return {"status": "failed", "error": str(exc)}
 
+
+@router.post("/run_ingest")
+async def run_ingest_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+):
+    """Trigger daily ingestion (Issue #90).
+
+    Fetches events since last run (or 24h ago), persists with deduplication.
+    Returns job summary with inserted, skipped_duplicate, skipped_invalid.
+    """
+    from app.services.ingestion.ingest_daily import run_ingest_daily
+
+    try:
+        result = run_ingest_daily(db)
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
+            "inserted": result["inserted"],
+            "skipped_duplicate": result["skipped_duplicate"],
+            "skipped_invalid": result["skipped_invalid"],
+            "errors_count": result["errors_count"],
+            "error": result.get("error"),
+        }
+    except Exception as exc:
+        logger.exception("Internal ingest job failed")
+        return {"status": "failed", "error": str(exc)}
+

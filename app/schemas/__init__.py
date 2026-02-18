@@ -21,7 +21,7 @@ from app.schemas.settings import (
     SettingsRead,
     SettingsUpdate,
 )
-from app.schemas.signal import SignalRecordList, SignalRecordRead
+from app.schemas.signal import RawEvent, SignalRecordList, SignalRecordRead
 
 __all__ = [
     # Company
@@ -31,6 +31,7 @@ __all__ = [
     "CompanyList",
     "CompanySource",
     # Signal
+    "RawEvent",
     "SignalRecordRead",
     "SignalRecordList",
     # Analysis
