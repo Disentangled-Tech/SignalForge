@@ -52,3 +52,6 @@ class Company(Base):
     readiness_snapshots: Mapped[list["ReadinessSnapshot"]] = relationship(
         "ReadinessSnapshot", back_populates="company", cascade="all, delete-orphan"
     )
+    watchlist_entries: Mapped[list["Watchlist"]] = relationship(
+        "Watchlist", back_populates="company", cascade="all, delete-orphan"
+    )

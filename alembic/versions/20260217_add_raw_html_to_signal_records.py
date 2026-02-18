@@ -26,4 +26,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("signal_records", "raw_html")
+    op.execute(sa.text("ALTER TABLE signal_records DROP COLUMN IF EXISTS raw_html"))
