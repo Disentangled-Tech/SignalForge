@@ -9,12 +9,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from sqlalchemy import func
-
 from app.db.session import SessionLocal
-from app.models.company import Company
 from app.schemas.company import CompanyCreate
-from app.services.company import create_company
+from app.services.company import _model_to_read
+from app.services.company_resolver import resolve_or_create_company
 
 
 def main() -> None:
@@ -46,15 +44,6 @@ def main() -> None:
 
     db = SessionLocal()
     try:
-        existing = (
-            db.query(Company)
-            .filter(func.lower(Company.name) == name.lower())
-            .first()
-        )
-        if existing:
-            print(f"Company '{name}' already exists (id={existing.id}).")
-            sys.exit(1)
-
         data = CompanyCreate(
             company_name=name,
             website_url=args.website_url.strip() if args.website_url else None,
@@ -71,8 +60,12 @@ def main() -> None:
             ),
             notes=args.notes.strip() if args.notes else None,
         )
-        company = create_company(db, data)
-        print(f"Company '{company.company_name}' created successfully (id={company.id}).")
+        company, created = resolve_or_create_company(db, data)
+        if not created:
+            print(f"Company '{name}' already exists (id={company.id}).")
+            sys.exit(1)
+        read = _model_to_read(company)
+        print(f"Company '{read.company_name}' created successfully (id={read.id}).")
     finally:
         db.close()
 

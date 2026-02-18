@@ -51,6 +51,7 @@ class CompanyRead(BaseModel):
 
     id: int
     company_name: str
+    domain: Optional[str] = None
     website_url: Optional[str] = None
     founder_name: Optional[str] = None
     founder_linkedin_url: Optional[str] = None

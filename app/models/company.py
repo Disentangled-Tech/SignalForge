@@ -17,6 +17,7 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     website_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     founder_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     founder_linkedin_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
@@ -63,4 +64,7 @@ class Company(Base):
     )
     outreach_recommendations: Mapped[list["OutreachRecommendation"]] = relationship(
         "OutreachRecommendation", back_populates="company", cascade="all, delete-orphan"
+    )
+    aliases: Mapped[list["CompanyAlias"]] = relationship(
+        "CompanyAlias", back_populates="company", cascade="all, delete-orphan"
     )

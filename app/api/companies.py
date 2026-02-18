@@ -21,12 +21,12 @@ from app.schemas.company import (
 )
 from app.services.company import (
     bulk_import_companies,
-    create_company,
     delete_company,
     get_company,
     list_companies,
     update_company,
 )
+from app.services.company_resolver import resolve_or_create_company
 
 router = APIRouter()
 
@@ -75,8 +75,11 @@ def api_create_company(
     db: Session = Depends(get_db),
     _auth: None = Depends(require_auth),
 ) -> CompanyRead:
-    """Create a new company."""
-    return create_company(db, data)
+    """Create a new company or resolve to existing (idempotent). Returns 201 for both."""
+    from app.services.company import _model_to_read
+
+    company, _created = resolve_or_create_company(db, data)
+    return _model_to_read(company)
 
 
 class _BulkImportBody(BaseModel):

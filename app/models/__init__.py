@@ -5,6 +5,7 @@ from app.models.analysis_record import AnalysisRecord
 from app.models.app_settings import AppSettings
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
+from app.models.company_alias import CompanyAlias
 from app.models.outreach_history import OutreachHistory
 from app.models.outreach_recommendation import OutreachRecommendation
 from app.models.job_run import JobRun
@@ -21,6 +22,7 @@ __all__ = [
     "AppSettings",
     "BriefingItem",
     "Company",
+    "CompanyAlias",
     "OutreachHistory",
     "OutreachRecommendation",
     "JobRun",

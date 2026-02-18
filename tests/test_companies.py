@@ -34,7 +34,7 @@ def _make_company(**overrides) -> MagicMock:
     """Create a mock Company model instance with sensible defaults."""
     now = datetime.now(timezone.utc)
     defaults = dict(
-        id=1, name="Acme Corp", website_url="https://acme.example.com",
+        id=1, name="Acme Corp", domain=None, website_url="https://acme.example.com",
         founder_name="Jane Doe", founder_linkedin_url=None,
         company_linkedin_url=None, source="manual",
         target_profile_match=False, current_stage=None, notes=None,
@@ -217,19 +217,12 @@ class TestCompanyAPI:
         yield client
         app.dependency_overrides.clear()
 
-    def test_create_company_api(self, api_client: TestClient) -> None:
-        now = datetime.now(timezone.utc)
+    @patch("app.api.companies.resolve_or_create_company")
+    def test_create_company_api(
+        self, mock_resolve: MagicMock, api_client: TestClient
+    ) -> None:
         company = _make_company(name="API Co")
-
-        def fake_refresh(obj):
-            if not hasattr(obj, "id") or obj.id is None:
-                object.__setattr__(obj, "id", 1)
-            if not hasattr(obj, "created_at") or obj.created_at is None:
-                object.__setattr__(obj, "created_at", now)
-            if not hasattr(obj, "updated_at") or obj.updated_at is None:
-                object.__setattr__(obj, "updated_at", now)
-
-        self._mock_db.refresh = MagicMock(side_effect=fake_refresh)
+        mock_resolve.return_value = (company, True)
 
         response = api_client.post(
             "/api/companies",
@@ -327,21 +320,15 @@ class TestBulkImportService:
     def _mock_db(self):
         return MagicMock()
 
-    def test_import_creates_new_companies(self) -> None:
+    @patch("app.services.company.resolve_or_create_company")
+    def test_import_creates_new_companies(self, mock_resolve: MagicMock) -> None:
         db = self._mock_db()
-        now = datetime.now(timezone.utc)
-        # No duplicates found
-        db.query.return_value.filter.return_value.first.return_value = None
-
-        def fake_refresh(obj):
-            if not hasattr(obj, "id") or obj.id is None:
-                object.__setattr__(obj, "id", 1)
-            if not hasattr(obj, "created_at") or obj.created_at is None:
-                object.__setattr__(obj, "created_at", now)
-            if not hasattr(obj, "updated_at") or obj.updated_at is None:
-                object.__setattr__(obj, "updated_at", now)
-
-        db.refresh = MagicMock(side_effect=fake_refresh)
+        company_a = _make_company(id=1, name="Alpha Inc")
+        company_b = _make_company(id=2, name="Beta Corp")
+        mock_resolve.side_effect = [
+            (company_a, True),
+            (company_b, True),
+        ]
 
         companies = [
             CompanyCreate(company_name="Alpha Inc"),
@@ -356,10 +343,11 @@ class TestBulkImportService:
         assert result.rows[0].status == "created"
         assert result.rows[1].status == "created"
 
-    def test_import_detects_duplicates(self) -> None:
+    @patch("app.services.company.resolve_or_create_company")
+    def test_import_detects_duplicates(self, mock_resolve: MagicMock) -> None:
         db = self._mock_db()
         existing = _make_company(id=42, name="Existing Co")
-        db.query.return_value.filter.return_value.first.return_value = existing
+        mock_resolve.return_value = (existing, False)
 
         companies = [CompanyCreate(company_name="Existing Co")]
         result = bulk_import_companies(db, companies)
@@ -377,35 +365,18 @@ class TestBulkImportService:
         assert result.errors == 0
         assert result.rows == []
 
-    def test_import_mixed_results(self) -> None:
+    @patch("app.services.company.resolve_or_create_company")
+    def test_import_mixed_results(self, mock_resolve: MagicMock) -> None:
         db = self._mock_db()
-        now = datetime.now(timezone.utc)
+        new_company = _make_company(id=1, name="New Co")
         existing = _make_company(id=10, name="Dupe Co")
 
-        call_count = 0
+        def resolve_side_effect(_db, data):
+            if data.company_name == "New Co":
+                return (new_company, True)
+            return (existing, False)
 
-        def filter_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            mock_filter = MagicMock()
-            # First call: no duplicate (new company), Second call: duplicate found
-            if call_count == 1:
-                mock_filter.first.return_value = None
-            else:
-                mock_filter.first.return_value = existing
-            return mock_filter
-
-        db.query.return_value.filter = MagicMock(side_effect=filter_side_effect)
-
-        def fake_refresh(obj):
-            if not hasattr(obj, "id") or obj.id is None:
-                object.__setattr__(obj, "id", 1)
-            if not hasattr(obj, "created_at") or obj.created_at is None:
-                object.__setattr__(obj, "created_at", now)
-            if not hasattr(obj, "updated_at") or obj.updated_at is None:
-                object.__setattr__(obj, "updated_at", now)
-
-        db.refresh = MagicMock(side_effect=fake_refresh)
+        mock_resolve.side_effect = resolve_side_effect
 
         companies = [
             CompanyCreate(company_name="New Co"),
@@ -454,23 +425,14 @@ class TestBulkImportAPI:
         yield client
         app.dependency_overrides.clear()
 
-    def _setup_no_duplicates(self):
-        """Configure mock DB to find no duplicates and handle refresh."""
-        now = datetime.now(timezone.utc)
-        self._mock_db.query.return_value.filter.return_value.first.return_value = None
-
-        def fake_refresh(obj):
-            if not hasattr(obj, "id") or obj.id is None:
-                object.__setattr__(obj, "id", 1)
-            if not hasattr(obj, "created_at") or obj.created_at is None:
-                object.__setattr__(obj, "created_at", now)
-            if not hasattr(obj, "updated_at") or obj.updated_at is None:
-                object.__setattr__(obj, "updated_at", now)
-
-        self._mock_db.refresh = MagicMock(side_effect=fake_refresh)
-
-    def test_json_import_happy_path(self, api_client: TestClient) -> None:
-        self._setup_no_duplicates()
+    @patch("app.services.company.resolve_or_create_company")
+    def test_json_import_happy_path(
+        self, mock_resolve: MagicMock, api_client: TestClient
+    ) -> None:
+        mock_resolve.side_effect = [
+            (_make_company(name="Alpha Inc"), True),
+            (_make_company(name="Beta Corp"), True),
+        ]
         response = api_client.post(
             "/api/companies/import",
             json={
@@ -488,8 +450,14 @@ class TestBulkImportAPI:
         assert data["errors"] == 0
         assert len(data["rows"]) == 2
 
-    def test_csv_import_happy_path(self, api_client: TestClient) -> None:
-        self._setup_no_duplicates()
+    @patch("app.services.company.resolve_or_create_company")
+    def test_csv_import_happy_path(
+        self, mock_resolve: MagicMock, api_client: TestClient
+    ) -> None:
+        mock_resolve.side_effect = [
+            (_make_company(name="Alpha Inc"), True),
+            (_make_company(name="Beta Corp"), True),
+        ]
         csv_content = "company_name,website_url\nAlpha Inc,https://alpha.example.com\nBeta Corp,\n"
         response = api_client.post(
             "/api/companies/import",
@@ -502,9 +470,12 @@ class TestBulkImportAPI:
         assert data["duplicates"] == 0
         assert data["errors"] == 0
 
-    def test_json_import_duplicate_detection(self, api_client: TestClient) -> None:
+    @patch("app.services.company.resolve_or_create_company")
+    def test_json_import_duplicate_detection(
+        self, mock_resolve: MagicMock, api_client: TestClient
+    ) -> None:
         existing = _make_company(id=42, name="Existing Co")
-        self._mock_db.query.return_value.filter.return_value.first.return_value = existing
+        mock_resolve.return_value = (existing, False)
         response = api_client.post(
             "/api/companies/import",
             json={"companies": [{"company_name": "Existing Co"}]},
@@ -516,8 +487,11 @@ class TestBulkImportAPI:
         assert data["duplicates"] == 1
         assert data["rows"][0]["status"] == "duplicate"
 
-    def test_csv_import_missing_company_name(self, api_client: TestClient) -> None:
-        self._setup_no_duplicates()
+    @patch("app.services.company.resolve_or_create_company")
+    def test_csv_import_missing_company_name(
+        self, mock_resolve: MagicMock, api_client: TestClient
+    ) -> None:
+        mock_resolve.return_value = (_make_company(name="Good Co"), True)
         csv_content = "company_name,website_url\n,https://noname.example.com\nGood Co,\n"
         response = api_client.post(
             "/api/companies/import",

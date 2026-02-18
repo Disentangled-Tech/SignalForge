@@ -43,17 +43,18 @@ def _make_company_read(**overrides) -> CompanyRead:
 class TestCreateCompanyScript:
     """Tests for app.scripts.create_company main()."""
 
-    @patch("app.scripts.create_company.create_company")
+    @patch("app.scripts.create_company._model_to_read")
+    @patch("app.scripts.create_company.resolve_or_create_company")
     @patch("app.scripts.create_company.SessionLocal")
     def test_creates_company_with_valid_args(
-        self, mock_session_local, mock_create_company, capsys
+        self, mock_session_local, mock_resolve, mock_model_to_read, capsys
     ) -> None:
         """Script creates company when given valid args."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
-        # No duplicate found
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        mock_create_company.return_value = _make_company_read(
+        mock_company = MagicMock()
+        mock_resolve.return_value = (mock_company, True)
+        mock_model_to_read.return_value = _make_company_read(
             id=42, company_name="Test Co"
         )
 
@@ -66,16 +67,16 @@ class TestCreateCompanyScript:
             out, err = capsys.readouterr()
             assert "Test Co" in out
             assert "42" in out or "created successfully" in out.lower()
-            mock_create_company.assert_called_once()
-            call_args = mock_create_company.call_args[0]
+            mock_resolve.assert_called_once()
+            call_args = mock_resolve.call_args[0]
             assert call_args[1].company_name == "Test Co"
         finally:
             sys.argv = old_argv
 
-    @patch("app.scripts.create_company.create_company")
+    @patch("app.scripts.create_company.resolve_or_create_company")
     @patch("app.scripts.create_company.SessionLocal")
     def test_exits_1_when_duplicate(
-        self, mock_session_local, mock_create_company, capsys
+        self, mock_session_local, mock_resolve, capsys
     ) -> None:
         """Script exits 1 when company name already exists."""
         mock_db = MagicMock()
@@ -83,7 +84,7 @@ class TestCreateCompanyScript:
         existing = MagicMock()
         existing.id = 10
         existing.name = "Existing Co"
-        mock_db.query.return_value.filter.return_value.first.return_value = existing
+        mock_resolve.return_value = (existing, False)
 
         from app.scripts.create_company import main
 
@@ -95,7 +96,7 @@ class TestCreateCompanyScript:
             assert exc_info.value.code == 1
             out, err = capsys.readouterr()
             assert "already exists" in (out + err).lower()
-            mock_create_company.assert_not_called()
+            mock_resolve.assert_called_once()
         finally:
             sys.argv = old_argv
 
@@ -119,16 +120,18 @@ class TestCreateCompanyScript:
         finally:
             sys.argv = old_argv
 
-    @patch("app.scripts.create_company.create_company")
+    @patch("app.scripts.create_company._model_to_read")
+    @patch("app.scripts.create_company.resolve_or_create_company")
     @patch("app.scripts.create_company.SessionLocal")
     def test_passes_optional_fields(
-        self, mock_session_local, mock_create_company, capsys
+        self, mock_session_local, mock_resolve, mock_model_to_read, capsys
     ) -> None:
         """Script passes optional fields through correctly."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        mock_create_company.return_value = _make_company_read(
+        mock_company = MagicMock()
+        mock_resolve.return_value = (mock_company, True)
+        mock_model_to_read.return_value = _make_company_read(
             id=1, company_name="Full Co"
         )
 
@@ -144,8 +147,8 @@ class TestCreateCompanyScript:
                 "--notes", "Test notes",
             ]
             main()
-            mock_create_company.assert_called_once()
-            data = mock_create_company.call_args[0][1]
+            mock_resolve.assert_called_once()
+            data = mock_resolve.call_args[0][1]
             assert data.company_name == "Full Co"
             assert data.website_url == "https://full.example.com"
             assert data.founder_name == "Alice"
