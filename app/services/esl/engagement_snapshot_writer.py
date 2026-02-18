@@ -6,12 +6,14 @@ Runs after readiness scoring; requires ReadinessSnapshot for company/as_of.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models import Company, EngagementSnapshot, OutreachHistory, ReadinessSnapshot, SignalEvent
+from app.services.esl.esl_constants import STABILITY_CAP_THRESHOLD
 from app.services.esl.esl_engine import (
     build_esl_explain,
     compute_alignment_modifier,
@@ -95,6 +97,16 @@ def compute_esl_from_context(
     esl_composite = compute_esl_composite(be, sm, cm, am)
     recommendation_type = map_esl_to_recommendation(esl_composite)
 
+    stability_cap_triggered = sm < STABILITY_CAP_THRESHOLD
+    if stability_cap_triggered:
+        recommendation_type = "Soft Value Share"
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Stability cap triggered: company_id=%s, stability_modifier=%.2f",
+            company_id,
+            sm,
+        )
+
     explain = build_esl_explain(
         base_engageability=be,
         stability_modifier=sm,
@@ -106,6 +118,7 @@ def compute_esl_from_context(
         esl_composite=esl_composite,
         recommendation_type=recommendation_type,
         cadence_blocked=(cm == 0.0),
+        stability_cap_triggered=stability_cap_triggered,
     )
 
     return {

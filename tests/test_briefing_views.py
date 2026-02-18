@@ -669,6 +669,48 @@ class TestEmergingCompaniesSection:
 
     @patch("app.api.briefing_views.get_emerging_companies")
     @patch("app.api.briefing_views.get_display_scores_for_companies")
+    def test_emerging_section_shows_stability_cap_badge(
+        self, mock_get_scores, mock_get_emerging, mock_db, mock_user
+    ):
+        """When stability_cap_triggered in explain, show Stability cap badge (Issue #111)."""
+        mock_get_scores.return_value = {}
+        co = MagicMock()
+        co.id = 3
+        co.name = "StabilityCap Co"
+        co.website_url = "https://stability.example.com"
+        snap = MagicMock()
+        snap.composite = 75
+        snap.momentum = 70
+        snap.complexity = 65
+        snap.pressure = 70
+        snap.leadership_gap = 60
+        snap.explain = {}
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 0.5
+        eng_snap.engagement_type = "Soft Value Share"
+        eng_snap.cadence_blocked = False
+        eng_snap.explain = {"stability_cap_triggered": True}
+        mock_get_emerging.return_value = [(snap, eng_snap, co)]
+
+        query_mock = MagicMock()
+        query_mock.options.return_value = query_mock
+        query_mock.filter.return_value = query_mock
+        query_mock.join.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.all.return_value = []
+        query_mock.first.return_value = None
+        mock_db.query.return_value = query_mock
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Stability cap — Soft Value Share only" in resp.text
+        assert "Soft Value Share" in resp.text
+
+    @patch("app.api.briefing_views.get_emerging_companies")
+    @patch("app.api.briefing_views.get_display_scores_for_companies")
     def test_emerging_section_does_not_affect_existing_briefing(
         self, mock_get_scores, mock_get_emerging, mock_db, mock_user
     ):

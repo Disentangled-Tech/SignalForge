@@ -8,7 +8,10 @@ Checks before generation:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -46,6 +49,10 @@ def check_policy_gate(
         )
 
     if stability_modifier < 0.7:
+        logger.info(
+            "Stability cap triggered (SM < 0.7): capping recommendation to Soft Value Share",
+            extra={"stability_modifier": stability_modifier},
+        )
         safeguards.append("Stability cap triggered (SM < 0.7) → Soft Value Share only")
         return PolicyGateResult(
             recommendation_type="Soft Value Share",
