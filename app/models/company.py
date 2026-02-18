@@ -24,6 +24,8 @@ class Company(Base):
     company_linkedin_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     source: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
     target_profile_match: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    alignment_ok_to_contact: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    alignment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     cto_need_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -52,6 +54,9 @@ class Company(Base):
     )
     readiness_snapshots: Mapped[list["ReadinessSnapshot"]] = relationship(
         "ReadinessSnapshot", back_populates="company", cascade="all, delete-orphan"
+    )
+    engagement_snapshots: Mapped[list["EngagementSnapshot"]] = relationship(
+        "EngagementSnapshot", back_populates="company", cascade="all, delete-orphan"
     )
     watchlist_entries: Mapped[list["Watchlist"]] = relationship(
         "Watchlist", back_populates="company", cascade="all, delete-orphan"
