@@ -55,9 +55,11 @@ def create_app() -> FastAPI:
     from app.api.companies import router as companies_router
     from app.api.settings_views import router as settings_views_router
     from app.api.views import router as views_router
+    from app.api.watchlist import router as watchlist_router
 
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
+    app.include_router(watchlist_router, prefix="/api/watchlist", tags=["watchlist"])
 
     # Mount HTML-serving view routes (no prefix — serves /, /login, /companies, etc.)
     app.include_router(views_router, tags=["views"])
