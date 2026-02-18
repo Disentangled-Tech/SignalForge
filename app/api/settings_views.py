@@ -7,12 +7,13 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_ui_auth
+from app.db.session import SessionLocal
 from app.models.job_run import JobRun
 from app.models.user import User
 from app.services.scan_metrics import get_scan_change_rate_30d
@@ -57,6 +58,13 @@ def settings_page(
         .all()
     )
 
+    ingest_running = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "ingest", JobRun.status == "running")
+        .first()
+        is not None
+    )
+
     scan_change_pct, scan_change_total, scan_change_denom = get_scan_change_rate_30d(db)
 
     return templates.TemplateResponse(
@@ -68,6 +76,7 @@ def settings_page(
             "flash_message": flash_message or error,
             "flash_type": "error" if error else "success" if flash_message else None,
             "recent_jobs": recent_jobs,
+            "ingest_running": ingest_running,
             "scan_change_pct": scan_change_pct,
             "scan_change_total": scan_change_total,
             "scan_change_denom": scan_change_denom,
@@ -148,6 +157,42 @@ def settings_save(
 
     update_app_settings(db, updates)
     return RedirectResponse(url="/settings?success=Settings+saved", status_code=303)
+
+
+def _run_ingest_background() -> None:
+    """Background task: run daily ingestion. Uses its own DB session."""
+    from app.services.ingestion.ingest_daily import run_ingest_daily
+
+    db = SessionLocal()
+    try:
+        run_ingest_daily(db)
+    finally:
+        db.close()
+
+
+@router.post("/settings/run-ingest")
+def settings_run_ingest(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_ui_auth),
+    db: Session = Depends(get_db),
+):
+    """Queue ingestion job and redirect back to settings (Issue #90)."""
+    ingest_running = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "ingest", JobRun.status == "running")
+        .first()
+    )
+    if ingest_running is not None:
+        return RedirectResponse(
+            url="/settings?error=Ingest+already+running",
+            status_code=303,
+        )
+
+    background_tasks.add_task(_run_ingest_background)
+    return RedirectResponse(
+        url="/settings?success=Ingest+queued",
+        status_code=303,
+    )
 
 
 @router.get("/settings/profile", response_class=HTMLResponse)

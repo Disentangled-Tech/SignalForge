@@ -186,3 +186,65 @@ class TestRunScore:
         assert data["status"] == "failed"
         assert "DB error" in data["error"]
 
+
+# ── /internal/run_ingest ────────────────────────────────────────────
+
+
+class TestRunIngest:
+    @patch("app.services.ingestion.ingest_daily.run_ingest_daily")
+    def test_valid_token_calls_run_ingest_daily(
+        self, mock_ingest, client: TestClient
+    ):
+        """POST /internal/run_ingest with valid token triggers ingest job."""
+        mock_ingest.return_value = {
+            "status": "completed",
+            "job_run_id": 42,
+            "inserted": 3,
+            "skipped_duplicate": 0,
+            "skipped_invalid": 0,
+            "errors_count": 0,
+            "error": None,
+        }
+
+        response = client.post(
+            "/internal/run_ingest",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["job_run_id"] == 42
+        assert data["inserted"] == 3
+        assert data["skipped_duplicate"] == 0
+        assert data["errors_count"] == 0
+        mock_ingest.assert_called_once()
+
+    def test_run_ingest_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_ingest without token header returns 422."""
+        response = client.post("/internal/run_ingest")
+        assert response.status_code == 422
+
+    def test_run_ingest_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_ingest with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_ingest",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
+    @patch("app.services.ingestion.ingest_daily.run_ingest_daily")
+    def test_run_ingest_error_returns_failed(self, mock_ingest, client: TestClient):
+        """POST /internal/run_ingest returns failed status on exception."""
+        mock_ingest.side_effect = RuntimeError("Ingest failed")
+
+        response = client.post(
+            "/internal/run_ingest",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert "Ingest failed" in data["error"]
+
