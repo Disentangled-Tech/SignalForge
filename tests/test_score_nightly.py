@@ -171,3 +171,96 @@ class TestRunScoreNightly:
         assert job.status == "completed"
         assert job.finished_at is not None
         assert result["job_run_id"] == job.id
+
+    def test_re_run_same_day_does_not_duplicate(self, db: Session) -> None:
+        """Re-running same day upserts; no duplicate rows (Issue #91 AC)."""
+        company = Company(
+            name="IdempotentCo",
+            website_url="https://idempotent.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        run_score_nightly(db)
+        count_before = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .count()
+        )
+        assert count_before == 1
+
+        run_score_nightly(db)
+        count_after = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .count()
+        )
+        assert count_after == count_before
+
+    def test_scores_match_golden_values(self, db: Session) -> None:
+        """Snapshot dimensions match expected values from engine (Issue #91, v2-spec §11)."""
+        company = Company(
+            name="GoldenCo",
+            website_url="https://golden.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        # funding_raised 5d ago (conf 0.9) -> M ~31-32; cto_role_posted 50d ago -> G=70
+        db.add_all([
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            ),
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="cto_role_posted",
+                event_time=_days_ago(50),
+                confidence=0.7,
+            ),
+        ])
+        db.commit()
+
+        result = run_score_nightly(db)
+        assert result["status"] == "completed"
+        assert result["companies_scored"] >= 1
+
+        snapshot = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert snapshot is not None
+        # funding_raised: 35*1.0*0.9=31.5 -> 31 or 32
+        assert snapshot.momentum in (31, 32)
+        # cto_role_posted without cto_hired -> G=70 (test_no_cto_hired_yields_full_gap)
+        assert snapshot.leadership_gap == 70
+        # R = 0.30*M + 0.30*C + 0.25*P + 0.15*G; funding adds to P too
+        assert snapshot.composite >= 20
+        assert snapshot.composite <= 35

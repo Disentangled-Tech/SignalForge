@@ -38,6 +38,7 @@ def run_score_nightly(db: Session) -> dict:
 
     try:
         as_of = date.today()
+        logger.info("Starting nightly score job, as_of=%s", as_of)
         cutoff_dt = datetime.combine(
             as_of - timedelta(days=365), datetime.min.time()
         ).replace(tzinfo=timezone.utc)
@@ -94,6 +95,11 @@ def run_score_nightly(db: Session) -> dict:
         job.error_message = "; ".join(errors[:10]) if errors else None
         db.commit()
 
+        logger.info(
+            "Nightly score completed: scored=%d, skipped=%d",
+            companies_scored,
+            companies_skipped,
+        )
         return {
             "status": "completed",
             "job_run_id": job.id,
