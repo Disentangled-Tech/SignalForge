@@ -151,6 +151,25 @@ def companies_list(
     company_ids = [c.id for c in companies]
     company_scores = get_display_scores_for_companies(db, company_ids)
     total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE) if total else 1
+
+    # Check if a full scan is already running (for Scan all button state)
+    scan_all_running = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "scan", JobRun.status == "running")
+        .first()
+        is not None
+    )
+    scan_all_param = request.query_params.get("scan_all")
+    if scan_all_param == "queued":
+        flash_message = "Scan all queued. Check Settings for progress."
+        flash_type = "success"
+    elif scan_all_param == "running":
+        flash_message = "A scan is already running. Check Settings for progress."
+        flash_type = "error"
+    else:
+        flash_message = request.query_params.get("success")
+        flash_type = "success" if flash_message else None
+
     return templates.TemplateResponse(
         "companies/list.html",
         {
@@ -165,6 +184,9 @@ def companies_list(
             "page": page,
             "page_size": _PAGE_SIZE,
             "total_pages": total_pages,
+            "flash_message": flash_message,
+            "flash_type": flash_type if flash_message else None,
+            "scan_all_running": scan_all_running,
         },
     )
 
@@ -557,6 +579,43 @@ def company_edit_submit(
         raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(
         url=f"/companies/{company_id}?success=Company+updated", status_code=303
+    )
+
+
+# ── Companies: scan all ──────────────────────────────────────────────
+
+
+def _run_scan_all_background() -> None:
+    """Background task: run full scan across all companies. Uses its own DB session."""
+    from app.services.scan_orchestrator import run_scan_all
+
+    db = SessionLocal()
+    try:
+        asyncio.run(run_scan_all(db))
+    finally:
+        db.close()
+
+
+@router.post("/companies/scan-all")
+async def companies_scan_all(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+):
+    """Queue a full scan across all companies, then redirect back to companies list."""
+    running_job = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "scan", JobRun.status == "running")
+        .first()
+    )
+    if running_job is not None:
+        return RedirectResponse(
+            url="/companies?scan_all=running", status_code=303
+        )
+
+    background_tasks.add_task(_run_scan_all_background)
+    return RedirectResponse(
+        url="/companies?scan_all=queued", status_code=303
     )
 
 
