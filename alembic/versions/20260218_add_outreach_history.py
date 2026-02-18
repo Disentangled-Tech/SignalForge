@@ -1,6 +1,6 @@
 """add outreach_history table
 
-Revision ID: 20260218_engagement
+Revision ID: 20260218_outreach
 Revises: e5f6a7b8c9d0
 Create Date: 2026-02-18
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "20260218_engagement"
+revision: str = "20260218_outreach"
 down_revision: Union[str, None] = "e5f6a7b8c9d0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

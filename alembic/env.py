@@ -27,6 +27,7 @@ from app.models import (  # noqa: F401
     AppSettings,
     BriefingItem,
     Company,
+    CompanyAlias,
     JobRun,
     OperatorProfile,
     ReadinessSnapshot,

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.services.company_resolver import resolve_or_create_company
 from app.services.scoring import get_display_scores_for_companies
 from app.schemas.company import (
     BulkImportResponse,
@@ -50,6 +51,7 @@ def _model_to_read(company: Company) -> CompanyRead:
     return CompanyRead(
         id=company.id,
         company_name=company.name,
+        domain=company.domain,
         website_url=company.website_url,
         founder_name=company.founder_name,
         founder_linkedin_url=company.founder_linkedin_url,
@@ -213,26 +215,20 @@ def bulk_import_companies(
             errors += 1
             continue
 
-        # Duplicate detection: case-insensitive name match
-        existing = (
-            db.query(Company)
-            .filter(func.lower(Company.name) == name.lower())
-            .first()
-        )
-        if existing:
-            rows.append(
-                BulkImportRow(
-                    row=idx,
-                    company_name=name,
-                    status="duplicate",
-                    detail=f"Company '{name}' already exists (id={existing.id})",
-                )
-            )
-            duplicates += 1
-            continue
-
+        # Duplicate detection: use resolver (domain, LinkedIn, normalized name)
         try:
-            result = create_company(db, data)
+            company, was_created = resolve_or_create_company(db, data)
+            if not was_created:
+                rows.append(
+                    BulkImportRow(
+                        row=idx,
+                        company_name=name,
+                        status="duplicate",
+                        detail=f"Company '{name}' already exists (id={company.id})",
+                    )
+                )
+                duplicates += 1
+                continue
             rows.append(
                 BulkImportRow(
                     row=idx,
