@@ -127,6 +127,9 @@ async def run_alert_scan(
         }
     except Exception as exc:
         logger.exception("Internal alert scan failed")
+        return {"status": "failed", "error": str(exc)}
+
+
 @router.post("/run_ingest")
 async def run_ingest_endpoint(
     db: Session = Depends(get_db),
