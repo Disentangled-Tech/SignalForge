@@ -46,3 +46,6 @@ class Company(Base):
     briefing_items: Mapped[list["BriefingItem"]] = relationship(
         "BriefingItem", back_populates="company", cascade="all, delete-orphan"
     )
+    signal_events: Mapped[list["SignalEvent"]] = relationship(
+        "SignalEvent", back_populates="company", passive_deletes=True
+    )
