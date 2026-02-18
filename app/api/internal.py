@@ -98,6 +98,7 @@ async def run_score(
             "status": result["status"],
             "job_run_id": result["job_run_id"],
             "companies_scored": result["companies_scored"],
+            "companies_engagement": result.get("companies_engagement", 0),
             "companies_skipped": result["companies_skipped"],
             "error": result.get("error"),
         }
