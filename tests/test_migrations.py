@@ -48,6 +48,7 @@ def test_alembic_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
     assert "briefing_items" in tables
     assert "readiness_snapshots" in tables
     assert "watchlist" in tables
+    assert "alerts" in tables
     assert "users" in tables
     assert "operator_profiles" in tables
     assert "app_settings" in tables
