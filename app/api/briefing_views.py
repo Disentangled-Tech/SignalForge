@@ -104,14 +104,15 @@ _SORT_OUTREACH_SCORE = "outreach_score"
 _VALID_SORTS = frozenset({_SORT_SCORE, _SORT_RECENT, _SORT_OUTREACH, _SORT_OUTREACH_SCORE})
 
 
-def _render_briefing(
-    request: Request,
+def get_briefing_data(
     db: Session,
     briefing_date: date,
-    user: User,
-) -> HTMLResponse:
-    """Query briefing items for a date and render the template."""
-    sort = request.query_params.get("sort", _SORT_SCORE)
+    sort: str = _SORT_SCORE,
+) -> dict:
+    """Fetch briefing data for a date (Issue #110). Shared by HTML and JSON API.
+
+    Returns dict with: items, emerging_companies, display_scores, esl_by_company.
+    """
     if sort not in _VALID_SORTS:
         sort = _SORT_SCORE
 
@@ -129,14 +130,12 @@ def _render_briefing(
             Company.last_scan_at.desc().nulls_last()
         )
     elif sort == _SORT_OUTREACH_SCORE:
-        # Sort by OutreachScore (Issue #103); order applied after fetch
         base_query = base_query.order_by(BriefingItem.id.asc())
-    else:  # _SORT_OUTREACH
+    else:
         base_query = base_query.order_by(BriefingItem.created_at.desc())
 
     raw_items = base_query.all()
 
-    # Deduplicate by company_id (keep first = best per sort order; fixes existing duplicates)
     seen: set[int] = set()
     items: list[BriefingItem] = []
     for item in raw_items:
@@ -144,8 +143,8 @@ def _render_briefing(
             seen.add(item.company_id)
             items.append(item)
 
-    # Sort by OutreachScore when requested (Issue #103)
-    if sort == _SORT_OUTREACH_SCORE and items:
+    esl_by_company: dict[int, dict] = {}
+    if items:
         company_ids = [item.company_id for item in items]
         pairs = (
             db.query(ReadinessSnapshot, EngagementSnapshot)
@@ -160,49 +159,30 @@ def _render_briefing(
             )
             .all()
         )
-        outreach_scores: dict[int, int] = {}
         for rs, es in pairs:
-            outreach_scores[rs.company_id] = compute_outreach_score(
-                rs.composite, es.esl_score
+            outreach_score = compute_outreach_score(rs.composite, es.esl_score)
+            esl_by_company[rs.company_id] = {
+                "esl_score": es.esl_score,
+                "outreach_score": outreach_score,
+                "engagement_type": es.engagement_type,
+                "cadence_blocked": es.cadence_blocked,
+                "stability_cap_triggered": (es.explain or {}).get(
+                    "stability_cap_triggered", False
+                ),
+            }
+        if sort == _SORT_OUTREACH_SCORE:
+            items.sort(
+                key=lambda i: esl_by_company.get(i.company_id, {}).get(
+                    "outreach_score", -1
+                ),
+                reverse=True,
             )
-        # Companies without snapshots sort last (score -1)
-        items.sort(
-            key=lambda i: outreach_scores.get(i.company_id, -1),
-            reverse=True,
-        )
 
-    # CTO Score: same logic as company detail (Issue #24)
     display_scores: dict[int, int] = {}
     if items:
         company_ids = [item.company_id for item in items]
         display_scores = get_display_scores_for_companies(db, company_ids)
 
-    today = date.today()
-    prev_date = (briefing_date - timedelta(days=1)).isoformat()
-    next_date = (briefing_date + timedelta(days=1)).isoformat() if briefing_date < today else None
-
-    # Base path for sort links (preserve date when viewing specific date)
-    briefing_path = "/briefing" if briefing_date == today else f"/briefing/{briefing_date.isoformat()}"
-
-    # Check for error flash from query params
-    error = request.query_params.get("error")
-
-    # Latest briefing job for failure alert (issue #32)
-    latest_briefing_job = (
-        db.query(JobRun)
-        .filter(JobRun.job_type == "briefing")
-        .order_by(JobRun.started_at.desc())
-        .first()
-    )
-    job_has_failures = (
-        latest_briefing_job is not None
-        and (
-            latest_briefing_job.status == "failed"
-            or (latest_briefing_job.error_message or "").strip() != ""
-        )
-    )
-
-    # Emerging Companies to Watch (Issue #102): OutreachScore, ESL, recommendation category
     settings = get_settings()
     emerging_triples = get_emerging_companies(
         db,
@@ -234,6 +214,53 @@ def _render_briefing(
             "top_signals": top_signals,
         })
 
+    return {
+        "items": items,
+        "emerging_companies": emerging_companies,
+        "display_scores": display_scores,
+        "esl_by_company": esl_by_company,
+    }
+
+
+def _render_briefing(
+    request: Request,
+    db: Session,
+    briefing_date: date,
+    user: User,
+) -> HTMLResponse:
+    """Query briefing items for a date and render the template."""
+    sort = request.query_params.get("sort", _SORT_SCORE)
+    data = get_briefing_data(db, briefing_date, sort)
+    items = data["items"]
+    emerging_companies = data["emerging_companies"]
+    display_scores = data["display_scores"]
+    esl_by_company = data["esl_by_company"]
+
+    today = date.today()
+    prev_date = (briefing_date - timedelta(days=1)).isoformat()
+    next_date = (briefing_date + timedelta(days=1)).isoformat() if briefing_date < today else None
+
+    # Base path for sort links (preserve date when viewing specific date)
+    briefing_path = "/briefing" if briefing_date == today else f"/briefing/{briefing_date.isoformat()}"
+
+    # Check for error flash from query params
+    error = request.query_params.get("error")
+
+    # Latest briefing job for failure alert (issue #32)
+    latest_briefing_job = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "briefing")
+        .order_by(JobRun.started_at.desc())
+        .first()
+    )
+    job_has_failures = (
+        latest_briefing_job is not None
+        and (
+            latest_briefing_job.status == "failed"
+            or (latest_briefing_job.error_message or "").strip() != ""
+        )
+    )
+
     return templates.TemplateResponse(
         request,
         "briefing/today.html",
@@ -251,6 +278,7 @@ def _render_briefing(
             "briefing_path": briefing_path,
             "job_has_failures": job_has_failures,
             "emerging_companies": emerging_companies,
+            "esl_by_company": esl_by_company,
         },
     )
 

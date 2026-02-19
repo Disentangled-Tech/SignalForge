@@ -167,6 +167,20 @@
         <span class="score-badge">CTO Score: {{ item_score }}</span>
         {% endif %}
     </div>
+    {% set item_esl = esl_by_company.get(item.company_id) %}
+    {% if item_esl %}
+    <div class="emerging-badges">
+        <span class="emerging-recommendation">{{ item_esl.engagement_type }}</span>
+        <span class="score-badge" style="margin-left:0.25rem;">Outreach: {{ item_esl.outreach_score }}</span>
+        <span class="emerging-dim">ESL {{ "%.2f"|format(item_esl.esl_score) }}</span>
+        {% if item_esl.cadence_blocked %}
+        <span class="emerging-cooldown">Cooldown active</span>
+        {% endif %}
+        {% if item_esl.stability_cap_triggered %}
+        <span class="emerging-stability-cap">Stability cap — Soft Value Share only</span>
+        {% endif %}
+    </div>
+    {% endif %}
 
     {% if item.why_now %}
     <div class="section-label">Why Now</div>
