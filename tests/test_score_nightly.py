@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Company, JobRun, ReadinessSnapshot, SignalEvent, Watchlist
+from app.models import Company, EngagementSnapshot, JobRun, ReadinessSnapshot, SignalEvent, Watchlist
 from app.services.readiness.score_nightly import run_score_nightly
 from app.services.readiness.snapshot_writer import write_readiness_snapshot as real_write
 
@@ -264,3 +264,122 @@ class TestRunScoreNightly:
         # R = 0.30*M + 0.30*C + 0.25*P + 0.15*G; funding adds to P too
         assert snapshot.composite >= 20
         assert snapshot.composite <= 35
+
+    def test_nightly_creates_engagement_snapshots(self, db: Session) -> None:
+        """Nightly job creates both ReadinessSnapshot and EngagementSnapshot (Issue #107)."""
+        company = Company(
+            name="ESLIntegrationCo",
+            website_url="https://esl-integration.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        result = run_score_nightly(db)
+
+        assert result["status"] == "completed"
+        assert result["companies_scored"] >= 1
+        assert result["companies_engagement"] >= 1
+
+        readiness = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert readiness is not None
+
+        engagement = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert engagement is not None
+        assert engagement.outreach_score == round(
+            readiness.composite * engagement.esl_score
+        )
+
+    def test_no_engagement_snapshot_when_trs_missing(self, db: Session) -> None:
+        """When TRS is missing (no events), no EngagementSnapshot is created (Issue #107)."""
+        company = Company(
+            name="NoTRSCo",
+            website_url="https://no-trs.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(Watchlist(company_id=company.id, is_active=True))
+        db.commit()
+
+        result = run_score_nightly(db)
+
+        assert result["status"] == "completed"
+        engagement = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert engagement is None
+
+    def test_re_run_same_day_does_not_duplicate_engagement(self, db: Session) -> None:
+        """Re-running nightly upserts EngagementSnapshot; no duplicate rows (Issue #107)."""
+        company = Company(
+            name="EngagementIdempotentCo",
+            website_url="https://engagement-idempotent.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        run_score_nightly(db)
+        count_before = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == date.today(),
+            )
+            .count()
+        )
+        assert count_before == 1
+
+        run_score_nightly(db)
+        count_after = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == date.today(),
+            )
+            .count()
+        )
+        assert count_after == count_before

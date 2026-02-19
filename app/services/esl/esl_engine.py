@@ -43,7 +43,7 @@ class _SnapshotLike(Protocol):
     pressure: int
 
 
-def compute_outreach_score(trs: int, stability_modifier: float) -> int:
+def compute_outreach_score(trs: int, esl_composite: float) -> int:
     """Compute OutreachScore from TRS and ESL composite (Issue #103).
 
     Formula: OutreachScore = round(TRS × ESL), 0–100. Used for ranking
@@ -51,12 +51,12 @@ def compute_outreach_score(trs: int, stability_modifier: float) -> int:
 
     Args:
         trs: Total Readiness Score (0–100).
-        stability_modifier: ESL factor 0–1 (e.g. 0.5 for high pressure).
+        esl_composite: ESL composite (0–1), i.e. BE × SM × CM × AM.
 
     Returns:
-        round(trs * stability_modifier), e.g. TRS=82, SM=0.5 → 41.
+        round(trs * esl_composite), e.g. TRS=82, ESL=0.5 → 41.
     """
-    return round(trs * stability_modifier)
+    return round(trs * esl_composite)
 
 
 def compute_base_engageability(trs: int) -> float:
