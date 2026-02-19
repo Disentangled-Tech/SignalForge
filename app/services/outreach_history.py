@@ -61,7 +61,7 @@ def check_outreach_cooldown(
         if last_outreach.tzinfo is None:
             last_outreach = last_outreach.replace(tzinfo=timezone.utc)
         cutoff = as_of - timedelta(days=CADENCE_COOLDOWN_DAYS)
-        if last_outreach >= cutoff:
+        if last_outreach > cutoff:
             days_ago = (as_of - last_outreach).days
             return CooldownResult(
                 allowed=False,
@@ -75,7 +75,7 @@ def check_outreach_cooldown(
         .filter(
             OutreachHistory.company_id == company_id,
             OutreachHistory.outcome == "declined",
-            OutreachHistory.sent_at >= declined_cutoff,
+            OutreachHistory.sent_at > declined_cutoff,
         )
         .limit(1)
         .scalar()

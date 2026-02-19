@@ -46,6 +46,35 @@ def test_cooldown_blocks_when_last_outreach_under_60_days(db: Session) -> None:
     assert "60 days" in exc_info.value.reason
 
 
+def test_cooldown_allows_when_last_outreach_exactly_60_days(db: Session) -> None:
+    """Last outreach exactly 60 days ago → new record allowed (boundary: use > not >=)."""
+    company = Company(name="Boundary 60 Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    exactly_60_days_ago = as_of - timedelta(days=60)
+    create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=exactly_60_days_ago,
+        outreach_type="email",
+        message=None,
+        notes=None,
+    )
+
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=as_of,
+        outreach_type="linkedin_dm",
+        message=None,
+        notes=None,
+    )
+    assert record.id is not None
+
+
 def test_cooldown_allows_when_last_outreach_over_60_days(db: Session) -> None:
     """Last outreach 61 days ago → new record allowed."""
     company = Company(name="Allowed Co", source="manual")
@@ -105,6 +134,36 @@ def test_declined_blocks_when_declined_within_180_days(db: Session) -> None:
         )
     assert "declined" in exc_info.value.reason
     assert "180 days" in exc_info.value.reason
+
+
+def test_declined_allows_when_declined_exactly_180_days(db: Session) -> None:
+    """Outcome=declined exactly 180 days ago → new record allowed (boundary: use > not >=)."""
+    company = Company(name="Boundary 180 Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    exactly_180_days_ago = as_of - timedelta(days=180)
+    create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=exactly_180_days_ago,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        outcome="declined",
+    )
+
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=as_of,
+        outreach_type="email",
+        message=None,
+        notes=None,
+    )
+    assert record.id is not None
 
 
 def test_declined_allows_when_declined_over_180_days(db: Session) -> None:
