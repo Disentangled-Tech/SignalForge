@@ -7,7 +7,11 @@ from app.schemas.analysis import (
     PainSignals,
 )
 from app.schemas.auth import LoginRequest, TokenResponse, UserRead
-from app.schemas.briefing import BriefingItemRead, BriefingResponse
+from app.schemas.briefing import (
+    BriefingItemRead,
+    BriefingResponse,
+    EmergingCompanyBriefing,
+)
 from app.schemas.company import (
     CompanyCreate,
     CompanyList,
@@ -47,6 +51,7 @@ __all__ = [
     # Briefing
     "BriefingItemRead",
     "BriefingResponse",
+    "EmergingCompanyBriefing",
     # Auth
     "LoginRequest",
     "TokenResponse",

@@ -309,3 +309,41 @@ def test_get_emerging_companies_cadence_blocked_included_with_observe_only(
     rs, es, co = result[0]
     assert es.cadence_blocked is True
     assert es.engagement_type == "Observe Only"
+
+
+def test_get_emerging_companies_cadence_blocked_included_when_outreach_score_zero(
+    db: Session,
+) -> None:
+    """cadence_blocked companies with outreach_score=0 (esl_score=0) are included.
+
+    When CM=0, ESL=0 so OutreachScore=0. These should still appear with Observe Only
+    badge per the docstring contract.
+    """
+    company = Company(name="Zero Outreach Co", website_url="https://zero.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2099, 1, 9)
+    rs = ReadinessSnapshot(
+        company_id=company.id, as_of=as_of,
+        momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=80,
+    )
+    db.add(rs)
+    _add_engagement_snapshot(
+        db, company.id, as_of,
+        esl_score=0.0,  # CM=0 → ESL=0 → outreach_score=0
+        engagement_type="Observe Only",
+        cadence_blocked=True,
+    )
+    db.commit()
+
+    result = get_emerging_companies(
+        db, as_of, limit=10, outreach_score_threshold=30
+    )
+
+    assert len(result) == 1
+    rs, es, co = result[0]
+    assert es.cadence_blocked is True
+    assert es.engagement_type == "Observe Only"
+    assert compute_outreach_score(rs.composite, es.esl_score) == 0

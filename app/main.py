@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
 
     # Mount API routes
     from app.api.auth import router as auth_router
+    from app.api.briefing import router as briefing_router
     from app.api.briefing_views import router as briefing_views_router
     from app.api.companies import router as companies_router
     from app.api.outreach import router as outreach_router
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     from app.api.watchlist import router as watchlist_router
 
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+    app.include_router(briefing_router, prefix="/api/briefing", tags=["briefing"])
     app.include_router(companies_router, prefix="/api/companies", tags=["companies"])
     app.include_router(outreach_router, prefix="/api/outreach", tags=["outreach"])
     app.include_router(watchlist_router, prefix="/api/watchlist", tags=["watchlist"])
