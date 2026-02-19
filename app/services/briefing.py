@@ -118,7 +118,8 @@ def get_emerging_companies(
         if not rs.company:
             continue
         outreach_score = compute_outreach_score(rs.composite, es.esl_score)
-        if outreach_score < outreach_score_threshold:
+        # Include cadence_blocked companies (Observe Only) even when outreach_score < threshold
+        if outreach_score < outreach_score_threshold and not es.cadence_blocked:
             continue
         results.append((rs, es, rs.company))
 
