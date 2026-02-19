@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
@@ -16,6 +16,7 @@ from app.services.outreach_history import (
     delete_outreach_record,
     get_draft_for_company,
     list_outreach_for_company,
+    update_outreach_outcome,
 )
 
 
@@ -170,15 +171,16 @@ def test_get_draft_for_company_returns_none_when_outreach_message_empty(db: Sess
 
 
 def test_list_outreach_ordered(db: Session):
-    """Records ordered by sent_at desc."""
+    """Records ordered by sent_at desc. Spaced 61+ days apart for cooldown."""
     company = Company(name="Order Co", source="manual")
     db.add(company)
     db.commit()
     db.refresh(company)
 
-    t1 = datetime(2026, 2, 17, 10, 0, 0, tzinfo=timezone.utc)
-    t2 = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
-    t3 = datetime(2026, 2, 16, 9, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+    t1 = base - timedelta(days=132)
+    t2 = base - timedelta(days=71)
+    t3 = base - timedelta(days=10)
 
     create_outreach_record(db, company.id, t1, "email", "First", None)
     create_outreach_record(db, company.id, t2, "linkedin_dm", "Second", None)
@@ -186,9 +188,9 @@ def test_list_outreach_ordered(db: Session):
 
     records = list_outreach_for_company(db, company.id)
     assert len(records) == 3
-    assert records[0].sent_at == t2  # most recent first
-    assert records[1].sent_at == t1
-    assert records[2].sent_at == t3
+    assert records[0].sent_at == t3  # most recent first
+    assert records[1].sent_at == t2
+    assert records[2].sent_at == t1
 
 
 def test_delete_outreach_record(db: Session):
@@ -220,3 +222,82 @@ def test_delete_outreach_record_not_found(db: Session):
 
     deleted = delete_outreach_record(db, company.id, 99999)
     assert deleted is False
+
+
+def test_create_outreach_record_with_outcome(db: Session):
+    """Outcome is persisted when provided."""
+    company = Company(name="Outcome Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_at,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        outcome="declined",
+    )
+
+    assert record.outcome == "declined"
+
+
+def test_update_outreach_outcome(db: Session):
+    """update_outreach_outcome sets outcome on existing record."""
+    company = Company(name="Update Outcome Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_at,
+        outreach_type="email",
+        message=None,
+        notes=None,
+    )
+    assert record.outcome is None
+
+    updated = update_outreach_outcome(db, company.id, record.id, "replied")
+    assert updated is not None
+    assert updated.outcome == "replied"
+
+
+def test_update_outreach_outcome_clears_when_empty(db: Session):
+    """update_outreach_outcome clears outcome when passed empty string."""
+    company = Company(name="Clear Outcome Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_at,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        outcome="declined",
+    )
+    assert record.outcome == "declined"
+
+    updated = update_outreach_outcome(db, company.id, record.id, None)
+    assert updated is not None
+    assert updated.outcome is None
+
+
+def test_update_outreach_outcome_not_found(db: Session):
+    """update_outreach_outcome returns None when record not found."""
+    company = Company(name="No Record Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    result = update_outreach_outcome(db, company.id, 99999, "replied")
+    assert result is None

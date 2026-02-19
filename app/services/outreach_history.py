@@ -2,12 +2,91 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
 from app.models.briefing_item import BriefingItem
 from app.models.outreach_history import OutreachHistory
+from app.services.esl.esl_constants import (
+    CADENCE_COOLDOWN_DAYS,
+    DECLINED_COOLDOWN_DAYS,
+)
+
+
+class OutreachCooldownBlockedError(Exception):
+    """Raised when cooldown or declined rule blocks new outreach record (Issue #109)."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
+@dataclass
+class CooldownResult:
+    """Result of outreach cooldown check."""
+
+    allowed: bool
+    reason: str | None
+
+
+def check_outreach_cooldown(
+    db: Session,
+    company_id: int,
+    as_of: datetime,
+) -> CooldownResult:
+    """Check if new outreach is allowed per 60-day cooldown and 180-day declined rules.
+
+    Args:
+        db: Database session.
+        company_id: Company to check.
+        as_of: Reference datetime (typically sent_at of the new record).
+
+    Returns:
+        CooldownResult with allowed=False if blocked, reason explaining why.
+    """
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=timezone.utc)
+
+    # 1. Check last outreach (60-day cooldown)
+    last_outreach = (
+        db.query(OutreachHistory.sent_at)
+        .filter(OutreachHistory.company_id == company_id)
+        .order_by(OutreachHistory.sent_at.desc())
+        .limit(1)
+        .scalar()
+    )
+    if last_outreach is not None:
+        if last_outreach.tzinfo is None:
+            last_outreach = last_outreach.replace(tzinfo=timezone.utc)
+        cutoff = as_of - timedelta(days=CADENCE_COOLDOWN_DAYS)
+        if last_outreach >= cutoff:
+            days_ago = (as_of - last_outreach).days
+            return CooldownResult(
+                allowed=False,
+                reason=f"Last outreach was {days_ago} days ago. Wait until 60 days have passed.",
+            )
+
+    # 2. Check declined within 180 days
+    declined_cutoff = as_of - timedelta(days=DECLINED_COOLDOWN_DAYS)
+    declined_exists = (
+        db.query(OutreachHistory.id)
+        .filter(
+            OutreachHistory.company_id == company_id,
+            OutreachHistory.outcome == "declined",
+            OutreachHistory.sent_at >= declined_cutoff,
+        )
+        .limit(1)
+        .scalar()
+    )
+    if declined_exists is not None:
+        return CooldownResult(
+            allowed=False,
+            reason="Company declined within the last 180 days.",
+        )
+
+    return CooldownResult(allowed=True, reason=None)
 
 
 def create_outreach_record(
@@ -17,14 +96,24 @@ def create_outreach_record(
     outreach_type: str,
     message: str | None = None,
     notes: str | None = None,
+    outcome: str | None = None,
 ) -> OutreachHistory:
-    """Insert an outreach record for a company."""
+    """Insert an outreach record for a company.
+
+    Enforces 60-day cooldown and 180-day declined rules (Issue #109).
+    Raises OutreachCooldownBlockedError if blocked.
+    """
+    result = check_outreach_cooldown(db, company_id, sent_at)
+    if not result.allowed:
+        raise OutreachCooldownBlockedError(result.reason or "Outreach blocked.")
+
     record = OutreachHistory(
         company_id=company_id,
         outreach_type=outreach_type,
         sent_at=sent_at,
         message=message or None,
         notes=notes or None,
+        outcome=outcome or None,
     )
     db.add(record)
     db.commit()
@@ -53,6 +142,32 @@ def list_outreach_for_company(
         .order_by(OutreachHistory.sent_at.desc())
         .all()
     )
+
+
+def update_outreach_outcome(
+    db: Session,
+    company_id: int,
+    outreach_id: int,
+    outcome: str | None,
+) -> OutreachHistory | None:
+    """Update the outcome of an existing outreach record. Returns None if not found.
+
+    outcome=None or empty string clears the outcome.
+    """
+    record = (
+        db.query(OutreachHistory)
+        .filter(
+            OutreachHistory.id == outreach_id,
+            OutreachHistory.company_id == company_id,
+        )
+        .first()
+    )
+    if record is None:
+        return None
+    record.outcome = outcome if outcome else None
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 def delete_outreach_record(

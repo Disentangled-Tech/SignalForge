@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import unquote
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from app.models.briefing_item import BriefingItem
 from app.models.job_run import JobRun
 from app.models.outreach_history import OutreachHistory
 from app.models.signal_record import SignalRecord
+from app.services.outreach_history import OutreachCooldownBlockedError
 from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_INTEGRATION
 from app.models.user import User
 
@@ -1158,6 +1160,56 @@ class TestCompanyOutreach:
         mock_delete.return_value = False
         resp = views_client.post("/companies/1/outreach/999/delete")
         assert resp.status_code == 404
+
+    @patch("app.api.views.create_outreach_record")
+    @patch("app.api.views.get_company")
+    def test_post_outreach_cooldown_blocked_redirects_with_error(
+        self, mock_get, mock_create, views_client
+    ):
+        """POST /companies/1/outreach when cooldown blocks redirects with outreach_error."""
+        mock_get.return_value = _make_company_read()
+        mock_create.side_effect = OutreachCooldownBlockedError(
+            "Last outreach was 10 days ago. Wait until 60 days have passed."
+        )
+        resp = views_client.post(
+            "/companies/1/outreach",
+            data={
+                "sent_at": "2026-02-18T14:30",
+                "outreach_type": "email",
+                "message": "",
+                "notes": "",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        location = unquote(resp.headers.get("location", ""))
+        assert "/companies/1" in location
+        assert "outreach_error" in location
+        assert "10 days ago" in location
+
+    @patch("app.api.views.create_outreach_record")
+    @patch("app.api.views.get_company")
+    def test_post_outreach_declined_blocked_redirects_with_error(
+        self, mock_get, mock_create, views_client
+    ):
+        """POST /companies/1/outreach when declined blocks redirects with outreach_error."""
+        mock_get.return_value = _make_company_read()
+        mock_create.side_effect = OutreachCooldownBlockedError(
+            "Company declined within the last 180 days."
+        )
+        resp = views_client.post(
+            "/companies/1/outreach",
+            data={
+                "sent_at": "2026-02-18T14:30",
+                "outreach_type": "email",
+                "message": "",
+                "notes": "",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "outreach_error" in resp.headers.get("location", "")
+        assert "declined" in resp.headers.get("location", "")
 
 
 # ── Root redirect test ──────────────────────────────────────────────
