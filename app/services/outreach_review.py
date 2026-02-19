@@ -88,7 +88,7 @@ def get_weekly_review_companies(
         cooldown = check_outreach_cooldown(db, company.id, as_of_dt)
         if not cooldown.allowed:
             continue
-        outreach_score = es.outreach_score or compute_outreach_score(rs.composite, es.esl_score)
+        outreach_score = es.outreach_score if es.outreach_score is not None else compute_outreach_score(rs.composite, es.esl_score)
         explain = _merge_explain(rs.explain, es.explain)
         results.append({
             "company_id": company.id,

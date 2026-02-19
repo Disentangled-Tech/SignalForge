@@ -5,10 +5,12 @@ Revises: 20260218_aliases
 Create Date: 2026-02-18
 
 Persist OutreachScore = round(TRS × ESL) for query/audit.
+Uses Python round() for backfill to match compute_outreach_score() (banker's rounding).
 """
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import text
 import sqlalchemy as sa
 
 
@@ -23,13 +25,23 @@ def upgrade() -> None:
         "engagement_snapshots",
         sa.Column("outreach_score", sa.Integer(), nullable=True),
     )
-    # Backfill from readiness_snapshots join: outreach_score = round(composite * esl_score)
-    op.execute("""
-        UPDATE engagement_snapshots es
-        SET outreach_score = ROUND(rs.composite * es.esl_score)
-        FROM readiness_snapshots rs
-        WHERE rs.company_id = es.company_id AND rs.as_of = es.as_of
-    """)
+    # Backfill using Python round() to match compute_outreach_score() (banker's rounding).
+    # PostgreSQL ROUND() uses round-half-away-from-zero; Python uses round-half-to-even.
+    conn = op.get_bind()
+    rows = conn.execute(
+        text("""
+            SELECT es.id, rs.composite, es.esl_score
+            FROM engagement_snapshots es
+            JOIN readiness_snapshots rs
+              ON rs.company_id = es.company_id AND rs.as_of = es.as_of
+        """)
+    ).fetchall()
+    for row in rows:
+        outreach_score = round(row.composite * row.esl_score)
+        conn.execute(
+            text("UPDATE engagement_snapshots SET outreach_score = :score WHERE id = :id"),
+            {"score": outreach_score, "id": row.id},
+        )
 
 
 def downgrade() -> None:

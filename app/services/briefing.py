@@ -122,8 +122,8 @@ def get_emerging_companies(
             continue
         results.append((rs, es, rs.company))
 
-    # Rank by OutreachScore = TRS × ESL descending (Issue #103)
-    results.sort(key=lambda r: r[0].composite * r[1].esl_score, reverse=True)
+    # Rank by OutreachScore = round(TRS × ESL) descending (Issue #103)
+    results.sort(key=lambda r: compute_outreach_score(r[0].composite, r[1].esl_score), reverse=True)
     return results[:limit]
 
 
