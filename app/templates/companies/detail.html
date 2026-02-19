@@ -158,6 +158,16 @@
                 </select>
             </div>
             <div>
+                <label for="outreach_outcome" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Outcome (optional)</label>
+                <select id="outreach_outcome" name="outcome" style="width: 100%; padding: 0.5rem;">
+                    <option value="">— None —</option>
+                    <option value="replied">Replied</option>
+                    <option value="declined">Declined</option>
+                    <option value="no_response">No response</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div>
                 <label for="outreach_message" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Message</label>
                 <textarea id="outreach_message" name="message" rows="4" placeholder="Optional: paste or type what you sent"
                     style="width: 100%; padding: 0.5rem;">{{ draft_message or '' }}</textarea>
@@ -178,6 +188,7 @@
             <tr>
                 <th>Sent</th>
                 <th>Type</th>
+                <th>Outcome</th>
                 <th>Message</th>
                 <th>Notes</th>
                 <th></th>
@@ -188,6 +199,18 @@
             <tr>
                 <td class="text-muted">{{ o.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td><span class="badge badge-gray">{{ o.outreach_type|replace('_', ' ') }}</span></td>
+                <td>
+                    <form method="POST" action="/companies/{{ company.id }}/outreach/{{ o.id }}/edit" style="display: inline-flex; gap: 0.25rem; align-items: center;">
+                        <select name="outcome" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;">
+                            <option value="">—</option>
+                            <option value="replied" {% if o.outcome == 'replied' %}selected{% endif %}>Replied</option>
+                            <option value="declined" {% if o.outcome == 'declined' %}selected{% endif %}>Declined</option>
+                            <option value="no_response" {% if o.outcome == 'no_response' %}selected{% endif %}>No response</option>
+                            <option value="other" {% if o.outcome == 'other' %}selected{% endif %}>Other</option>
+                        </select>
+                        <button type="submit" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Update</button>
+                    </form>
+                </td>
                 <td style="max-width: 250px;">{% set msg = o.message or '' %}{{ msg[:100] }}{% if msg|length > 100 %}…{% endif %}</td>
                 <td style="max-width: 150px;">{% set n = o.notes or '' %}{{ n[:80] }}{% if n|length > 80 %}…{% endif %}</td>
                 <td>

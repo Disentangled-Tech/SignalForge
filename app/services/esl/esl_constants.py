@@ -10,6 +10,10 @@ from __future__ import annotations
 
 CADENCE_COOLDOWN_DAYS: int = 60
 
+# ── Outreach governance (Issue #109) ──────────────────────────────────────
+
+DECLINED_COOLDOWN_DAYS: int = 180
+
 # ── Stability indices (SVI, SPI, CSI) ────────────────────────────────────
 
 # SVI: Stress Volatility — window for recent urgency events

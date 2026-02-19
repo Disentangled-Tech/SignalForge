@@ -39,10 +39,12 @@ from app.services.company import (
     update_company,
 )
 from app.services.outreach_history import (
+    OutreachCooldownBlockedError,
     create_outreach_record,
     delete_outreach_record,
     get_draft_for_company,
     list_outreach_for_company,
+    update_outreach_outcome,
 )
 from app.services.scoring import get_display_scores_for_companies
 
@@ -484,6 +486,7 @@ def company_detail(
 # ── Companies: outreach ──────────────────────────────────────────────
 
 _OUTREACH_TYPES = frozenset({"email", "linkedin_dm", "warm_intro", "other"})
+_OUTREACH_OUTCOMES = frozenset({"replied", "declined", "no_response", "other"})
 
 
 @router.post("/companies/{company_id}/outreach")
@@ -495,6 +498,7 @@ def company_outreach_add(
     outreach_type: str = Form(""),
     message: str = Form(""),
     notes: str = Form(""),
+    outcome: str = Form(""),
 ):
     """Add an outreach record for a company."""
     company = get_company(db, company_id)
@@ -509,6 +513,11 @@ def company_outreach_add(
     elif outreach_type.strip() not in _OUTREACH_TYPES:
         errors.append(
             f"Outreach type must be one of: {', '.join(sorted(_OUTREACH_TYPES))}"
+        )
+    outcome_val = outcome.strip() or None
+    if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
+        errors.append(
+            f"Outcome must be one of: {', '.join(sorted(_OUTREACH_OUTCOMES))}"
         )
 
     if errors:
@@ -528,16 +537,49 @@ def company_outreach_add(
             status_code=303,
         )
 
-    create_outreach_record(
-        db,
-        company_id=company_id,
-        sent_at=sent_dt,
-        outreach_type=outreach_type.strip(),
-        message=message.strip() or None,
-        notes=notes.strip() or None,
-    )
+    try:
+        create_outreach_record(
+            db,
+            company_id=company_id,
+            sent_at=sent_dt,
+            outreach_type=outreach_type.strip(),
+            message=message.strip() or None,
+            notes=notes.strip() or None,
+            outcome=outcome_val,
+        )
+    except OutreachCooldownBlockedError as e:
+        return RedirectResponse(
+            url=f"/companies/{company_id}?outreach_error={quote(e.reason)}",
+            status_code=303,
+        )
     return RedirectResponse(
         url=f"/companies/{company_id}?success=Outreach+recorded",
+        status_code=303,
+    )
+
+
+@router.post("/companies/{company_id}/outreach/{outreach_id}/edit")
+def company_outreach_edit(
+    company_id: int,
+    outreach_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(_require_ui_auth),
+    outcome: str = Form(""),
+):
+    """Update the outcome of an outreach record."""
+    outcome_val = outcome.strip() or None
+    if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
+        return RedirectResponse(
+            url=f"/companies/{company_id}?outreach_error=Invalid+outcome",
+            status_code=303,
+        )
+    updated = update_outreach_outcome(
+        db, company_id=company_id, outreach_id=outreach_id, outcome=outcome_val
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Outreach record not found")
+    return RedirectResponse(
+        url=f"/companies/{company_id}?success=Outcome+updated",
         status_code=303,
     )
 
