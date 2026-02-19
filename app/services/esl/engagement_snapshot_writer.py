@@ -98,7 +98,9 @@ def compute_esl_from_context(
     recommendation_type = map_esl_to_recommendation(esl_composite)
 
     stability_cap_triggered = sm < STABILITY_CAP_THRESHOLD
-    if stability_cap_triggered:
+    cadence_blocked = cm == 0.0
+    # Stability cap must not override cadence-blocked: Observe Only takes precedence.
+    if stability_cap_triggered and not cadence_blocked:
         recommendation_type = "Soft Value Share"
         logger = logging.getLogger(__name__)
         logger.info(
@@ -117,7 +119,7 @@ def compute_esl_from_context(
         csi=csi,
         esl_composite=esl_composite,
         recommendation_type=recommendation_type,
-        cadence_blocked=(cm == 0.0),
+        cadence_blocked=cadence_blocked,
         stability_cap_triggered=stability_cap_triggered,
     )
 
@@ -126,7 +128,7 @@ def compute_esl_from_context(
         "stability_modifier": sm,
         "recommendation_type": recommendation_type,
         "explain": explain,
-        "cadence_blocked": cm == 0.0,
+        "cadence_blocked": cadence_blocked,
         "alignment_high": company.alignment_ok_to_contact is not False,
         "trs": readiness.composite,
     }
