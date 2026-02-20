@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Bias Report {{ report.report_month.strftime('%Y-%m') }} — SignalForge{% endblock %}
+
+{% block content %}
+<div class="header-row">
+    <h1>Bias Report: {{ report.report_month.strftime('%Y-%m') }}</h1>
+    <a href="/bias-reports" class="btn btn-secondary">Back to list</a>
+</div>
+
+<div class="card">
+    <p><strong>Surfaced companies:</strong> {{ report.surfaced_count }}</p>
+    <p class="text-muted">Created {{ report.created_at.strftime('%Y-%m-%d %H:%M') if report.created_at else '—' }}</p>
+</div>
+
+{% set flags = payload.get('flags', []) %}
+{% if flags %}
+<div class="card" style="border-left: 4px solid #dc2626;">
+    <h2>Flags (segment &gt; 70%)</h2>
+    <p><span class="badge badge-red">{{ flags|join(', ') }}</span></p>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>Funding Concentration</h2>
+    {% set funding = payload.get('funding_concentration', {}) %}
+    <p>Companies with funding_raised event (last 365 days): <strong>{{ funding.get('with_funding', 0) }}</strong> ({{ funding.get('pct', 0) }}%)</p>
+</div>
+
+<div class="card">
+    <h2>Alignment Skew</h2>
+    {% set alignment = payload.get('alignment_skew', {}) %}
+    {% set total = report.surfaced_count or 1 %}
+    <table>
+        <thead>
+            <tr><th>Segment</th><th>Count</th><th>%</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>True (ok to contact)</td><td>{{ alignment.get('true', 0) }}</td><td>{{ "%.1f"|format(alignment.get('true', 0) / total * 100) }}%</td></tr>
+            <tr><td>False</td><td>{{ alignment.get('false', 0) }}</td><td>{{ "%.1f"|format(alignment.get('false', 0) / total * 100) }}%</td></tr>
+            <tr><td>Null (unknown)</td><td>{{ alignment.get('null', 0) }}</td><td>{{ "%.1f"|format(alignment.get('null', 0) / total * 100) }}%</td></tr>
+        </tbody>
+    </table>
+    <p class="text-muted">Max segment: {{ alignment.get('max_segment', '—') }} ({{ alignment.get('max_pct', 0) }}%)</p>
+</div>
+
+<div class="card">
+    <h2>Stage Skew</h2>
+    {% set stage = payload.get('stage_skew', {}) %}
+    {% if stage %}
+    <table>
+        <thead>
+            <tr><th>Stage</th><th>Count</th><th>%</th></tr>
+        </thead>
+        <tbody>
+            {% set total = report.surfaced_count or 1 %}
+            {% for key, count in stage.items() %}
+            <tr>
+                <td>{{ key }}</td>
+                <td>{{ count }}</td>
+                <td>{{ "%.1f"|format(count / total * 100) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p class="text-muted">Max segment: {{ payload.get('stage_skew_max_segment', '—') }} ({{ payload.get('stage_skew_max_pct', 0) }}%)</p>
+    {% else %}
+    <p class="text-muted">No stage data.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Industry Concentration</h2>
+    {% set industry = payload.get('industry_concentration', {}) %}
+    <p class="text-muted">{{ industry.get('note', 'N/A') }}</p>
+</div>
+
+<p class="text-muted" style="margin-top: 1rem;"><a href="/bias-reports">Back to list</a> · <a href="/settings">Settings</a></p>
+{% endblock %}

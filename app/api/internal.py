@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -156,5 +158,39 @@ async def run_ingest_endpoint(
         }
     except Exception as exc:
         logger.exception("Internal ingest job failed")
+        return {"status": "failed", "error": str(exc)}
+
+
+@router.post("/run_bias_audit")
+async def run_bias_audit_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    month: date | None = Query(
+        None,
+        description="Report month (YYYY-MM-DD, first day). Default: previous month.",
+    ),
+):
+    """Trigger monthly bias audit (Issue #112).
+
+    Analyzes surfaced companies for funding, alignment, stage skew.
+    Persists report; flags when any segment > 70%.
+    """
+    from app.services.bias_audit import run_bias_audit
+
+    try:
+        report_month = month
+        if report_month is not None:
+            report_month = report_month.replace(day=1)
+        result = run_bias_audit(db, report_month)
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
+            "report_id": result.get("report_id"),
+            "surfaced_count": result.get("surfaced_count", 0),
+            "flags": result.get("flags", []),
+            "error": result.get("error"),
+        }
+    except Exception as exc:
+        logger.exception("Internal bias audit failed")
         return {"status": "failed", "error": str(exc)}
 

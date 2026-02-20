@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Bias Reports — SignalForge{% endblock %}
+
+{% block content %}
+<div class="header-row">
+    <h1>Bias Reports</h1>
+    <form method="post" action="/bias-reports/run" style="display: inline;">
+        <button type="submit" class="btn btn-primary">Run bias audit</button>
+    </form>
+</div>
+
+<p class="text-muted" style="margin-bottom: 1rem;">Monthly audit of surfaced companies for funding concentration, alignment skew, and stage skew. Flags when any segment exceeds 70%.</p>
+
+{% if reports %}
+<table>
+    <thead>
+        <tr>
+            <th>Report Month</th>
+            <th>Surfaced</th>
+            <th>Flags</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in reports %}
+        <tr>
+            <td>{{ r.report_month.strftime('%Y-%m') }}</td>
+            <td>{{ r.surfaced_count }}</td>
+            <td>
+                {% set flags = (r.payload or {}).get('flags', []) %}
+                {% if flags %}
+                <span class="badge badge-red">{{ flags|join(', ') }}</span>
+                {% else %}
+                <span class="badge badge-green">None</span>
+                {% endif %}
+            </td>
+            <td class="text-muted">{{ r.created_at.strftime('%Y-%m-%d %H:%M') if r.created_at else '—' }}</td>
+            <td><a href="/bias-reports/{{ r.id }}" class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">View</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <p class="text-muted">No bias reports yet. Run the monthly audit job to generate.</p>
+    <form method="post" action="/bias-reports/run" style="margin-top: 1rem;">
+        <button type="submit" class="btn btn-primary">Run bias audit</button>
+    </form>
+</div>
+{% endif %}
+
+<p class="text-muted" style="margin-top: 1rem;"><a href="/settings">Back to Settings</a></p>
+{% endblock %}

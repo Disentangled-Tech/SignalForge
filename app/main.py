@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
 
     # Mount API routes
     from app.api.auth import router as auth_router
+    from app.api.bias_views import router as bias_views_router
     from app.api.briefing import router as briefing_router
     from app.api.briefing_views import router as briefing_views_router
     from app.api.companies import router as companies_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     # Mount HTML-serving view routes (no prefix — serves /, /login, /companies, etc.)
     app.include_router(views_router, tags=["views"])
     app.include_router(briefing_views_router, tags=["briefing-views"])
+    app.include_router(bias_views_router, tags=["bias-views"])
     app.include_router(settings_views_router, tags=["settings-views"])
 
     # Internal job endpoints (cron/scripts — token-authenticated)
