@@ -1,6 +1,7 @@
 """SQLAlchemy models."""
 
 from app.models.alert import Alert
+from app.models.bias_report import BiasReport
 from app.models.analysis_record import AnalysisRecord
 from app.models.app_settings import AppSettings
 from app.models.briefing_item import BriefingItem
@@ -19,6 +20,7 @@ from app.models.user import User
 
 __all__ = [
     "Alert",
+    "BiasReport",
     "AnalysisRecord",
     "AppSettings",
     "BriefingItem",

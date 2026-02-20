@@ -19,6 +19,9 @@
 #   # Daily briefing generation at 08:00
 #   0 8 * * * /path/to/signalforge/scripts/run_briefing.sh >> /var/log/signalforge/briefing.log 2>&1
 #
+#   # Monthly bias audit (1st of month at 09:00, Issue #112)
+#   0 9 1 * * /path/to/signalforge/scripts/run_bias_audit.sh >> /var/log/signalforge/bias_audit.log 2>&1
+#
 # Make sure to:
 #   - Replace /path/to/signalforge with the actual project path
 #   - Create the log directory: sudo mkdir -p /var/log/signalforge && sudo chown $USER /var/log/signalforge
