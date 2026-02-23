@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from app.ingestion.event_types import is_valid_event_type
 from app.schemas.company import CompanyCreate, CompanySource
 from app.schemas.signal import RawEvent
-from app.ingestion.event_types import is_valid_event_type
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIDENCE: float = 0.7
+
+
+def _is_valid_event_type_for_pack(candidate: str, pack: Pack | None) -> bool:
+    """Return True if candidate is valid: pack taxonomy when pack provided, else event_types."""
+    if pack is not None:
+        ids = pack.taxonomy.get("signal_ids") if isinstance(pack.taxonomy, dict) else []
+        return candidate in (ids if isinstance(ids, (list, set, frozenset)) else [])
+    return is_valid_event_type(candidate)
 
 
 def _build_website_url(raw: RawEvent) -> str | None:
@@ -46,13 +57,17 @@ def _extract_linkedin_url(raw: RawEvent) -> str | None:
     return None
 
 
-def normalize_raw_event(raw: RawEvent, source: str) -> tuple[dict[str, Any], CompanyCreate] | None:
+def normalize_raw_event(
+    raw: RawEvent, source: str, pack: Pack | None = None
+) -> tuple[dict[str, Any], CompanyCreate] | None:
     """Normalize RawEvent to (signal_event_data, company_create).
 
     Returns None if event_type_candidate is not in the canonical taxonomy.
+    When pack is provided, validates against pack.taxonomy.signal_ids;
+    otherwise uses event_types.is_valid_event_type (Phase 2, Step 3.3).
     Caller resolves company and stores the event.
     """
-    if not is_valid_event_type(raw.event_type_candidate):
+    if not _is_valid_event_type_for_pack(raw.event_type_candidate, pack):
         logger.debug(
             "Skipping raw event: unknown event_type_candidate=%s",
             raw.event_type_candidate,
