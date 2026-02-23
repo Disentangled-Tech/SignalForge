@@ -1,4 +1,4 @@
-"""Pack resolver tests (Issue #189, Plan Step 3).
+"""Pack resolver tests (Issue #189, Plan Step 3, Issue #172).
 
 Tests for resolve_pack and get_default_pack_id.
 """
@@ -9,6 +9,7 @@ import uuid
 
 import pytest
 
+from app.models.signal_pack import SignalPack
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 
@@ -29,6 +30,38 @@ class TestResolvePack:
         unknown_uuid = uuid.uuid4()
         pack = resolve_pack(db, unknown_uuid)
         assert pack is None
+
+
+class TestResolvePackInvalidSchema:
+    """resolve_pack returns None when pack files fail validation (Issue #172).
+
+    When load_pack raises ValidationError, resolve_pack must return None
+    (not propagate exception) so engines fall back to constants.
+    Fails until: loader validates and resolve_pack catches ValidationError.
+    """
+
+    @pytest.mark.integration
+    def test_resolve_pack_returns_none_when_validation_fails(self, db) -> None:
+        """resolve_pack returns None when pack has invalid schema."""
+        invalid_pack_row = db.query(SignalPack).filter(
+            SignalPack.pack_id == "invalid_schema_pack",
+            SignalPack.version == "1",
+        ).first()
+        if invalid_pack_row is None:
+            invalid_pack_row = SignalPack(
+                id=uuid.uuid4(),
+                pack_id="invalid_schema_pack",
+                version="1",
+                industry="test",
+                description="Invalid pack for Issue #172 tests",
+                is_active=True,
+            )
+            db.add(invalid_pack_row)
+            db.commit()
+            db.refresh(invalid_pack_row)
+
+        result = resolve_pack(db, invalid_pack_row.id)
+        assert result is None, "resolve_pack must return None when pack validation fails"
 
 
 class TestGetDefaultPackId:

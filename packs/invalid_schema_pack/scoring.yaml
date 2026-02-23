@@ -1,0 +1,15 @@
+# INVALID: ghost_signal is not in taxonomy.signal_ids
+base_scores:
+  momentum:
+    funding_raised: 35
+    ghost_signal: 10
+  complexity: {}
+  pressure: {}
+  leadership_gap: {}
+composite_weights:
+  M: 0.30
+  C: 0.30
+  P: 0.25
+  G: 0.15
+caps:
+  dimension_max: 100

@@ -1,0 +1,7 @@
+# INVALID: ghost_signal is not in taxonomy.signal_ids
+derivers:
+  passthrough:
+    - event_type: funding_raised
+      signal_id: funding_raised
+    - event_type: ghost_event
+      signal_id: ghost_signal
