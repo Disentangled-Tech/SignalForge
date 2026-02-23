@@ -3,10 +3,35 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+# Pack identifiers: alphanumeric, underscore, hyphen only. Prevents path traversal.
+_PACK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_pack_id(pack_id: str, version: str) -> None:
+    """Validate pack_id and version to prevent path traversal (Issue #189, Plan Step 4).
+
+    Raises ValueError if pack_id or version contain path separators or other unsafe chars.
+    """
+    if not pack_id or not isinstance(pack_id, str):
+        raise ValueError("pack_id must be a non-empty string")
+    if not version or not isinstance(version, str):
+        raise ValueError("version must be a non-empty string")
+    if "\0" in pack_id or "\0" in version:
+        raise ValueError("pack_id and version must not contain null bytes")
+    if ".." in pack_id or ".." in version:
+        raise ValueError("pack_id and version must not contain '..'")
+    if "/" in pack_id or "\\" in pack_id or "/" in version or "\\" in version:
+        raise ValueError("pack_id and version must not contain path separators")
+    if not _PACK_ID_PATTERN.match(pack_id):
+        raise ValueError(f"pack_id must match [a-zA-Z0-9_-]+ (got {pack_id!r})")
+    if not _PACK_ID_PATTERN.match(version):
+        raise ValueError(f"version must match [a-zA-Z0-9_-]+ (got {version!r})")
 
 
 @dataclass
@@ -39,8 +64,9 @@ def load_pack(pack_id: str, version: str) -> Pack:
 
     Raises:
         FileNotFoundError: Pack directory or required file not found.
-        ValueError: Invalid pack_id or version.
+        ValueError: Invalid pack_id or version (e.g. path traversal attempt).
     """
+    _validate_pack_id(pack_id, version)
     root = _packs_root()
     pack_dir = root / pack_id
     if not pack_dir.is_dir():
