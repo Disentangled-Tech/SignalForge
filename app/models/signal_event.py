@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -36,6 +37,11 @@ class SignalEvent(Base):
     url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, default=0.7, nullable=True)
+    pack_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_packs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     company: Mapped["Company | None"] = relationship(
         "Company", back_populates="signal_events"

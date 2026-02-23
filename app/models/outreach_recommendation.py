@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -27,6 +28,12 @@ class OutreachRecommendation(Base):
     draft_variants: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     strategy_notes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     safeguards_triggered: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    pack_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_packs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    playbook_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

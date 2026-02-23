@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from app.models import Company, ReadinessSnapshot
+from app.models import Company, ReadinessSnapshot, SignalPack
 
 # Critic-compliant draft for integration test (no surveillance, single CTA, opt-out)
 _ORE_DRAFT = {
@@ -35,6 +35,9 @@ def test_trs_esl_ore_pipeline_integration(db: Session) -> None:
     - draft_variants: no surveillance phrases, single CTA
     - Snapshot + recommendation stored
     """
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
     # Seed: Company + ReadinessSnapshot directly (no SignalEvents)
     company = Company(
         name="TestCo",
@@ -54,6 +57,7 @@ def test_trs_esl_ore_pipeline_integration(db: Session) -> None:
         pressure=75,
         leadership_gap=70,
         composite=82,
+        pack_id=pack_id,
     )
     db.add(snapshot)
     db.commit()
@@ -112,6 +116,9 @@ def test_ore_pipeline_uses_computed_esl(db: Session) -> None:
     With no SignalEvents, no OutreachHistory: SVI=0, SPI=0, CSI=1 → SM high.
     ESL composite ≈ BE (TRS/100). Recommendation and outreach_score from computed ESL.
     """
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
     company = Company(
         name="ComputedESLCo",
         website_url="https://computed.example.com",
@@ -130,6 +137,7 @@ def test_ore_pipeline_uses_computed_esl(db: Session) -> None:
         pressure=50,
         leadership_gap=70,
         composite=75,
+        pack_id=pack_id,
     )
     db.add(snapshot)
     db.commit()

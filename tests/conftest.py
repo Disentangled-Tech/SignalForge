@@ -67,3 +67,16 @@ def db(_ensure_migrations: None) -> Session:
         yield session
     finally:
         session.close()
+
+
+# Issue #189: fractional_cto_v1 pack - UUID varies by migration; query DB at runtime
+
+
+@pytest.fixture
+def fractional_cto_pack_id(db):
+    """UUID of fractional_cto_v1 pack (Issue #189). Use for pack-scoped fixtures."""
+    from app.models import SignalPack
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    if pack is None:
+        pytest.skip("fractional_cto_v1 pack not found (run migration 20260223_signal_packs)")
+    return pack.id

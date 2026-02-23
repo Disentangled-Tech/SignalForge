@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, ReadinessSnapshot
+from app.models import Company, EngagementSnapshot, ReadinessSnapshot, SignalPack
 from app.services.briefing import get_emerging_companies
 from app.services.esl.esl_engine import compute_outreach_score
 
@@ -29,14 +29,19 @@ def _add_engagement_snapshot(
     esl_score: float = 0.8,
     engagement_type: str = "Standard Outreach",
     cadence_blocked: bool = False,
+    pack_id=None,
 ) -> EngagementSnapshot:
-    """Helper to create EngagementSnapshot for a company."""
+    """Helper to create EngagementSnapshot for a company (Issue #189: pack_id)."""
+    if pack_id is None:
+        pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+        pack_id = pack.id if pack else None
     es = EngagementSnapshot(
         company_id=company_id,
         as_of=as_of,
         esl_score=esl_score,
         engagement_type=engagement_type,
         cadence_blocked=cadence_blocked,
+        pack_id=pack_id,
     )
     db.add(es)
     db.commit()
@@ -59,6 +64,8 @@ def test_get_emerging_companies_returns_top_by_outreach_score(db: Session) -> No
     as_of = date(2099, 1, 1)
     # TRS 70,80,90,60,65 with ESL 0.5,0.8,0.6,1.0,0.9 -> OutreachScore 35,64,54,60,58
     # Sorted by OutreachScore: 64, 60, 58, 54, 35
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     for i, c in enumerate(companies):
         rs = ReadinessSnapshot(
             company_id=c.id,
@@ -68,6 +75,7 @@ def test_get_emerging_companies_returns_top_by_outreach_score(db: Session) -> No
             pressure=55,
             leadership_gap=40,
             composite=[70, 80, 90, 60, 65][i],
+            pack_id=pack_id,
         )
         db.add(rs)
         esl = [0.5, 0.8, 0.6, 1.0, 0.9][i]
@@ -98,6 +106,8 @@ def test_outreach_score_formula_matches_ranking(db: Session) -> None:
     for c in companies:
         db.refresh(c)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of = date(2099, 1, 20)
     # TRS 50, 80, 90 with ESL 0.5, 0.75, 0.9 -> OutreachScore 25, 60, 81
     # Distinct scores ensure deterministic ordering
@@ -111,6 +121,7 @@ def test_outreach_score_formula_matches_ranking(db: Session) -> None:
             pressure=50,
             leadership_gap=50,
             composite=trs,
+            pack_id=pack_id,
         )
         db.add(rs)
         _add_engagement_snapshot(db, c.id, as_of, esl_score=esl)
@@ -138,11 +149,14 @@ def test_get_emerging_companies_respects_outreach_threshold(db: Session) -> None
     db.refresh(c1)
     db.refresh(c2)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of = date(2099, 1, 2)
     for c, composite, esl in [(c1, 80, 0.5), (c2, 50, 0.5)]:
         rs = ReadinessSnapshot(
             company_id=c.id, as_of=as_of,
             momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=composite,
+            pack_id=pack_id,
         )
         db.add(rs)
         _add_engagement_snapshot(db, c.id, as_of, esl_score=esl)
@@ -169,12 +183,15 @@ def test_get_emerging_companies_excludes_without_engagement_snapshot(
     db.refresh(c1)
     db.refresh(c2)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     # Use unique date to avoid collision with other tests' engagement snapshots
     as_of = date(2099, 1, 15)
     for c in [c1, c2]:
         rs = ReadinessSnapshot(
             company_id=c.id, as_of=as_of,
             momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=70,
+            pack_id=pack_id,
         )
         db.add(rs)
     _add_engagement_snapshot(db, c1.id, as_of)
@@ -198,11 +215,14 @@ def test_get_emerging_companies_respects_date(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of_target = date(2099, 1, 4)
     as_of_other = date(2099, 1, 3)
     rs = ReadinessSnapshot(
         company_id=company.id, as_of=as_of_other,
         momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=70,
+        pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(db, company.id, as_of_other)
@@ -230,10 +250,13 @@ def test_get_emerging_companies_returns_fewer_than_limit(db: Session) -> None:
     db.commit()
     db.refresh(c1)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of = date(2099, 1, 6)
     rs = ReadinessSnapshot(
         company_id=c1.id, as_of=as_of,
         momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=65,
+        pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(db, c1.id, as_of)
@@ -260,12 +283,15 @@ def test_get_emerging_companies_weekly_review_limit_caps_results(
     for c in companies:
         db.refresh(c)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of = date(2099, 1, 7)
     for i, c in enumerate(companies):
         rs = ReadinessSnapshot(
             company_id=c.id, as_of=as_of,
             momentum=70, complexity=60, pressure=55, leadership_gap=40,
             composite=70 + i,
+            pack_id=pack_id,
         )
         db.add(rs)
         _add_engagement_snapshot(db, c.id, as_of)
@@ -287,10 +313,13 @@ def test_get_emerging_companies_cadence_blocked_included_with_observe_only(
     db.commit()
     db.refresh(company)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of = date(2099, 1, 8)
     rs = ReadinessSnapshot(
         company_id=company.id, as_of=as_of,
         momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=80,
+        pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(
@@ -324,10 +353,13 @@ def test_get_emerging_companies_cadence_blocked_included_when_outreach_score_zer
     db.commit()
     db.refresh(company)
 
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
     as_of = date(2099, 1, 9)
     rs = ReadinessSnapshot(
         company_id=company.id, as_of=as_of,
         momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=80,
+        pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(
