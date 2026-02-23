@@ -277,7 +277,7 @@ class TestCompaniesList:
         assert "Next" in resp.text or "next" in resp.text.lower()
         assert "page=2" in resp.text or "?page=2" in resp.text
 
-    def test_companies_list_companies_visible_in_browser(self, client, db):
+    def test_companies_list_companies_visible_in_browser(self, client_with_db, db):
         """Integration test: with companies in DB, GET /companies shows them."""
         import uuid
 
@@ -301,8 +301,8 @@ class TestCompaniesList:
         db.query(Company).filter(Company.id == c2.id).update({"cto_need_score": 65})
         db.commit()
 
-        # Login
-        login_resp = client.post(
+        # Login (client_with_db uses same db session so app sees our data)
+        login_resp = client_with_db.post(
             "/login",
             data={"username": username, "password": TEST_PASSWORD_INTEGRATION},
             follow_redirects=False,
@@ -311,7 +311,7 @@ class TestCompaniesList:
         assert "/companies" in login_resp.headers.get("location", "")
 
         # GET /companies and verify companies visible (search isolates from shared DB)
-        resp = client.get("/companies?search=Visible+Co")
+        resp = client_with_db.get("/companies?search=Visible+Co")
         assert resp.status_code == 200
         assert "Visible Co Alpha" in resp.text
         assert "Visible Co Beta" in resp.text

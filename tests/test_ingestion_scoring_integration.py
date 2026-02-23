@@ -26,8 +26,7 @@ _AS_OF = date(2026, 2, 18)
 
 @pytest.fixture(autouse=True)
 def _cleanup_test_adapter_data(db: Session) -> None:
-    """Remove test adapter data before each test for isolation."""
-    # Get company IDs for test domains before deleting
+    """Remove test adapter data before each test (handles pre-existing data from prior runs)."""
     company_ids = [
         row[0]
         for row in db.query(Company.id)

@@ -141,10 +141,15 @@ def compute_csi(events: list[Any], as_of: date) -> float:
     if len(events) < 2:
         return 1.0
 
-    sorted_events = sorted(
-        events,
-        key=lambda e: getattr(e, "event_time", datetime.min.replace(tzinfo=UTC)),
-    )
+    def _safe_event_time(e: Any) -> datetime:
+        t = getattr(e, "event_time", None)
+        if t is None:
+            return datetime.min.replace(tzinfo=UTC)
+        if t.tzinfo is None:
+            return t.replace(tzinfo=UTC)
+        return t
+
+    sorted_events = sorted(events, key=_safe_event_time)
     gaps = 0
     for i in range(1, len(sorted_events)):
         prev = getattr(sorted_events[i - 1], "event_time", None)

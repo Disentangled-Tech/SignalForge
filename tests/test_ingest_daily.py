@@ -13,10 +13,6 @@ from app.ingestion.base import SourceAdapter
 from app.models import Company, JobRun, SignalEvent
 from app.schemas.signal import RawEvent
 
-# Test domains used by TestAdapter
-_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
-
-
 class FailingAdapter(SourceAdapter):
     """Adapter that raises on fetch_events for testing error handling."""
 
@@ -28,9 +24,12 @@ class FailingAdapter(SourceAdapter):
         raise RuntimeError("Adapter fetch failed")
 
 
+_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
+
+
 @pytest.fixture(autouse=True)
 def _cleanup_test_adapter_data(db: Session) -> None:
-    """Remove test adapter data before each test for isolation."""
+    """Remove test adapter data before each test (handles pre-existing data from prior runs)."""
     db.query(SignalEvent).filter(SignalEvent.source == "test").delete(
         synchronize_session="fetch"
     )
