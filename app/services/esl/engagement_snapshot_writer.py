@@ -28,7 +28,7 @@ from app.services.esl.esl_engine import (
     compute_svi,
     map_esl_to_recommendation,
 )
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 
 def compute_esl_from_context(
@@ -115,7 +115,8 @@ def compute_esl_from_context(
     cm = compute_cadence_modifier(last_outreach, as_of)
     am = compute_alignment_modifier(company.alignment_ok_to_contact)
     esl_composite = compute_esl_composite(be, sm, cm, am)
-    recommendation_type = map_esl_to_recommendation(esl_composite)
+    pack = resolve_pack(db, pack_id) if pack_id else None
+    recommendation_type = map_esl_to_recommendation(esl_composite, pack=pack)
 
     stability_cap_triggered = sm < STABILITY_CAP_THRESHOLD
     cadence_blocked = cm == 0.0
