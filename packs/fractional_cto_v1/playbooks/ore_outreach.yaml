@@ -1,0 +1,18 @@
+# ORE outreach playbook for fractional_cto_v1 (Issue #189)
+# Extracted from app/services/ore/draft_generator
+
+pattern_frames:
+  momentum: "When a team's pace picks up, tech decisions that worked earlier can start costing more."
+  complexity: "When products add integrations/AI/enterprise asks, systems often need a stabilization pass."
+  pressure: "When timelines get tighter, it helps to reduce decision load and get a clean plan."
+  leadership_gap: "When there isn't a dedicated technical owner yet, teams often benefit from a short-term systems guide."
+
+value_assets:
+  - "2-page Tech Inflection Checklist"
+  - "30-minute 'what's breaking next' map"
+  - "5 questions to reduce tech chaos"
+
+ctas:
+  - "Want me to send that checklist?"
+  - "Open to a 15-min compare-notes call?"
+  - "If helpful, I can share a one-page approach—want it?"

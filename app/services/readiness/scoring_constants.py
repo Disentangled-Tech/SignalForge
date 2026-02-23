@@ -152,3 +152,43 @@ def decay_complexity(days: int) -> float:
     if days <= 365:
         return DECAY_COMPLEXITY_181_365
     return DECAY_COMPLEXITY_366_PLUS
+
+
+def from_pack(scoring_config: dict) -> dict:
+    """Build engine-compatible constants from pack scoring config (Issue #189, Plan Step 1.3).
+
+    Returns dict with keys: base_scores_momentum, base_scores_complexity, base_scores_pressure,
+    base_scores_leadership_gap, quiet_signal_amplified_base, quiet_signal_lookback_days,
+    cap_jobs_momentum, cap_jobs_complexity, cap_founder_urgency, cap_dimension_max,
+    composite_weights.
+    """
+    bs = scoring_config.get("base_scores") or {}
+    qs = scoring_config.get("quiet_signal") or {}
+    caps = scoring_config.get("caps") or {}
+    cw = scoring_config.get("composite_weights") or {}
+    return {
+        "base_scores_momentum": bs.get("momentum") or BASE_SCORES_MOMENTUM,
+        "base_scores_complexity": bs.get("complexity") or BASE_SCORES_COMPLEXITY,
+        "base_scores_pressure": bs.get("pressure") or BASE_SCORES_PRESSURE,
+        "base_scores_leadership_gap": bs.get("leadership_gap") or BASE_SCORES_LEADERSHIP_GAP,
+        "quiet_signal_amplified_base": _norm_quiet(qs.get("amplified_base")),
+        "quiet_signal_lookback_days": qs.get("lookback_days", QUIET_SIGNAL_LOOKBACK_DAYS),
+        "cap_jobs_momentum": caps.get("jobs_momentum", CAP_JOBS_MOMENTUM),
+        "cap_jobs_complexity": caps.get("jobs_complexity", CAP_JOBS_COMPLEXITY),
+        "cap_founder_urgency": caps.get("founder_urgency", CAP_FOUNDER_URGENCY),
+        "cap_dimension_max": caps.get("dimension_max", CAP_DIMENSION_MAX),
+        "composite_weights": cw or COMPOSITE_WEIGHTS,
+    }
+
+
+def _norm_quiet(amplified: dict | None) -> dict:
+    """Normalize quiet_signal amplified_base to {etype: {dim: base}}."""
+    if not amplified:
+        return QUIET_SIGNAL_AMPLIFIED_BASE
+    result: dict = {}
+    for etype, dims in amplified.items():
+        if isinstance(dims, dict):
+            result[etype] = {k: int(v) for k, v in dims.items()}
+        else:
+            result[etype] = dims
+    return result

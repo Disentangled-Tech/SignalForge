@@ -8,7 +8,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Company, ReadinessSnapshot, SignalEvent
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, resolve_pack
 from app.services.readiness.readiness_engine import compute_readiness
 
 
@@ -53,10 +53,12 @@ def write_readiness_snapshot(
     if not events:
         return None
 
+    pack = resolve_pack(db, pack_id) if pack_id else None
     result = compute_readiness(
         events=events,
         as_of=as_of,
         company_status=company_status,
+        pack=pack,
     )
 
     # Delta: today.composite - prev.composite (v2-spec §6.4, Issue #104)
@@ -69,11 +71,7 @@ def write_readiness_snapshot(
         )
         .first()
     )
-    delta_1d = (
-        result["composite"] - prev_snapshot.composite
-        if prev_snapshot is not None
-        else 0
-    )
+    delta_1d = result["composite"] - prev_snapshot.composite if prev_snapshot is not None else 0
     result["explain"]["delta_1d"] = delta_1d
 
     existing = (
