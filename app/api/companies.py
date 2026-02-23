@@ -19,6 +19,11 @@ from app.schemas.company import (
     CompanyRead,
     CompanyUpdate,
 )
+from app.schemas.outreach import (
+    OutreachHistoryList,
+    OutreachHistoryRead,
+    OutreachHistoryUpdate,
+)
 from app.services.company import (
     bulk_import_companies,
     delete_company,
@@ -27,8 +32,12 @@ from app.services.company import (
     update_company,
 )
 from app.services.company_resolver import resolve_or_create_company
+from app.services.outreach_history import list_outreach_for_company, update_outreach_record
 
 router = APIRouter()
+
+_VALID_TIMING_QUALITY = frozenset({"good_timing", "neutral", "bad_timing"})
+_OUTREACH_OUTCOMES = frozenset({"replied", "declined", "no_response", "other"})
 
 
 # ── Routes ───────────────────────────────────────────────────────────
@@ -54,6 +63,56 @@ def api_list_companies(
         search=search,
     )
     return CompanyList(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/{company_id}/outreach", response_model=OutreachHistoryList)
+def api_list_company_outreach(
+    company_id: int,
+    db: Session = Depends(get_db),
+    _auth: None = Depends(require_auth),
+) -> OutreachHistoryList:
+    """List outreach history for a company (Issue #114). Data retrievable for analysis."""
+    if get_company(db, company_id) is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    records = list_outreach_for_company(db, company_id)
+    items = [OutreachHistoryRead.model_validate(r) for r in records]
+    return OutreachHistoryList(items=items)
+
+
+@router.patch("/{company_id}/outreach/{outreach_id}", response_model=OutreachHistoryRead)
+def api_update_outreach(
+    company_id: int,
+    outreach_id: int,
+    data: OutreachHistoryUpdate,
+    db: Session = Depends(get_db),
+    _auth: None = Depends(require_auth),
+) -> OutreachHistoryRead:
+    """Update outcome, notes, and/or timing quality of an outreach record (Issue #114)."""
+    if get_company(db, company_id) is None:
+        raise HTTPException(status_code=404, detail="Company not found")
+    outcome = data.outcome
+    if outcome is not None and outcome not in _OUTREACH_OUTCOMES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"outcome must be one of: {', '.join(sorted(_OUTREACH_OUTCOMES))}",
+        )
+    timing = data.timing_quality_feedback
+    if timing is not None and timing not in _VALID_TIMING_QUALITY:
+        raise HTTPException(
+            status_code=422,
+            detail=f"timing_quality_feedback must be one of: {', '.join(sorted(_VALID_TIMING_QUALITY))}",
+        )
+    updated = update_outreach_record(
+        db,
+        company_id=company_id,
+        outreach_id=outreach_id,
+        outcome=outcome,
+        notes=data.notes,
+        timing_quality_feedback=timing,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Outreach record not found")
+    return OutreachHistoryRead.model_validate(updated)
 
 
 @router.get("/{company_id}", response_model=CompanyRead)

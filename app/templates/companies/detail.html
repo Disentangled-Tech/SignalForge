@@ -168,6 +168,15 @@
                 </select>
             </div>
             <div>
+                <label for="outreach_timing_quality" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Timing quality (optional)</label>
+                <select id="outreach_timing_quality" name="timing_quality_feedback" style="width: 100%; padding: 0.5rem;">
+                    <option value="">— None —</option>
+                    <option value="good_timing">Good timing</option>
+                    <option value="neutral">Neutral</option>
+                    <option value="bad_timing">Bad timing</option>
+                </select>
+            </div>
+            <div>
                 <label for="outreach_message" style="display: block; font-weight: 600; margin-bottom: 0.25rem;">Message</label>
                 <textarea id="outreach_message" name="message" rows="4" placeholder="Optional: paste or type what you sent"
                     style="width: 100%; padding: 0.5rem;">{{ draft_message or '' }}</textarea>
@@ -189,6 +198,7 @@
                 <th>Sent</th>
                 <th>Type</th>
                 <th>Outcome</th>
+                <th>Timing</th>
                 <th>Message</th>
                 <th>Notes</th>
                 <th></th>
@@ -200,7 +210,7 @@
                 <td class="text-muted">{{ o.sent_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td><span class="badge badge-gray">{{ o.outreach_type|replace('_', ' ') }}</span></td>
                 <td>
-                    <form method="POST" action="/companies/{{ company.id }}/outreach/{{ o.id }}/edit" style="display: inline-flex; gap: 0.25rem; align-items: center;">
+                    <form method="POST" action="/companies/{{ company.id }}/outreach/{{ o.id }}/edit" style="display: grid; gap: 0.5rem; max-width: 260px;">
                         <select name="outcome" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;">
                             <option value="">—</option>
                             <option value="replied" {% if o.outcome == 'replied' %}selected{% endif %}>Replied</option>
@@ -208,9 +218,17 @@
                             <option value="no_response" {% if o.outcome == 'no_response' %}selected{% endif %}>No response</option>
                             <option value="other" {% if o.outcome == 'other' %}selected{% endif %}>Other</option>
                         </select>
+                        <select name="timing_quality_feedback" style="padding: 0.2rem 0.4rem; font-size: 0.8rem;">
+                            <option value="">—</option>
+                            <option value="good_timing" {% if o.timing_quality_feedback == 'good_timing' %}selected{% endif %}>Good timing</option>
+                            <option value="neutral" {% if o.timing_quality_feedback == 'neutral' %}selected{% endif %}>Neutral</option>
+                            <option value="bad_timing" {% if o.timing_quality_feedback == 'bad_timing' %}selected{% endif %}>Bad timing</option>
+                        </select>
+                        <textarea name="notes" rows="2" placeholder="Notes" style="padding: 0.3rem; font-size: 0.8rem;">{{ o.notes or '' }}</textarea>
                         <button type="submit" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;">Update</button>
                     </form>
                 </td>
+                <td style="max-width: 100px;">{% set tq = o.timing_quality_feedback or '' %}{% if tq == 'good_timing' %}Good timing{% elif tq == 'neutral' %}Neutral{% elif tq == 'bad_timing' %}Bad timing{% else %}—{% endif %}</td>
                 <td style="max-width: 250px;">{% set msg = o.message or '' %}{{ msg[:100] }}{% if msg|length > 100 %}…{% endif %}</td>
                 <td style="max-width: 150px;">{% set n = o.notes or '' %}{{ n[:80] }}{% if n|length > 80 %}…{% endif %}</td>
                 <td>

@@ -97,6 +97,7 @@ def create_outreach_record(
     message: str | None = None,
     notes: str | None = None,
     outcome: str | None = None,
+    timing_quality_feedback: str | None = None,
 ) -> OutreachHistory:
     """Insert an outreach record for a company.
 
@@ -114,6 +115,7 @@ def create_outreach_record(
         message=message or None,
         notes=notes or None,
         outcome=outcome or None,
+        timing_quality_feedback=timing_quality_feedback or None,
     )
     db.add(record)
     db.commit()
@@ -144,15 +146,19 @@ def list_outreach_for_company(
     )
 
 
-def update_outreach_outcome(
+def update_outreach_record(
     db: Session,
     company_id: int,
     outreach_id: int,
-    outcome: str | None,
+    *,
+    outcome: str | None = None,
+    notes: str | None = None,
+    timing_quality_feedback: str | None = None,
 ) -> OutreachHistory | None:
-    """Update the outcome of an existing outreach record. Returns None if not found.
+    """Update outcome, notes, and/or timing_quality_feedback on an outreach record.
 
-    outcome=None or empty string clears the outcome.
+    PATCH semantics: None means "omit, do not update". Empty string means "clear".
+    Returns None if not found.
     """
     record = (
         db.query(OutreachHistory)
@@ -164,10 +170,33 @@ def update_outreach_outcome(
     )
     if record is None:
         return None
-    record.outcome = outcome if outcome else None
+    if outcome is not None:
+        record.outcome = outcome.strip() if outcome else None
+    if notes is not None:
+        record.notes = notes.strip() if notes else None
+    if timing_quality_feedback is not None:
+        val = timing_quality_feedback.strip() if timing_quality_feedback else None
+        record.timing_quality_feedback = val
     db.commit()
     db.refresh(record)
     return record
+
+
+def update_outreach_outcome(
+    db: Session,
+    company_id: int,
+    outreach_id: int,
+    outcome: str | None,
+) -> OutreachHistory | None:
+    """Update the outcome of an existing outreach record. Returns None if not found.
+
+    outcome=None or empty string clears the outcome.
+    """
+    # Pass "" to mean "clear" so update_outreach_record sets to null
+    outcome_val = "" if outcome is None or outcome == "" else outcome
+    return update_outreach_record(
+        db, company_id, outreach_id, outcome=outcome_val
+    )
 
 
 def delete_outreach_record(

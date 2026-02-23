@@ -17,6 +17,7 @@ from app.services.outreach_history import (
     get_draft_for_company,
     list_outreach_for_company,
     update_outreach_outcome,
+    update_outreach_record,
 )
 
 
@@ -37,6 +38,8 @@ def test_outreach_history_migration(db: Session):
     assert "company_id" in columns
     assert "outreach_type" in columns
     assert "sent_at" in columns
+    assert "outcome" in columns
+    assert "timing_quality_feedback" in columns
     assert "message" in columns
     assert "notes" in columns
     assert "created_at" in columns
@@ -301,3 +304,55 @@ def test_update_outreach_outcome_not_found(db: Session):
 
     result = update_outreach_outcome(db, company.id, 99999, "replied")
     assert result is None
+
+
+def test_create_outreach_record_with_timing_quality(db: Session):
+    """timing_quality_feedback is persisted when provided (Issue #114)."""
+    company = Company(name="Timing Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_at,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        timing_quality_feedback="good_timing",
+    )
+
+    assert record.timing_quality_feedback == "good_timing"
+
+
+def test_update_outreach_record_notes_and_timing(db: Session):
+    """update_outreach_record updates notes and timing_quality_feedback (Issue #114)."""
+    company = Company(name="Update Full Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    record = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_at,
+        outreach_type="email",
+        message=None,
+        notes=None,
+    )
+    assert record.notes is None
+    assert record.timing_quality_feedback is None
+
+    updated = update_outreach_record(
+        db,
+        company_id=company.id,
+        outreach_id=record.id,
+        notes="Follow up next week",
+        timing_quality_feedback="neutral",
+    )
+    assert updated is not None
+    assert updated.notes == "Follow up next week"
+    assert updated.timing_quality_feedback == "neutral"

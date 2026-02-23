@@ -44,7 +44,7 @@ from app.services.outreach_history import (
     delete_outreach_record,
     get_draft_for_company,
     list_outreach_for_company,
-    update_outreach_outcome,
+    update_outreach_record,
 )
 from app.services.scoring import get_display_scores_for_companies
 
@@ -487,6 +487,7 @@ def company_detail(
 
 _OUTREACH_TYPES = frozenset({"email", "linkedin_dm", "warm_intro", "other"})
 _OUTREACH_OUTCOMES = frozenset({"replied", "declined", "no_response", "other"})
+_VALID_TIMING_QUALITY = frozenset({"good_timing", "neutral", "bad_timing"})
 
 
 @router.post("/companies/{company_id}/outreach")
@@ -499,6 +500,7 @@ def company_outreach_add(
     message: str = Form(""),
     notes: str = Form(""),
     outcome: str = Form(""),
+    timing_quality_feedback: str = Form(""),
 ):
     """Add an outreach record for a company."""
     company = get_company(db, company_id)
@@ -518,6 +520,11 @@ def company_outreach_add(
     if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
         errors.append(
             f"Outcome must be one of: {', '.join(sorted(_OUTREACH_OUTCOMES))}"
+        )
+    timing_val = timing_quality_feedback.strip() or None
+    if timing_val is not None and timing_val not in _VALID_TIMING_QUALITY:
+        errors.append(
+            f"Timing quality must be one of: {', '.join(sorted(_VALID_TIMING_QUALITY))}"
         )
 
     if errors:
@@ -546,6 +553,7 @@ def company_outreach_add(
             message=message.strip() or None,
             notes=notes.strip() or None,
             outcome=outcome_val,
+            timing_quality_feedback=timing_val,
         )
     except OutreachCooldownBlockedError as e:
         return RedirectResponse(
@@ -565,21 +573,36 @@ def company_outreach_edit(
     db: Session = Depends(get_db),
     user: User = Depends(_require_ui_auth),
     outcome: str = Form(""),
+    notes: str = Form(""),
+    timing_quality_feedback: str = Form(""),
 ):
-    """Update the outcome of an outreach record."""
-    outcome_val = outcome.strip() or None
-    if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
+    """Update outcome, notes, and timing quality of an outreach record."""
+    outcome_val = outcome.strip()
+    if outcome_val and outcome_val not in _OUTREACH_OUTCOMES:
         return RedirectResponse(
             url=f"/companies/{company_id}?outreach_error=Invalid+outcome",
             status_code=303,
         )
-    updated = update_outreach_outcome(
-        db, company_id=company_id, outreach_id=outreach_id, outcome=outcome_val
+    timing_val = timing_quality_feedback.strip()
+    if timing_val and timing_val not in _VALID_TIMING_QUALITY:
+        return RedirectResponse(
+            url=f"/companies/{company_id}?outreach_error=Invalid+timing+quality",
+            status_code=303,
+        )
+    notes_val = notes.strip()
+    # Pass raw values so "" clears (service sets to null)
+    updated = update_outreach_record(
+        db,
+        company_id=company_id,
+        outreach_id=outreach_id,
+        outcome=outcome_val,
+        notes=notes_val,
+        timing_quality_feedback=timing_val,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Outreach record not found")
     return RedirectResponse(
-        url=f"/companies/{company_id}?success=Outcome+updated",
+        url=f"/companies/{company_id}?success=Outreach+updated",
         status_code=303,
     )
 

@@ -24,6 +24,9 @@ class OutreachHistory(Base):
         DateTime(timezone=True), nullable=False
     )
     outcome: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    timing_quality_feedback: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # good_timing|neutral|bad_timing (Issue #114)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

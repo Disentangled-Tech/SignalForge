@@ -1,10 +1,40 @@
-"""Outreach API schemas (Issue #108)."""
+"""Outreach API schemas (Issue #108, #114)."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class OutreachHistoryRead(BaseModel):
+    """Single outreach record for API (Issue #114)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    company_id: int
+    outreach_type: str
+    sent_at: datetime
+    outcome: str | None = None
+    timing_quality_feedback: str | None = None
+    message: str | None = None
+    notes: str | None = None
+    created_at: datetime
+
+
+class OutreachHistoryList(BaseModel):
+    """List of outreach records for a company."""
+
+    items: list[OutreachHistoryRead]
+
+
+class OutreachHistoryUpdate(BaseModel):
+    """PATCH body for updating outreach record (Issue #114)."""
+
+    outcome: str | None = None
+    notes: str | None = None
+    timing_quality_feedback: str | None = None
 
 
 class OutreachReviewItem(BaseModel):
