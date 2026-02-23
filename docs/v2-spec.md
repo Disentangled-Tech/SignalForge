@@ -268,6 +268,19 @@ Implementation detail:
 - Prefer highest-confidence “leadership state” signal among the above.
 - If both `cto_role_posted` and `no_cto_detected`, treat as reinforcing (but still cap at 100).
 
+#### 4.3.1 Quiet Signal Amplification (Issue #113)
+
+When a company has **no** `funding_raised` event in the last **365 days**, apply higher base scores for these "quiet" signals (prevents venture-only bias):
+
+| Event Type | Dimension | Normal Base | Quiet (no funding) Base |
+|------------|-----------|-------------|-------------------------|
+| `job_posted_infra` | M | 10 | 20 |
+| `job_posted_infra` | C | 10 | 20 |
+| `compliance_mentioned` | C | 15 | 25 |
+| `api_launched` | C | 25 | 35 |
+
+Lookback window for "has funding": 365 days from `as_of`.
+
 ### 4.4 Suppressors (Global)
 Apply after computing dimensions:
 - If company status = `acquired` or `dead`: set `R = 0` and mark suppressed
@@ -281,6 +294,7 @@ Store:
 - `top_events`: array of up to 8 items:
   - {event_type, event_time, source, url, contribution_points, confidence}
 - `suppressors_applied`: array strings
+- `quiet_signal_amplification_applied`: array of event types that received amplified base (Issue #113; present only when any quiet signals amplified)
 - `notes`: short text for debugging (optional)
 
 ---

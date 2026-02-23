@@ -41,6 +41,16 @@ BASE_SCORES_LEADERSHIP_GAP: dict[str, int] = {
     "no_cto_detected": 40,
 }
 
+# ── Quiet Signal Amplification (Issue #113, v2PRD §6.4) ────────────────────
+# When company has NO funding_raised in lookback window, apply higher base
+# for: job_posted_infra, compliance_mentioned, api_launched. Prevents venture-only bias.
+QUIET_SIGNAL_LOOKBACK_DAYS: int = 365
+QUIET_SIGNAL_AMPLIFIED_BASE: dict[str, dict[str, int]] = {
+    "job_posted_infra": {"M": 20, "C": 20},
+    "compliance_mentioned": {"C": 25},
+    "api_launched": {"C": 35},
+}
+
 # ── Caps (v2-spec §4.3) ─────────────────────────────────────────────────
 
 CAP_JOBS_MOMENTUM: int = 30
