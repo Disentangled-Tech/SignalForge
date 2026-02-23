@@ -45,7 +45,7 @@ class SourceAdapter(ABC):
 
 ## Normalization Flow
 
-1. **Validate event type**: `event_type_candidate` must be in `SIGNAL_EVENT_TYPES` (v2-spec §3). Unknown types are skipped.
+1. **Validate event type**: `event_type_candidate` must be in the canonical taxonomy. When a pack is available (from `resolve_pack`), validation uses `pack.taxonomy.signal_ids`; otherwise falls back to `SIGNAL_EVENT_TYPES` (v2-spec §3, deprecated fallback per Issue #172 Phase 4). Unknown types are skipped.
 2. **Build CompanyCreate**: From `company_name`, `domain`, `website_url`, `company_profile_url`. LinkedIn URLs map to `company_linkedin_url`.
 3. **Build signal event data**: Maps to `SignalEvent` columns with default `confidence=0.7`.
 
@@ -75,7 +75,7 @@ class SourceAdapter(ABC):
    ```
 
 3. Use `run_ingest(db, adapter, since)` to run the pipeline.
-4. Ensure `event_type_candidate` values match `SIGNAL_EVENT_TYPES` (see `app/ingestion/event_types.py`).
+4. Ensure `event_type_candidate` values match the pack taxonomy (when pack available) or `SIGNAL_EVENT_TYPES` fallback (see `app/ingestion/event_types.py`).
 
 ## Canonical Event Types
 
