@@ -28,6 +28,29 @@
 | `tests/test_trs_esl_ore_pipeline.py` | (both tests) | **Updated** — Added pack_id to ReadinessSnapshot fixtures |
 | `tests/conftest.py` | `fractional_cto_pack_id` | **New** — Fixture returning fractional_cto_v1 pack UUID from DB |
 
+### Declarative Pack Plan Tests (TDD for Steps 1.2–1.4, 2.x)
+
+| File | Test | Purpose |
+|------|------|---------|
+| `tests/test_pack_loader.py` | `test_load_fractional_cto_v1_returns_pack` | load_pack returns Pack with taxonomy, scoring, esl_policy |
+| `tests/test_pack_loader.py` | `test_pack_taxonomy_has_signal_ids` | Taxonomy includes all 23 CTO event types |
+| `tests/test_pack_loader.py` | `test_load_nonexistent_pack_raises` | load_pack raises for nonexistent pack |
+| `tests/test_pack_loader.py` | `test_load_invalid_version_raises` | load_pack raises for invalid version |
+| `tests/test_pack_loader.py` | `test_pack_json_has_required_fields` | pack.json has id, version, name |
+| `tests/test_pack_loader.py` | `test_scoring_yaml_has_base_scores` | scoring.yaml has base scores |
+| `tests/test_pack_fractional_cto_parity.py` | `test_funding_raised_parity` | compute_readiness with pack == without pack |
+| `tests/test_pack_fractional_cto_parity.py` | `test_cto_role_posted_no_hired_parity` | leadership_gap parity |
+| `tests/test_pack_fractional_cto_parity.py` | `test_multi_event_composite_parity` | Multi-event composite parity |
+| `tests/test_pack_fractional_cto_parity.py` | `test_esl_boundary_parity` | map_esl_to_recommendation parity |
+| `tests/test_pack_scoped_queries.py` | `test_get_emerging_companies_excludes_other_pack` | Pack A query excludes pack B data |
+| `tests/test_pack_scoped_queries.py` | `test_get_briefing_data_emerging_companies_single_pack` | Briefing data has consistent pack_id |
+| `tests/test_readiness_engine.py` | `TestReadinessEnginePackParameter::test_compute_readiness_accepts_pack_none` | compute_readiness accepts pack=None |
+| `tests/test_readiness_engine.py` | `TestReadinessEnginePackParameter::test_compute_readiness_with_cto_pack_produces_same_as_none` | Pack parity |
+| `tests/test_esl_engine.py` | `test_map_esl_to_recommendation_accepts_pack_none` | map_esl_to_recommendation accepts pack=None |
+| `tests/test_esl_engine.py` | `test_map_esl_to_recommendation_with_cto_pack_same_as_none` | ESL boundary parity |
+| `tests/test_issue_189_pack_isolation.py` | `test_get_emerging_companies_respects_pack_when_filtered` | **Strengthened** — Asserts pack exclusion |
+| `tests/test_trs_esl_ore_pipeline.py` | (both tests) | **Updated** — Assert rec.pack_id set by ORE pipeline |
+
 ## 2. Coverage Impact
 
 ### Commands
@@ -57,6 +80,8 @@ pytest tests/test_issue_189_schema.py tests/test_issue_189_pack_isolation.py tes
 
 Tests added for schema validation, pack isolation, and UI rendering. Regression tests (emerging companies, TRS-ESL-ORE) updated with pack_id fixtures.
 
+**Current coverage:** 92% (above 75% requirement). No modules below target.
+
 ## 3. Failing Tests (Expected Before Implementation)
 
 All tests currently **pass** because:
@@ -72,10 +97,16 @@ All tests currently **pass** because:
 - `test_readiness_snapshot_unique_constraint` — requires (company_id, as_of, pack_id) unique constraint
 - Emerging companies and TRS-ESL-ORE tests — would fail with unique constraint violations if pack_id not set
 
-### Tests That Would Fail Without Production Code Changes (Future)
+### Tests That Skip Until Production Code Changes (TDD)
 
-- `get_emerging_companies` does **not** yet filter by `pack_id` — when workspace.active_pack_id is implemented, a test asserting pack-scoped results would fail until the service is updated.
-- ORE pipeline does **not** yet set `pack_id` on OutreachRecommendation — a test asserting rec.pack_id from ORE would fail until the pipeline is updated.
+Tests that **skip** (not fail) until the corresponding production code exists:
+
+- **`tests/test_pack_loader.py`** — Entire module skips via `pytest.importorskip("app.packs")` until `app/packs/loader.py` and `packs/fractional_cto_v1/` exist (Plan Step 1.2).
+- **`tests/test_pack_fractional_cto_parity.py`** — Skips when `load_pack` not available; will fail when `compute_readiness(..., pack=...)` and `map_esl_to_recommendation(..., pack=...)` not implemented (Plan Steps 1.3, 1.4).
+- **`tests/test_readiness_engine.py::TestReadinessEnginePackParameter::test_compute_readiness_accepts_pack_none`** — Skips when `compute_readiness` does not accept `pack` parameter (Plan Step 1.3).
+- **`tests/test_esl_engine.py::test_map_esl_to_recommendation_accepts_pack_none`** — Skips when `map_esl_to_recommendation` does not accept `pack` parameter (Plan Step 1.4).
+
+Once `app.packs.loader` exists, pack loader tests will run. Once `compute_readiness` and `map_esl_to_recommendation` accept `pack`, parity tests will run and assert identical output.
 
 ## 4. Verification Commands
 
@@ -95,8 +126,10 @@ pytest tests/ -v -m integration
 | **FK integrity** | `test_readiness_snapshots_pack_id_column_accepts_fk` |
 | **Outreach pack/playbook** | `test_outreach_recommendation_stores_pack_id_and_playbook_id` |
 | **Regression (emerging companies)** | All `test_emerging_companies.py` tests |
-| **Regression (TRS→ESL→ORE)** | All `test_trs_esl_ore_pipeline.py` tests |
+| **Regression (TRS→ESL→ORE)** | All `test_trs_esl_ore_pipeline.py` tests (incl. pack_id assertion) |
 | **UI rendering** | `test_briefing_renders_emerging_companies_section`, `test_company_detail_renders_company_name` |
+| **Pack-scoped queries** | `test_get_emerging_companies_excludes_other_pack`, `test_get_briefing_data_emerging_companies_single_pack` |
+| **ORE pack_id** | `test_trs_esl_ore_pipeline_integration`, `test_ore_pipeline_uses_computed_esl` |
 
 ## 6. Snyk Security Scan
 

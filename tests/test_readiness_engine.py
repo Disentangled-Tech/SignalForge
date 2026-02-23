@@ -458,3 +458,40 @@ class TestEdgeCases:
         ev_low_conf = MockEvent(event_type="funding_raised", event_time=_days_ago(5), confidence=-0.1)
         m = compute_momentum([ev_low_conf], date.today())
         assert m == 0
+
+
+# ── Pack parameter parity (Issue #189, Plan Step 1.3) ─────────────────────────
+
+
+class TestReadinessEnginePackParameter:
+    """compute_readiness accepts pack parameter; pack=None uses current constants."""
+
+    def test_compute_readiness_accepts_pack_none(self) -> None:
+        """compute_readiness(events, as_of, pack=None) matches current behavior."""
+        from app.services.readiness.readiness_engine import compute_readiness
+
+        as_of = date.today()
+        events = [_event("funding_raised", 5), _event("cto_role_posted", 50)]
+        try:
+            result = compute_readiness(events, as_of, pack=None)
+        except TypeError:
+            pytest.skip("compute_readiness does not yet accept pack parameter (Step 1.3)")
+        assert "composite" in result
+        assert "momentum" in result
+        assert result["leadership_gap"] == 70
+
+    def test_compute_readiness_with_cto_pack_produces_same_as_none(self) -> None:
+        """compute_readiness(events, as_of, pack=cto_pack) == compute_readiness(events, as_of) for CTO constants."""
+        from app.services.readiness.readiness_engine import compute_readiness
+
+        as_of = date.today()
+        events = [_event("funding_raised", 5), _event("job_posted_engineering", 10)]
+        result_none = compute_readiness(events, as_of)
+        try:
+            from app.packs.loader import load_pack
+            cto_pack = load_pack("fractional_cto_v1", "1")
+            result_pack = compute_readiness(events, as_of, pack=cto_pack)
+            assert result_pack["composite"] == result_none["composite"]
+            assert result_pack["momentum"] == result_none["momentum"]
+        except ImportError:
+            pytest.skip("app.packs.loader not implemented")

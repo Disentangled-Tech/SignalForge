@@ -92,6 +92,7 @@ def test_pack_isolation_readiness_snapshots(
     cto_snapshots = (
         db.query(ReadinessSnapshot)
         .filter(
+            ReadinessSnapshot.company_id == company.id,
             ReadinessSnapshot.as_of == as_of,
             ReadinessSnapshot.pack_id == fractional_cto_pack.id,
         )
@@ -100,6 +101,7 @@ def test_pack_isolation_readiness_snapshots(
     book_snapshots = (
         db.query(ReadinessSnapshot)
         .filter(
+            ReadinessSnapshot.company_id == company.id,
             ReadinessSnapshot.as_of == as_of,
             ReadinessSnapshot.pack_id == bookkeeping_pack.id,
         )
@@ -148,6 +150,7 @@ def test_pack_isolation_engagement_snapshots(
     cto_snapshots = (
         db.query(EngagementSnapshot)
         .filter(
+            EngagementSnapshot.company_id == company.id,
             EngagementSnapshot.as_of == as_of,
             EngagementSnapshot.pack_id == fractional_cto_pack.id,
         )
@@ -156,6 +159,7 @@ def test_pack_isolation_engagement_snapshots(
     book_snapshots = (
         db.query(EngagementSnapshot)
         .filter(
+            EngagementSnapshot.company_id == company.id,
             EngagementSnapshot.as_of == as_of,
             EngagementSnapshot.pack_id == bookkeeping_pack.id,
         )
@@ -174,14 +178,7 @@ def test_get_emerging_companies_respects_pack_when_filtered(
     fractional_cto_pack: SignalPack,
     bookkeeping_pack: SignalPack,
 ) -> None:
-    """get_emerging_companies returns only companies with pack-scoped snapshots.
-
-    Note: Current get_emerging_companies does NOT filter by pack_id.
-    This test documents expected behavior: when pack filtering is added,
-    results should be pack-scoped. For now we verify the fixture setup
-    and that both packs have data; the service will return both until
-    pack_id filter is implemented.
-    """
+    """get_emerging_companies returns only pack-scoped data; excludes other packs."""
     companies = [
         Company(name=f"PackCo {i}", website_url=f"https://pack{i}.example.com")
         for i in range(3)
@@ -215,12 +212,20 @@ def test_get_emerging_companies_respects_pack_when_filtered(
         db.add_all([rs, es])
     db.commit()
 
-    result = get_emerging_companies(db, as_of, limit=5, outreach_score_threshold=30)
+    our_company_ids = {c.id for c in companies}
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30, pack_id=fractional_cto_pack.id)
 
-    assert len(result) == 3
+    assert len(result) >= 3, "Must include our 3 companies"
     for rs, es, company in result:
         assert rs.pack_id == fractional_cto_pack.id
         assert es.pack_id == fractional_cto_pack.id
+    result_company_ids = {c.id for _, _, c in result}
+    assert our_company_ids <= result_company_ids, "Our 3 companies must appear in pack-scoped results"
+
+    result_book = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30, pack_id=bookkeeping_pack.id)
+    for rs, es, _ in result_book:
+        assert rs.pack_id == bookkeeping_pack.id
+    assert our_company_ids.isdisjoint({c.id for _, _, c in result_book}), "Our fractional_cto companies must not appear when querying bookkeeping pack"
 
 
 @pytest.mark.integration

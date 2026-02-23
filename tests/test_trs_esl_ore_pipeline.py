@@ -105,9 +105,10 @@ def test_trs_esl_ore_pipeline_integration(db: Session) -> None:
     cta_count = sum(1 for c in ["Want me to send", "Open to a", "If helpful"] if c in message)
     assert cta_count <= 1, "Multiple CTAs detected"
 
-    # Stored in outreach_recommendations
+    # Stored in outreach_recommendations (Issue #189: pack_id set by ORE pipeline)
     assert rec.company_id == company.id
     assert rec.as_of == as_of
+    assert rec.pack_id == pack_id, "ORE pipeline must set pack_id on OutreachRecommendation"
 
 
 def test_ore_pipeline_uses_computed_esl(db: Session) -> None:
@@ -165,3 +166,4 @@ def test_ore_pipeline_uses_computed_esl(db: Session) -> None:
     # OutreachScore = round(TRS * ESL_composite)
     assert rec.outreach_score >= 50
     assert rec.company_id == company.id
+    assert rec.pack_id == pack_id, "ORE pipeline must set pack_id when computing ESL from context"
