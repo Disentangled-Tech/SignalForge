@@ -1,9 +1,16 @@
-"""Canonical signal event taxonomy (v2-spec §3, Issue #89)."""
+"""Canonical signal event taxonomy (v2-spec §3, Issue #89).
+
+.. deprecated::
+    When pack is always available (post Phase 2), prefer pack.taxonomy.signal_ids
+    for validation. This constant remains as fallback when pack=None (e.g. ingest
+    before pack resolution). See normalize._is_valid_event_type_for_pack.
+"""
 
 from __future__ import annotations
 
 # All known event types from scoring constants + v2-spec §3
-# Used for validating event_type_candidate during normalization
+# Used for validating event_type_candidate during normalization.
+# DEPRECATED (Phase 4, Issue #172): Fallback only when pack=None.
 SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     # Momentum
     "funding_raised",

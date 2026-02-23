@@ -55,7 +55,9 @@ RECOMMENDATION_BOUNDARIES: list[tuple[float, str]] = [
     (0.9, "Direct Strategic Outreach"),
 ]
 
-# Event types that contribute to SVI (stress/urgency)
+# Event types that contribute to SVI (stress/urgency).
+# FALLBACK-ONLY (Phase 4, Issue #172): Use pack.esl_policy.svi_event_types when
+# pack is available. See esl_engine.compute_svi.
 SVI_EVENT_TYPES: frozenset[str] = frozenset({
     "founder_urgency_language",
     "regulatory_deadline",
