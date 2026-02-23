@@ -82,11 +82,103 @@ class TestScenarioComplexityAccumulation:
             _event("compliance_mentioned", 90),
         ]
         c = compute_complexity(events, as_of)
-        # All in 0-90 day decay = 1.0
-        # 25*1.0*0.7 + 25*1.0*0.7 + 15*1.0*0.7 = 17.5 + 17.5 + 10.5 = 45.5 → 46
+        # No funding → quiet signal amplification (Issue #113)
+        # api_launched: 35*1.0*0.7=24.5; ai_feature: 25*1.0*0.7=17.5; compliance: 25*1.0*0.7=17.5
+        # total = 59.5 → 60
         assert c >= 40
         assert c <= 100
-        assert c == 46
+        assert c == 60
+
+
+# ── Scenario 2b: Quiet Signal Amplification (Issue #113) ───────────────────
+
+
+class TestQuietSignalAmplification:
+    """Quiet signals get amplified base when company has no funding (Issue #113)."""
+
+    def test_job_posted_infra_without_funding_gets_amplified_momentum(self) -> None:
+        """Infra hire only (no funding) → amplified base 20, M=14."""
+        as_of = date.today()
+        events = [_event("job_posted_infra", 10)]
+        m = compute_momentum(events, as_of)
+        # No funding: 20*1.0*0.7=14 (amplified base)
+        assert m == 14
+
+    def test_job_posted_infra_without_funding_gets_amplified_complexity(self) -> None:
+        """Infra hire only (no funding) → higher C than with funding."""
+        as_of = date.today()
+        events_no_funding = [_event("job_posted_infra", 30)]
+        events_with_funding = [
+            _event("job_posted_infra", 30),
+            _event("funding_raised", 5),
+        ]
+        c_no_funding = compute_complexity(events_no_funding, as_of)
+        c_with_funding = compute_complexity(events_with_funding, as_of)
+        # No funding: 20*1.0*0.7=14; with funding: 10*1.0*0.7=7
+        assert c_no_funding == 14
+        assert c_with_funding == 7
+
+    def test_job_posted_infra_with_funding_uses_normal_base(self) -> None:
+        """Infra + funding → no amplification."""
+        as_of = date.today()
+        events = [
+            _event("job_posted_infra", 10),
+            _event("funding_raised", 5),
+        ]
+        m = compute_momentum(events, as_of)
+        c = compute_complexity(events, as_of)
+        # Jobs: 10*1.0*0.7=7 (cap 30); funding: 35*1.0*0.7=24.5; M = 7+24.5=31.5→31 or 32
+        # C: job_posted_infra 10*1.0*0.7=7
+        assert c == 7
+
+    def test_compliance_mentioned_without_funding_gets_amplified(self) -> None:
+        """Compliance only (no funding) → higher C."""
+        as_of = date.today()
+        events = [_event("compliance_mentioned", 30)]
+        c = compute_complexity(events, as_of)
+        # 25*1.0*0.7=17.5 → 17 or 18
+        assert c in (17, 18)
+
+    def test_compliance_mentioned_with_funding_uses_normal_base(self) -> None:
+        """Compliance + funding → no amplification."""
+        as_of = date.today()
+        events = [
+            _event("compliance_mentioned", 30),
+            _event("funding_raised", 5),
+        ]
+        c = compute_complexity(events, as_of)
+        # 15*1.0*0.7=10.5 → 10 or 11
+        assert c in (10, 11)
+
+    def test_api_launched_without_funding_gets_amplified(self) -> None:
+        """API launch only (no funding) → higher C."""
+        as_of = date.today()
+        events = [_event("api_launched", 30)]
+        c = compute_complexity(events, as_of)
+        # 35*1.0*0.7=24.5 → 24 or 25
+        assert c in (24, 25)
+
+    def test_api_launched_with_funding_uses_normal_base(self) -> None:
+        """API launch + funding → no amplification."""
+        as_of = date.today()
+        events = [
+            _event("api_launched", 30),
+            _event("funding_raised", 5),
+        ]
+        c = compute_complexity(events, as_of)
+        # 25*1.0*0.7=17.5 → 17 or 18
+        assert c in (17, 18)
+
+    def test_funding_outside_window_does_not_block_amplification(self) -> None:
+        """Funding 400 days ago → still amplify (no recent funding)."""
+        as_of = date.today()
+        events = [
+            _event("api_launched", 30),
+            _event("funding_raised", 400),  # outside 365d window
+        ]
+        c = compute_complexity(events, as_of)
+        # No funding in 365d → amplified: 35*1.0*0.7=24.5 → 24 or 25
+        assert c in (24, 25)
 
 
 # ── Scenario 3: Leadership gap suppressed when CTO hired ───────────────────
@@ -236,9 +328,10 @@ class TestDecayBoundaries:
         c90 = compute_complexity([_event("api_launched", 90)], as_of)
         c91 = compute_complexity([_event("api_launched", 91)], as_of)
         c366 = compute_complexity([_event("api_launched", 366)], as_of)
-        assert c90 in (17, 18)  # 25*1.0*0.7=17.5
-        assert c91 == 14  # 25*0.8*0.7=14
-        assert c366 == 7  # 25*0.4*0.7=7
+        # No funding → api_launched amplified to 35 (Issue #113)
+        assert c90 in (24, 25)  # 35*1.0*0.7=24.5
+        assert c91 in (19, 20)  # 35*0.8*0.7=19.6
+        assert c366 in (9, 10)  # 35*0.4*0.7=9.8
 
 
 # ── Caps ────────────────────────────────────────────────────────────────────

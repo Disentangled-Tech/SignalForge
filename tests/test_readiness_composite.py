@@ -199,6 +199,43 @@ class TestComputeReadiness:
         assert result["composite"] == 0
         assert "company_status_suppressed" in result["explain"]["suppressors_applied"]
 
+    def test_explain_includes_quiet_signal_amplification_applied(self) -> None:
+        """When quiet signals amplified (no funding), explain has the key (Issue #113)."""
+        events = [
+            _event("api_launched", 30),
+            _event("compliance_mentioned", 60),
+        ]
+        result = compute_readiness(events, date.today())
+        assert "quiet_signal_amplification_applied" in result["explain"]
+        amplified = result["explain"]["quiet_signal_amplification_applied"]
+        assert "api_launched" in amplified
+        assert "compliance_mentioned" in amplified
+
+    def test_explain_no_quiet_amplification_when_funding_present(self) -> None:
+        """With funding, quiet_signal_amplification_applied is absent (empty list not added)."""
+        events = [
+            _event("api_launched", 30),
+            _event("funding_raised", 5),
+        ]
+        result = compute_readiness(events, date.today())
+        # When has_funding, quiet_amplified is [] so key is not added to payload
+        assert "quiet_signal_amplification_applied" not in result["explain"]
+
+    def test_top_events_contribution_points_reflect_amplification(self) -> None:
+        """contribution_points for quiet signals higher when no funding (Issue #113)."""
+        events_no_funding = [_event("api_launched", 30)]
+        events_with_funding = [
+            _event("api_launched", 30),
+            _event("funding_raised", 5),
+        ]
+        top_no_funding = compute_event_contributions(events_no_funding, date.today(), limit=8)
+        top_with_funding = compute_event_contributions(events_with_funding, date.today(), limit=8)
+        api_no = next((e for e in top_no_funding if e["event_type"] == "api_launched"), None)
+        api_with = next((e for e in top_with_funding if e["event_type"] == "api_launched"), None)
+        assert api_no is not None and api_with is not None
+        # Amplified: 35*1.0*0.7=24.5; normal: 25*1.0*0.7=17.5 (C only)
+        assert api_no["contribution_points"] > api_with["contribution_points"]
+
 
 # ── compute_event_contributions ───────────────────────────────────────────
 

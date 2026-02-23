@@ -21,6 +21,8 @@ from app.services.readiness.scoring_constants import (
     CAP_FOUNDER_URGENCY,
     CAP_JOBS_COMPLEXITY,
     CAP_JOBS_MOMENTUM,
+    QUIET_SIGNAL_AMPLIFIED_BASE,
+    QUIET_SIGNAL_LOOKBACK_DAYS,
     decay_complexity,
     decay_momentum,
     decay_pressure,
@@ -75,11 +77,42 @@ def _get_confidence(ev: _EventLike) -> float:
     return max(0.0, min(1.0, float(c)))
 
 
+def _has_funding_in_window(
+    events: list[Any], as_of: date, window_days: int = QUIET_SIGNAL_LOOKBACK_DAYS
+) -> bool:
+    """Return True if any funding_raised event exists within window (Issue #113)."""
+    for ev in events:
+        if getattr(ev, "event_type", None) != "funding_raised":
+            continue
+        ev_time = getattr(ev, "event_time", None)
+        if ev_time is None:
+            continue
+        if _days_since(ev_time, as_of) <= window_days:
+            return True
+    return False
+
+
+def _get_effective_base(etype: str, dimension: str, has_funding: bool) -> int | None:
+    """Return base score for event type in dimension (Issue #113).
+
+    When has_funding is False and etype is a quiet signal, returns amplified base.
+    Otherwise returns None (caller uses normal BASE_SCORES_* lookup).
+    """
+    if has_funding:
+        return None
+    amplified = QUIET_SIGNAL_AMPLIFIED_BASE.get(etype)
+    if amplified is None:
+        return None
+    return amplified.get(dimension)
+
+
 def compute_momentum(events: list[Any], as_of: date) -> int:
     """Compute Momentum (M) 0..100 from events (v2-spec §4.3).
 
     Window: 120 days. Jobs subscore cap 30. Total cap 100.
+    Quiet signal amplification (Issue #113): job_posted_infra uses higher base when no funding.
     """
+    has_funding = _has_funding_in_window(events, as_of)
     jobs_sum = 0.0
     other_sum = 0.0
 
@@ -93,7 +126,7 @@ def compute_momentum(events: list[Any], as_of: date) -> int:
         days = _days_since(ev_time, as_of)
         if days > WINDOW_MOMENTUM_DAYS:
             continue
-        base = BASE_SCORES_MOMENTUM[etype]
+        base = _get_effective_base(etype, "M", has_funding) or BASE_SCORES_MOMENTUM[etype]
         decay = decay_momentum(days)
         conf = _get_confidence(ev)
         contrib = base * decay * conf
@@ -111,7 +144,10 @@ def compute_complexity(events: list[Any], as_of: date) -> int:
     """Compute Complexity (C) 0..100 from events (v2-spec §4.3).
 
     Window: 365 days. job_posted_infra cap 20.
+    Quiet signal amplification (Issue #113): job_posted_infra, compliance_mentioned,
+    api_launched use higher base when no funding.
     """
+    has_funding = _has_funding_in_window(events, as_of)
     job_infra_sum = 0.0
     other_sum = 0.0
 
@@ -125,7 +161,7 @@ def compute_complexity(events: list[Any], as_of: date) -> int:
         days = _days_since(ev_time, as_of)
         if days > WINDOW_COMPLEXITY_DAYS:
             continue
-        base = BASE_SCORES_COMPLEXITY[etype]
+        base = _get_effective_base(etype, "C", has_funding) or BASE_SCORES_COMPLEXITY[etype]
         decay = decay_complexity(days)
         conf = _get_confidence(ev)
         contrib = base * decay * conf
@@ -249,15 +285,18 @@ def apply_global_suppressors(
 
 
 def _event_contribution_to_dimension(
-    ev: Any, etype: str, days: int, dimension: str
+    ev: Any, etype: str, days: int, dimension: str, has_funding: bool = True
 ) -> float:
-    """Compute single event's contribution to a dimension (base * decay * confidence)."""
+    """Compute single event's contribution to a dimension (base * decay * confidence).
+
+    Issue #113: quiet signals use amplified base when has_funding is False.
+    """
     conf = _get_confidence(ev)
     if dimension == "M" and etype in BASE_SCORES_MOMENTUM:
-        base = BASE_SCORES_MOMENTUM[etype]
+        base = _get_effective_base(etype, "M", has_funding) or BASE_SCORES_MOMENTUM[etype]
         return base * decay_momentum(days) * conf
     if dimension == "C" and etype in BASE_SCORES_COMPLEXITY:
-        base = BASE_SCORES_COMPLEXITY[etype]
+        base = _get_effective_base(etype, "C", has_funding) or BASE_SCORES_COMPLEXITY[etype]
         return base * decay_complexity(days) * conf
     if dimension == "P" and etype in BASE_SCORES_PRESSURE:
         base = BASE_SCORES_PRESSURE[etype]
@@ -275,7 +314,9 @@ def compute_event_contributions(
 
     Each event's contribution is the sum of its contributions across dimensions.
     Returns up to limit items, sorted by contribution desc.
+    Issue #113: uses has_funding for quiet signal amplification in contribution_points.
     """
+    has_funding = _has_funding_in_window(events, as_of)
     scored: list[tuple[float, Any]] = []
 
     for ev in events:
@@ -287,7 +328,9 @@ def compute_event_contributions(
 
         total = 0.0
         for dim in ("M", "C", "P", "G"):
-            total += _event_contribution_to_dimension(ev, etype, days, dim)
+            total += _event_contribution_to_dimension(
+                ev, etype, days, dim, has_funding=has_funding
+            )
 
         if total > 0:
             scored.append((total, ev))
@@ -319,14 +362,22 @@ def build_explain_payload(
     R: int,
     top_events: list[dict[str, Any]],
     suppressors_applied: list[str],
+    quiet_signal_amplification_applied: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Build explain JSON payload (v2-spec §4.5)."""
-    return {
+    """Build explain JSON payload (v2-spec §4.5).
+
+    Issue #113: quiet_signal_amplification_applied lists event types that received
+    amplified base when company had no funding in lookback window.
+    """
+    payload: dict[str, Any] = {
         "weights": dict(COMPOSITE_WEIGHTS),
         "dimensions": {"M": M, "C": C, "P": P, "G": G, "R": R},
         "top_events": top_events,
         "suppressors_applied": suppressors_applied,
     }
+    if quiet_signal_amplification_applied:
+        payload["quiet_signal_amplification_applied"] = quiet_signal_amplification_applied
+    return payload
 
 
 def compute_readiness(
@@ -339,6 +390,7 @@ def compute_readiness(
 
     Returns dict suitable for ReadinessSnapshot: momentum, complexity, pressure,
     leadership_gap, composite, explain.
+    Issue #113: quiet signal amplification applied when no funding in lookback.
     """
     M = compute_momentum(events, as_of)
     C = compute_complexity(events, as_of)
@@ -352,7 +404,18 @@ def compute_readiness(
     R = compute_composite(M, C, P, G)
 
     top_events = compute_event_contributions(events, as_of, limit=top_events_limit)
-    explain = build_explain_payload(M, C, P, G, R, top_events, suppressors_applied)
+
+    has_funding = _has_funding_in_window(events, as_of)
+    event_types_present = {getattr(ev, "event_type", "") for ev in events}
+    quiet_amplified = (
+        [t for t in QUIET_SIGNAL_AMPLIFIED_BASE if t in event_types_present]
+        if not has_funding
+        else []
+    )
+
+    explain = build_explain_payload(
+        M, C, P, G, R, top_events, suppressors_applied, quiet_amplified
+    )
 
     return {
         "momentum": M,
