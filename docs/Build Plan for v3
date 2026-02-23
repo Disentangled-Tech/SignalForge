@@ -1,0 +1,195 @@
+🏗️ Milestone 1 — Core Pack Engine (CTO Pack Parity)
+
+Goal:
+Replace hardcoded domain logic with Pack Architecture while preserving current CTO behavior.
+
+You are not adding new industries yet.
+You are proving the engine abstraction works.
+
+⸻
+
+🎯 Exit Criteria
+	•	fractional_cto_v1 pack produces identical results to current system
+	•	No startup/founder logic remains in core
+	•	Lead feed renders from projection table
+	•	Outreach drafts generated from pack playbooks
+	•	ESL enforced via pack policy
+	•	All data pack-scoped in DB
+
+⸻
+
+🔨 Issues Included
+
+Foundation
+	1.	Update Database Schema to Support Signal Pack Architecture
+	2.	Enforce Workspace + Pack Scoping Across All Data Access
+	3.	Implement Signal Pack Loader with Manifest + Schema Validation
+	4.	Implement Pack Validation CI + Lint + Ethical Policy Gates
+
+⸻
+
+Pipeline
+	5.	Implement Event-Driven Pipeline with Idempotent Jobs
+	6.	Implement Deriver Engine (Pack-Driven)
+	7.	Refactor Scoring Engine to Pack Profiles
+	8.	Implement Pack-Aware ESL Policy Engine
+
+⸻
+
+Projection + Explainability
+	9.	Implement Lead Feed Projection + Incremental Updates
+	10.	Implement Explainability Renderer
+
+⸻
+
+Outreach
+	11.	Implement Structured Draft Input + Sanitization
+	12.	Implement Playbook Loader + Draft Engine
+	13.	Refactor Outreach Orchestrator (Pack-Driven)
+	14.	Add Pack-Aware Safety & Critic Layer
+
+⸻
+
+CTO Extraction
+	15.	Audit Startup/Fractional CTO Assumptions
+	16.	Create pack_fractional_cto_v1
+	17.	Remove Hardcoded Domain Logic from Core
+
+⸻
+
+UX
+	18.	Refactor LeadCard UI to Use Taxonomy Labels
+	19.	Replace Instability Flag with Sensitivity System
+
+⸻
+
+🚦Gate to Move On
+	•	CTO pack fully operational
+	•	Switching active pack does not crash system (even if only one pack exists)
+	•	All scoring and outreach comes from pack config
+	•	Regression tests pass
+
+If this gate fails, stop and fix abstraction before adding bookkeeping.
+
+⸻
+
+📦 Milestone 2 — Bookkeeping Pack Beta
+
+Goal:
+Prove cross-industry portability with first non-tech pack.
+
+⸻
+
+🎯 Exit Criteria
+	•	bookkeeping_v0 pack loads without schema change
+	•	Lead surfacing behaves differently from CTO pack
+	•	Distress signals suppressed correctly
+	•	Outreach tone matches bookkeeping playbooks
+	•	Beta feedback instrumentation working
+
+⸻
+
+🔨 Issues Included
+
+Runtime
+	1.	Implement Active Pack Selection per Workspace
+	2.	Define Pack Switching Semantics (No Auto Reprocess)
+
+⸻
+
+Bookkeeping Pack
+	3.	Create taxonomy.yaml for bookkeeping_v0
+	4.	Create derivers.yaml
+	5.	Create scoring.yaml
+	6.	Create esl_policy.yaml
+	7.	Create outreach playbooks
+
+⸻
+
+Validation
+	8.	Run 50-Observation Simulation
+	9.	Implement Beta Feedback Instrumentation
+
+⸻
+
+Alerts
+	10.	Implement Pack-Scoped Signal Alert System
+
+⸻
+
+Governance
+	11.	Implement Observation Retention + Redaction Controls
+
+⸻
+
+🚦Gate to Move On
+	•	≥70% leads marked useful in beta test sample
+	•	No distress signal leaks
+	•	Outreach drafts approved by beta user
+	•	Pack switching stable
+	•	No performance regression
+
+If signal quality is poor → iterate on pack config, not core engine.
+
+⸻
+
+🚀 Milestone 3 — Hardening & Scaling Prep
+
+Goal:
+Prepare for controlled expansion to 2–3 additional industries.
+
+⸻
+
+🎯 Exit Criteria
+	•	Stable performance at 10k+ signals/workspace
+	•	Lead feed loads <200ms
+	•	No cross-tenant leakage
+	•	Idempotent job pipeline stable
+	•	Regex safety enforced
+	•	LLM cost bounded
+
+⸻
+
+🔨 Issues Included
+	1.	Performance profiling + indexing optimization
+	2.	Add per-workspace derivation quotas
+	3.	Add circuit breaker for runaway pack
+	4.	Add audit logging for pack loading + switching
+	5.	Load test lead_feed projection
+	6.	Add signals_hash caching for outreach drafts
+	7.	Add pack version upgrade workflow
+
+⸻
+
+🚦Gate to Open Multi-Industry Beta
+	•	Stable under simulated load
+	•	No cross-pack bleed
+	•	Feedback loop producing actionable insights
+	•	Core architecture not requiring schema changes for new pack
+
+⸻
+
+📊 Rough Timeline (Lean Build)
+
+If focused:
+	•	Milestone 1: 2–3 weeks
+	•	Milestone 2: 1–2 weeks
+	•	Milestone 3: 1–2 weeks hardening
+
+Total: ~4–6 weeks to robust cross-industry beta.
+
+⸻
+
+🧠 Strategic Insight
+
+Milestone 1 is the most dangerous phase.
+
+If abstraction is weak:
+	•	You’ll leak domain logic back into core.
+	•	Bookkeeping will feel bolted on.
+	•	Performance complexity doubles.
+
+If Milestone 1 is clean:
+	•	Adding future industries becomes 70% configuration work.
+
+⸻
