@@ -7,9 +7,10 @@ Runs after readiness scoring; requires ReadinessSnapshot for company/as_of.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Company, EngagementSnapshot, OutreachHistory, ReadinessSnapshot, SignalEvent
@@ -27,23 +28,35 @@ from app.services.esl.esl_engine import (
     compute_svi,
     map_esl_to_recommendation,
 )
+from app.services.pack_resolver import get_default_pack_id
 
 
 def compute_esl_from_context(
     db: Session,
     company_id: int,
     as_of: date,
+    pack_id=None,
 ) -> dict[str, Any] | None:
     """Compute ESL from DB context without persisting (Issue #106).
 
     Returns dict with esl_composite, stability_modifier, recommendation_type,
     explain, cadence_blocked, alignment_high. Returns None if no ReadinessSnapshot.
     """
+    pack_id = pack_id or get_default_pack_id(db)
+    if pack_id is None:
+        return None
+
+    # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
+    pack_filter = or_(
+        ReadinessSnapshot.pack_id == pack_id,
+        ReadinessSnapshot.pack_id.is_(None),
+    )
     readiness = (
         db.query(ReadinessSnapshot)
         .filter(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of == as_of,
+            pack_filter,
         )
         .first()
     )
@@ -55,13 +68,19 @@ def compute_esl_from_context(
         return None
 
     cutoff_dt = datetime.combine(as_of - timedelta(days=365), datetime.min.time()).replace(
-        tzinfo=timezone.utc
+        tzinfo=UTC
+    )
+    # Pack-scoped: only use events for this pack or legacy NULL (Issue #189)
+    event_pack_filter = or_(
+        SignalEvent.pack_id == pack_id,
+        SignalEvent.pack_id.is_(None),
     )
     events = (
         db.query(SignalEvent)
         .filter(
             SignalEvent.company_id == company_id,
             SignalEvent.event_time >= cutoff_dt,
+            event_pack_filter,
         )
         .order_by(SignalEvent.event_time.asc())
         .all()
@@ -74,7 +93,7 @@ def compute_esl_from_context(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of >= spi_cutoff,
             ReadinessSnapshot.as_of <= as_of,
-            ReadinessSnapshot.pack_id == pack_id,
+            pack_filter,
         )
         .order_by(ReadinessSnapshot.as_of.asc())
         .all()

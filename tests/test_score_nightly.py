@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, JobRun, ReadinessSnapshot, SignalEvent, Watchlist
+from app.models import Company, EngagementSnapshot, JobRun, ReadinessSnapshot, SignalEvent, SignalPack, Watchlist
 from app.services.readiness.score_nightly import run_score_nightly
 from app.services.readiness.snapshot_writer import write_readiness_snapshot as real_write
 

@@ -21,8 +21,8 @@ def test_engagement_snapshots_table_exists(_ensure_migrations: None) -> None:
     assert "engagement_snapshots" in tables
 
 
-def test_engagement_snapshots_unique_company_as_of(db) -> None:
-    """Duplicate (company_id, as_of) raises IntegrityError."""
+def test_engagement_snapshots_unique_company_as_of(db, fractional_cto_pack_id) -> None:
+    """Duplicate (company_id, as_of, pack_id) raises IntegrityError."""
     company = Company(name="Test Co", source="manual")
     db.add(company)
     db.flush()
@@ -32,6 +32,7 @@ def test_engagement_snapshots_unique_company_as_of(db) -> None:
         as_of=date(2026, 2, 18),
         esl_score=0.75,
         engagement_type="Soft Value Share",
+        pack_id=fractional_cto_pack_id,
     )
     db.add(snap1)
     db.commit()
@@ -41,6 +42,7 @@ def test_engagement_snapshots_unique_company_as_of(db) -> None:
         as_of=date(2026, 2, 18),
         esl_score=0.5,
         engagement_type="Observe Only",
+        pack_id=fractional_cto_pack_id,
     )
     db.add(snap2)
     with pytest.raises(IntegrityError):
@@ -94,8 +96,8 @@ def test_migration_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # Skip when 20260223_signal_packs is applied: downgrade fails due to
-    # workspaces/signal_instances pack_id FKs, constraint name mismatches,
+    # Skip when pack migrations (20260223 or ee6582573566) are applied: downgrade
+    # fails due to workspaces/signal_instances FKs, constraint mismatches,
     # and duplicate (company_id, as_of) when multiple packs have data.
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "current"],
@@ -104,9 +106,10 @@ def test_migration_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
         text=True,
         timeout=10,
     )
-    if "20260223_signal_packs" in (result.stdout or ""):
+    out = result.stdout or ""
+    if "20260223_signal_packs" in out or "ee6582573566" in out:
         pytest.skip(
-            "Full downgrade to base not supported with 20260223_signal_packs "
+            "Full downgrade to base not supported with pack migrations "
             "(see migration docstring for downgrade limitations)"
         )
 

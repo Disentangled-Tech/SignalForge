@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_ui_auth
@@ -21,6 +22,7 @@ from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.user import User
 from app.services.briefing import get_emerging_companies
 from app.services.esl.esl_engine import compute_outreach_score
+from app.services.pack_resolver import get_default_pack_id
 from app.services.readiness.human_labels import event_type_to_label
 from app.services.scoring import get_display_scores_for_companies
 
@@ -147,18 +149,21 @@ def get_briefing_data(
     pack_id = get_default_pack_id(db)
     if items and pack_id is not None:
         company_ids = [item.company_id for item in items]
+        pack_match = or_(
+            ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
+            (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
+        )
+        pack_filter = or_(
+            ReadinessSnapshot.pack_id == pack_id,
+            ReadinessSnapshot.pack_id.is_(None),
+        )
         pairs = (
             db.query(ReadinessSnapshot, EngagementSnapshot)
-            .join(
-                EngagementSnapshot,
-                (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
-                & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
-                & (ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id),
-            )
+            .join(EngagementSnapshot, (ReadinessSnapshot.company_id == EngagementSnapshot.company_id) & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of) & pack_match)
             .filter(
                 ReadinessSnapshot.company_id.in_(company_ids),
                 ReadinessSnapshot.as_of == briefing_date,
-                ReadinessSnapshot.pack_id == pack_id,
+                pack_filter,
             )
             .all()
         )

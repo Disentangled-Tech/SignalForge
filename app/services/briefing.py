@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.llm.router import ModelRole, get_llm_provider
@@ -16,10 +17,11 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_record import SignalRecord
-from app.services.esl.esl_engine import compute_outreach_score
 from app.prompts.loader import render_prompt
 from app.services.email_service import send_briefing_email
+from app.services.esl.esl_engine import compute_outreach_score
 from app.services.outreach import generate_outreach
+from app.services.pack_resolver import get_default_pack_id
 from app.services.settings_resolver import get_resolved_settings
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
     Returns up to ``limit`` companies (default 5). Fewer may be returned if
     fewer qualify. No padding.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     activity_cutoff = now - timedelta(days=_ACTIVITY_WINDOW_DAYS)
     dedup_cutoff = now - timedelta(days=_DEDUP_WINDOW_DAYS)
 
@@ -103,16 +105,20 @@ def get_emerging_companies(
     if pack_id is None:
         return []
 
+    # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
+    pack_match = or_(
+        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
+        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
+    )
+    pack_filter = or_(
+        ReadinessSnapshot.pack_id == pack_id,
+        ReadinessSnapshot.pack_id.is_(None),
+    )
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
-        .join(
-            EngagementSnapshot,
-            (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
-            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
-            & (ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id),
-        )
+        .join(EngagementSnapshot, (ReadinessSnapshot.company_id == EngagementSnapshot.company_id) & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of) & pack_match)
         .options(joinedload(ReadinessSnapshot.company))
-        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_id)
+        .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
         .all()
     )
     results: list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]] = []
@@ -169,7 +175,7 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
                     today_weekday,
                     resolved.briefing_day_of_week,
                 )
-                job.finished_at = datetime.now(timezone.utc)
+                job.finished_at = datetime.now(UTC)
                 job.status = "completed"
                 job.companies_processed = 0
                 job.error_message = None
@@ -194,7 +200,7 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
                 )
                 errors.append(msg)
 
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "completed"
         job.companies_processed = len(items)
         job.error_message = "; ".join(errors) if errors else None
@@ -238,7 +244,7 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
         return items
 
     except Exception as exc:
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)
         db.commit()

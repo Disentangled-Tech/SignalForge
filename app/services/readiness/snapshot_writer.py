@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Company, ReadinessSnapshot, SignalEvent
+from app.services.pack_resolver import get_default_pack_id
 from app.services.readiness.readiness_engine import compute_readiness
 
 
@@ -15,14 +17,14 @@ def write_readiness_snapshot(
     company_id: int,
     as_of: date,
     company_status: str | None = None,
+    pack_id=None,
 ) -> ReadinessSnapshot | None:
     """Compute readiness from SignalEvents and persist ReadinessSnapshot.
 
     Queries SignalEvents for company in last 365 days. If no events, returns None.
     Upserts snapshot (unique on company_id, as_of, pack_id). Issue #189.
     """
-    if pack_id is None:
-        pack_id = get_default_pack_id(db)
+    pack_id = pack_id or get_default_pack_id(db)
     if pack_id is None:
         return None
 
@@ -31,12 +33,18 @@ def write_readiness_snapshot(
         return None
 
     cutoff_dt = datetime.combine(as_of - timedelta(days=365), datetime.min.time())
-    cutoff_dt = cutoff_dt.replace(tzinfo=timezone.utc)
+    cutoff_dt = cutoff_dt.replace(tzinfo=UTC)
+    # Pack-scoped: only use events for this pack or legacy NULL (Issue #189)
+    event_pack_filter = or_(
+        SignalEvent.pack_id == pack_id,
+        SignalEvent.pack_id.is_(None),
+    )
     events = (
         db.query(SignalEvent)
         .filter(
             SignalEvent.company_id == company_id,
             SignalEvent.event_time >= cutoff_dt,
+            event_pack_filter,
         )
         .order_by(SignalEvent.event_time.desc())
         .all()

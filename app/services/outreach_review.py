@@ -5,8 +5,9 @@ Returns top OutreachScore companies for weekly review, excluding cooldown compan
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.company import Company
@@ -14,6 +15,7 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.outreach_history import check_outreach_cooldown
+from app.services.pack_resolver import get_default_pack_id
 
 
 def get_latest_snapshot_date(db: Session) -> date | None:
@@ -44,18 +46,22 @@ def get_weekly_review_companies(
     if pack_id is None:
         return []
 
-    as_of_dt = datetime.combine(as_of, datetime.min.time()).replace(tzinfo=timezone.utc)
+    as_of_dt = datetime.combine(as_of, datetime.min.time()).replace(tzinfo=UTC)
 
+    # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
+    pack_match = or_(
+        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
+        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
+    )
+    pack_filter = or_(
+        ReadinessSnapshot.pack_id == pack_id,
+        ReadinessSnapshot.pack_id.is_(None),
+    )
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
-        .join(
-            EngagementSnapshot,
-            (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
-            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
-            & (ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id),
-        )
+        .join(EngagementSnapshot, (ReadinessSnapshot.company_id == EngagementSnapshot.company_id) & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of) & pack_match)
         .options(joinedload(ReadinessSnapshot.company))
-        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_id)
+        .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
         .all()
     )
 
