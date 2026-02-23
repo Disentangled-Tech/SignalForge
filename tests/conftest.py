@@ -38,14 +38,15 @@ def _ensure_migrations() -> None:
     # Create test database if it doesn't exist (CREATE DATABASE requires autocommit)
     _user = os.getenv("PGUSER") or os.getenv("USER") or "postgres"
     _create_db_url = f"postgresql+psycopg://{_user}@localhost:5432/postgres"
+    from sqlalchemy import create_engine, text
+    engine = create_engine(_create_db_url)
     try:
-        from sqlalchemy import create_engine, text
-        engine = create_engine(_create_db_url)
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             conn.execute(text("CREATE DATABASE signalforge_test"))
-        engine.dispose()
     except Exception:
         pass  # DB may already exist
+    finally:
+        engine.dispose()
 
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],

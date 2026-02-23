@@ -27,13 +27,14 @@ def resolve_pack(db: Session, pack_id: UUID) -> Pack | None:
     Returns None if pack not found or load fails (fallback to default constants).
     """
     from app.packs.loader import load_pack
+    from app.packs.schemas import ValidationError
 
     row = db.query(SignalPack).filter(SignalPack.id == pack_id).first()
     if not row:
         return None
     try:
         return load_pack(row.pack_id, row.version)
-    except (FileNotFoundError, ValueError) as e:
+    except (FileNotFoundError, ValueError, ValidationError) as e:
         logger.warning("Could not load pack %s v%s: %s", row.pack_id, row.version, e)
         return None
 

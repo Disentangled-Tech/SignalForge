@@ -83,7 +83,7 @@ def index():
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     """Render login form."""
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse(request, "login.html", {"request": request})
 
 
 @router.post("/login", response_class=HTMLResponse)
@@ -98,6 +98,7 @@ def login_submit(
     user = authenticate_user(db, username, password)
     if user is None:
         return templates.TemplateResponse(
+            request,
             "login.html",
             {"request": request, "error": "Invalid username or password"},
             status_code=401,
@@ -181,6 +182,7 @@ def companies_list(
         flash_type = "success" if flash_message else None
 
     return templates.TemplateResponse(
+        request,
         "companies/list.html",
         {
             "request": request,
@@ -221,6 +223,7 @@ def companies_add_form(
 ):
     """Render add company form."""
     return templates.TemplateResponse(
+        request,
         "companies/add.html",
         {"request": request, "user": user, "form_data": {}, "errors": []},
     )
@@ -264,6 +267,7 @@ def companies_add_submit(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "companies/add.html",
             {"request": request, "user": user, "form_data": form_data, "errors": errors},
             status_code=422,
@@ -291,6 +295,7 @@ def companies_add_submit(
             field = loc[0] if loc else "field"
             errors.append(f"{field}: {msg}")
         return templates.TemplateResponse(
+            request,
             "companies/add.html",
             {"request": request, "user": user, "form_data": form_data, "errors": errors},
             status_code=422,
@@ -309,6 +314,7 @@ def companies_import_form(
 ):
     """Render bulk import form."""
     return templates.TemplateResponse(
+        request,
         "companies/import.html",
         {"request": request, "user": user},
     )
@@ -365,6 +371,7 @@ def companies_import_submit(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "companies/import.html",
             {"request": request, "user": user, "errors": errors},
             status_code=422,
@@ -372,6 +379,7 @@ def companies_import_submit(
 
     result = bulk_import_companies(db, companies)
     return templates.TemplateResponse(
+        request,
         "companies/import.html",
         {"request": request, "user": user, "result": result},
     )
@@ -466,6 +474,7 @@ def company_detail(
     now_for_datetime_local = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
 
     return templates.TemplateResponse(
+        request,
         "companies/detail.html",
         {
             "request": request,
@@ -637,6 +646,7 @@ def company_edit_form(
         "current_stage": company.current_stage or "",
     }
     return templates.TemplateResponse(
+        request,
         "companies/edit.html",
         {
             "request": request,
@@ -695,6 +705,7 @@ def company_edit_submit(
 
     if errors:
         return templates.TemplateResponse(
+            request,
             "companies/edit.html",
             {
                 "request": request,

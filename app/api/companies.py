@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -107,7 +106,10 @@ async def api_import_companies(
         file = form.get("file")
         if file is None:
             raise HTTPException(status_code=422, detail="No file field in upload.")
-        content = (await file.read()).decode("utf-8")
+        try:
+            content = (await file.read()).decode("utf-8")
+        finally:
+            await file.close()
         reader = csv.DictReader(io.StringIO(content))
         companies: list[CompanyCreate] = []
         error_rows: list[tuple[int, str]] = []  # (row_number, detail)

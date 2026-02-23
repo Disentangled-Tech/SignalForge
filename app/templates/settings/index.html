@@ -97,6 +97,14 @@
         </form>
     </div>
 
+    {% if active_pack %}
+    <div class="card" style="margin-top: 1.5rem;">
+        <h2>Active Signal Pack</h2>
+        <p><strong>{{ active_pack.name }}</strong> ({{ active_pack.pack_id }}) v{{ active_pack.version }}</p>
+        <p class="text-muted">Pack changes apply only to new observations going forward. No automatic reprocessing of historical data.</p>
+    </div>
+    {% endif %}
+
     <div class="card" style="margin-top: 1.5rem;">
         <h2>Scan Change Rate (Last 30 Days)</h2>
         {% if scan_change_denom and scan_change_denom > 0 %}
