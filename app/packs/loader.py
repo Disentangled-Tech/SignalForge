@@ -1,13 +1,18 @@
-"""Pack loader — load pack config from packs/ directory (Issue #189, Plan Step 2.1)."""
+"""Pack loader — load pack config from packs/ directory (Issue #189, Plan Step 2.1, #172)."""
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from app.packs.schemas import ValidationError, validate_pack_schema
+
+logger = logging.getLogger(__name__)
 
 # Pack identifiers: alphanumeric, underscore, hyphen only. Prevents path traversal.
 _PACK_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -36,13 +41,14 @@ def _validate_pack_id(pack_id: str, version: str) -> None:
 
 @dataclass
 class Pack:
-    """Loaded pack config with taxonomy, scoring, esl_policy, playbooks."""
+    """Loaded pack config with taxonomy, scoring, esl_policy, playbooks, derivers (Issue #172)."""
 
     manifest: dict
     taxonomy: dict
     scoring: dict
     esl_policy: dict
     playbooks: dict
+    derivers: dict
 
 
 def _packs_root() -> Path:
@@ -100,17 +106,37 @@ def load_pack(pack_id: str, version: str) -> Pack:
     with esl_path.open() as f:
         esl_policy = yaml.safe_load(f) or {}
 
+    derivers_path = pack_dir / "derivers.yaml"
+    if not derivers_path.exists():
+        raise FileNotFoundError(f"derivers.yaml not found: {derivers_path}")
+    with derivers_path.open() as f:
+        derivers = yaml.safe_load(f) or {}
+
     playbooks_dir = pack_dir / "playbooks"
-    playbooks: dict = {}
+    playbooks_dict: dict = {}
     if playbooks_dir.is_dir():
         for p in playbooks_dir.glob("*.yaml"):
             with p.open() as f:
-                playbooks[p.stem] = yaml.safe_load(f) or {}
+                playbooks_dict[p.stem] = yaml.safe_load(f) or {}
+
+    try:
+        validate_pack_schema(
+            manifest=manifest,
+            taxonomy=taxonomy,
+            scoring=scoring,
+            esl_policy=esl_policy,
+            derivers=derivers,
+            playbooks=playbooks_dict,
+        )
+    except ValidationError as e:
+        logger.warning("Pack %s v%s validation failed: %s", pack_id, version, e)
+        raise
 
     return Pack(
         manifest=manifest,
         taxonomy=taxonomy,
         scoring=scoring,
         esl_policy=esl_policy,
-        playbooks=playbooks,
+        playbooks=playbooks_dict,
+        derivers=derivers,
     )

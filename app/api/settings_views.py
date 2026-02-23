@@ -16,6 +16,7 @@ from app.api.deps import get_db, require_ui_auth
 from app.db.session import SessionLocal
 from app.models.job_run import JobRun
 from app.models.user import User
+from app.services.pack_resolver import get_default_pack_id, resolve_pack
 from app.services.scan_metrics import get_scan_change_rate_30d
 from app.services.settings_service import (
     get_app_settings,
@@ -67,6 +68,17 @@ def settings_page(
 
     scan_change_pct, scan_change_total, scan_change_denom = get_scan_change_rate_30d(db)
 
+    active_pack = None
+    pack_id_uuid = get_default_pack_id(db)
+    if pack_id_uuid:
+        pack = resolve_pack(db, pack_id_uuid)
+        if pack:
+            active_pack = {
+                "pack_id": pack.manifest.get("id", ""),
+                "version": pack.manifest.get("version", ""),
+                "name": pack.manifest.get("name", ""),
+            }
+
     return templates.TemplateResponse(
         request,
         "settings/index.html",
@@ -80,6 +92,7 @@ def settings_page(
             "scan_change_pct": scan_change_pct,
             "scan_change_total": scan_change_total,
             "scan_change_denom": scan_change_denom,
+            "active_pack": active_pack,
         },
     )
 
