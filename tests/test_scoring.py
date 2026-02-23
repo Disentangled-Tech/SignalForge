@@ -19,22 +19,20 @@ from app.services.scoring import (
     score_company,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _signals(true_keys: list[str] | None = None, nested: bool = True) -> dict:
     """Build a pain_signals dict with given keys set to true."""
     true_keys = true_keys or []
-    sigs = {
-        k: {"value": k in true_keys, "why": "test"}
-        for k in DEFAULT_SIGNAL_WEIGHTS
-    }
+    sigs = {k: {"value": k in true_keys, "why": "test"} for k in DEFAULT_SIGNAL_WEIGHTS}
     if nested:
         return {"signals": sigs, "top_risks": [], "most_likely_next_problem": ""}
     return sigs
 
 
 # ── calculate_score ──────────────────────────────────────────────────
+
 
 class TestCalculateScore:
     """Tests for calculate_score()."""
@@ -125,7 +123,7 @@ class TestCalculateScore:
         score = calculate_score(signals, "")
         assert score != 0, (
             "CTO score must be non-zero when pain signals are present. "
-            "Check that value parsing accepts both boolean True and string \"true\"."
+            'Check that value parsing accepts both boolean True and string "true".'
         )
         assert score == 25  # hiring_engineers(15) + founder_overload(10)
 
@@ -136,7 +134,10 @@ class TestCalculateScore:
         """
         signals = {
             "signals": {
-                k: {"value": "true" if k in ("hiring_engineers", "founder_overload") else "false", "why": "test"}
+                k: {
+                    "value": "true" if k in ("hiring_engineers", "founder_overload") else "false",
+                    "why": "test",
+                }
                 for k in DEFAULT_SIGNAL_WEIGHTS
             }
         }
@@ -176,7 +177,7 @@ class TestCalculateScore:
         assert score == 20
 
     def test_minimum_zero(self) -> None:
-        custom = {k: -100 for k in DEFAULT_SIGNAL_WEIGHTS}
+        custom = dict.fromkeys(DEFAULT_SIGNAL_WEIGHTS, -100)
         score = calculate_score(
             _signals(list(DEFAULT_SIGNAL_WEIGHTS.keys())), "", custom_weights=custom
         )
@@ -196,6 +197,7 @@ class TestCalculateScore:
 
 
 # ── get_custom_weights ───────────────────────────────────────────────
+
 
 class TestGetCustomWeights:
     """Tests for get_custom_weights()."""
@@ -236,6 +238,7 @@ class TestGetCustomWeights:
 
 
 # ── get_display_scores_for_companies ──────────────────────────────────
+
 
 class TestGetDisplayScoresForCompanies:
     """Tests for get_display_scores_for_companies()."""
@@ -291,8 +294,11 @@ class TestGetDisplayScoresForCompanies:
         analysis.stage = ""
 
         db = MagicMock()
-        # First call: get_custom_weights; subsequent: analyses query
-        db.query.return_value.filter.return_value.first.return_value = settings_row
+        # get_custom_weights → first() returns settings_row; get_default_pack_id → first() returns None
+        db.query.return_value.filter.return_value.first.side_effect = [
+            settings_row,
+            None,  # pack not installed, use defaults
+        ]
         db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
             analysis
         ]
@@ -303,6 +309,7 @@ class TestGetDisplayScoresForCompanies:
 
 # ── score_company ────────────────────────────────────────────────────
 
+
 class TestScoreCompany:
     """Tests for score_company()."""
 
@@ -311,7 +318,8 @@ class TestScoreCompany:
         company = MagicMock(spec=Company)
         company.id = 1
         db.query.return_value.filter.return_value.first.side_effect = [
-            None,   # get_custom_weights → no AppSettings row
+            None,  # get_custom_weights → no AppSettings row
+            None,  # get_default_pack_id → no pack (use defaults)
             company,  # score_company → Company lookup
         ]
 
@@ -343,7 +351,8 @@ class TestScoreCompany:
         company = MagicMock(spec=Company)
         company.id = 1
         db.query.return_value.filter.return_value.first.side_effect = [
-            None,    # no custom weights
+            None,  # no custom weights
+            None,  # get_default_pack_id → no pack
             company,
         ]
 
@@ -366,7 +375,8 @@ class TestScoreCompany:
         db = MagicMock()
         db.query.return_value.filter.return_value.first.side_effect = [
             settings_row,  # get_custom_weights
-            company,       # Company lookup
+            None,  # get_default_pack_id → no pack
+            company,  # Company lookup
         ]
 
         analysis = MagicMock(spec=AnalysisRecord)
@@ -509,4 +519,3 @@ class TestScoreCompanyIntegration:
         db.refresh(company)
         assert company.cto_need_score == 60  # 15 + 25 (signals) + 20 (stage bonus)
         assert company.current_stage == "scaling_team"
-

@@ -1,0 +1,5 @@
+recommendation_boundaries:
+  - [0.0, "Observe Only"]
+  - [0.7, "Standard Outreach"]
+svi_event_types:
+  - funding_raised

@@ -1,0 +1,7 @@
+# Minimal taxonomy - only funding_raised. Used to test cross-ref validation.
+signal_ids:
+  - funding_raised
+dimensions:
+  M: [funding_raised]
+labels:
+  funding_raised: "New funding"

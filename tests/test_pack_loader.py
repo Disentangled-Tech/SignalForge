@@ -108,6 +108,66 @@ class TestPackIdPathTraversalGuard:
         assert pack.scoring is not None
 
 
+class TestPackLoaderDerivers:
+    """load_pack loads derivers.yaml and includes in Pack (Issue #172).
+
+    These tests FAIL until loader loads derivers.yaml and Pack has derivers field.
+    """
+
+    def test_load_pack_returns_derivers(self) -> None:
+        """load_pack returns Pack with derivers attribute containing passthrough rules."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        assert hasattr(pack, "derivers"), "Pack must have derivers attribute (Issue #172)"
+        assert pack.derivers is not None
+        derivers = pack.derivers if isinstance(pack.derivers, dict) else {}
+        passthrough = derivers.get("derivers", {}).get("passthrough", [])
+        assert len(passthrough) > 0, "Derivers passthrough must not be empty"
+        first = passthrough[0]
+        assert "event_type" in first and "signal_id" in first
+
+    def test_derivers_match_taxonomy_signal_ids(self) -> None:
+        """All deriver signal_ids exist in taxonomy.signal_ids."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        taxonomy_ids = set(pack.taxonomy.get("signal_ids", []))
+        passthrough = (pack.derivers or {}).get("derivers", {}).get("passthrough", [])
+        for entry in passthrough:
+            sid = entry.get("signal_id")
+            assert sid in taxonomy_ids, f"Deriver signal_id {sid} must be in taxonomy"
+
+
+class TestPackLoaderInvalidSchemaRaises:
+    """load_pack with invalid schema raises ValidationError (Issue #172).
+
+    Uses packs/invalid_schema_pack fixture with ghost_signal not in taxonomy.
+    These tests FAIL until loader calls validate_pack_schema and raises on invalid.
+    """
+
+    def test_load_invalid_schema_pack_raises_validation_error(self) -> None:
+        """load_pack('invalid_schema_pack','1') raises ValidationError (Issue #172).
+
+        Fails until: loader loads derivers.yaml, calls validate_pack_schema, raises on invalid.
+        """
+        from app.packs.loader import load_pack
+        from app.packs.schemas import ValidationError
+
+        with pytest.raises(ValidationError):
+            load_pack("invalid_schema_pack", "1")
+
+    def test_invalid_pack_error_message_mentions_problem(self) -> None:
+        """ValidationError message includes signal_id or field for debugging."""
+        from app.packs.loader import load_pack
+        from app.packs.schemas import ValidationError
+
+        with pytest.raises(ValidationError) as exc_info:
+            load_pack("invalid_schema_pack", "1")
+        msg = str(exc_info.value).lower()
+        assert "ghost_signal" in msg or "taxonomy" in msg or "scoring" in msg or "derivers" in msg
+
+
 class TestPackSchemaValidation:
     """Pack YAML files validate against schema."""
 
