@@ -6,26 +6,29 @@ ESL = BE × SM × CM × AM (BaseEngageability × StabilityModifier × CadenceMod
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Protocol
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Protocol
 
 from app.services.esl.esl_constants import (
-    ALIGNMENT_NULL_MODIFIER,
     ALIGNMENT_NOT_OK_MODIFIER,
+    ALIGNMENT_NULL_MODIFIER,
     ALIGNMENT_OK_MODIFIER,
     CADENCE_COOLDOWN_DAYS,
     CSI_GAP_PENALTY,
     CSI_SILENCE_GAP_DAYS,
     RECOMMENDATION_BOUNDARIES,
-    SVI_EVENT_TYPES,
-    SVI_WINDOW_DAYS,
-    SPI_HIGH_VALUE,
-    SPI_PRESSURE_THRESHOLD,
-    SPI_SUSTAINED_DAYS,
     SM_WEIGHT_CSI,
     SM_WEIGHT_SPI,
     SM_WEIGHT_SVI,
+    SPI_HIGH_VALUE,
+    SPI_PRESSURE_THRESHOLD,
+    SPI_SUSTAINED_DAYS,
+    SVI_EVENT_TYPES,
+    SVI_WINDOW_DAYS,
 )
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
 
 
 class _EventLike(Protocol):
@@ -84,9 +87,9 @@ def compute_svi(events: list[Any], as_of: date) -> float:
     Events in last SVI_WINDOW_DAYS with event_type in SVI_EVENT_TYPES.
     Returns 0 (low volatility) to 1 (high volatility).
     """
-    cutoff = datetime.combine(
-        as_of - timedelta(days=SVI_WINDOW_DAYS), datetime.min.time()
-    ).replace(tzinfo=timezone.utc)
+    cutoff = datetime.combine(as_of - timedelta(days=SVI_WINDOW_DAYS), datetime.min.time()).replace(
+        tzinfo=UTC
+    )
 
     count = 0
     for ev in events:
@@ -97,7 +100,7 @@ def compute_svi(events: list[Any], as_of: date) -> float:
         if ev_time is None:
             continue
         if ev_time.tzinfo is None:
-            ev_time = ev_time.replace(tzinfo=timezone.utc)
+            ev_time = ev_time.replace(tzinfo=UTC)
         if ev_time >= cutoff:
             conf = getattr(ev, "confidence", None) or 0.7
             count += conf
@@ -140,7 +143,7 @@ def compute_csi(events: list[Any], as_of: date) -> float:
 
     sorted_events = sorted(
         events,
-        key=lambda e: getattr(e, "event_time", datetime.min.replace(tzinfo=timezone.utc)),
+        key=lambda e: getattr(e, "event_time", datetime.min.replace(tzinfo=UTC)),
     )
     gaps = 0
     for i in range(1, len(sorted_events)):
@@ -149,9 +152,9 @@ def compute_csi(events: list[Any], as_of: date) -> float:
         if prev is None or curr is None:
             continue
         if prev.tzinfo is None:
-            prev = prev.replace(tzinfo=timezone.utc)
+            prev = prev.replace(tzinfo=UTC)
         if curr.tzinfo is None:
-            curr = curr.replace(tzinfo=timezone.utc)
+            curr = curr.replace(tzinfo=UTC)
         delta = (curr - prev).days
         if delta > CSI_SILENCE_GAP_DAYS:
             gaps += 1
@@ -170,10 +173,10 @@ def compute_cadence_modifier(
     if last_outreach_at is None:
         return 1.0
     if last_outreach_at.tzinfo is None:
-        last_outreach_at = last_outreach_at.replace(tzinfo=timezone.utc)
-    cutoff = datetime.combine(
-        as_of - timedelta(days=cooldown_days), datetime.min.time()
-    ).replace(tzinfo=timezone.utc)
+        last_outreach_at = last_outreach_at.replace(tzinfo=UTC)
+    cutoff = datetime.combine(as_of - timedelta(days=cooldown_days), datetime.min.time()).replace(
+        tzinfo=UTC
+    )
     return 0.0 if last_outreach_at >= cutoff else 1.0
 
 
@@ -197,10 +200,18 @@ def compute_esl_composite(
     return round(max(0.0, min(1.0, result)), 3)
 
 
-def map_esl_to_recommendation(esl: float) -> str:
-    """Map ESL score to engagement type (Issue #106, v2PRD §3)."""
+def map_esl_to_recommendation(esl: float, pack: Pack | None = None) -> str:
+    """Map ESL score to engagement type (Issue #106, v2PRD §3).
+
+    When pack is provided, uses pack.esl_policy recommendation_boundaries;
+    otherwise uses default RECOMMENDATION_BOUNDARIES.
+    """
     esl = max(0.0, min(1.0, esl))
-    for boundary, rec_type in reversed(RECOMMENDATION_BOUNDARIES):
+    boundaries = RECOMMENDATION_BOUNDARIES
+    if pack is not None:
+        raw = pack.esl_policy.get("recommendation_boundaries") or []
+        boundaries = [(float(b[0]), str(b[1])) for b in raw]
+    for boundary, rec_type in reversed(boundaries):
         if esl >= boundary:
             return rec_type
     return "Observe Only"

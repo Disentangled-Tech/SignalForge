@@ -1,0 +1,68 @@
+# Signal taxonomy for fractional_cto_v1 (Issue #189)
+# Extracted from app/ingestion/event_types and app/services/readiness/human_labels
+
+signal_ids:
+  - funding_raised
+  - job_posted_engineering
+  - job_posted_infra
+  - headcount_growth
+  - launch_major
+  - api_launched
+  - ai_feature_launched
+  - enterprise_feature
+  - compliance_mentioned
+  - enterprise_customer
+  - regulatory_deadline
+  - founder_urgency_language
+  - revenue_milestone
+  - cto_role_posted
+  - no_cto_detected
+  - fractional_request
+  - advisor_request
+  - cto_hired
+
+dimensions:
+  M:  # Momentum
+    - funding_raised
+    - job_posted_engineering
+    - job_posted_infra
+    - headcount_growth
+    - launch_major
+  C:  # Complexity
+    - api_launched
+    - ai_feature_launched
+    - enterprise_feature
+    - compliance_mentioned
+    - job_posted_infra
+  P:  # Pressure
+    - enterprise_customer
+    - regulatory_deadline
+    - founder_urgency_language
+    - revenue_milestone
+    - funding_raised
+  G:  # Leadership Gap
+    - cto_role_posted
+    - no_cto_detected
+    - fractional_request
+    - advisor_request
+    - cto_hired
+
+labels:
+  funding_raised: "New funding"
+  job_posted_engineering: "Engineering hiring"
+  job_posted_infra: "Infra/DevOps hiring"
+  headcount_growth: "Headcount growth"
+  launch_major: "Major launch"
+  api_launched: "API launch"
+  ai_feature_launched: "AI feature launch"
+  enterprise_feature: "Enterprise feature"
+  compliance_mentioned: "Compliance pressure"
+  enterprise_customer: "Enterprise customer"
+  regulatory_deadline: "Regulatory deadline"
+  founder_urgency_language: "Founder urgency"
+  revenue_milestone: "Revenue milestone"
+  cto_role_posted: "CTO search"
+  fractional_request: "Fractional help requested"
+  advisor_request: "Advisor help requested"
+  no_cto_detected: "No CTO detected"
+  cto_hired: "CTO hired"
