@@ -74,6 +74,7 @@ def compute_esl_from_context(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of >= spi_cutoff,
             ReadinessSnapshot.as_of <= as_of,
+            ReadinessSnapshot.pack_id == pack_id,
         )
         .order_by(ReadinessSnapshot.as_of.asc())
         .all()
@@ -131,6 +132,7 @@ def compute_esl_from_context(
         "cadence_blocked": cadence_blocked,
         "alignment_high": company.alignment_ok_to_contact is not False,
         "trs": readiness.composite,
+        "pack_id": pack_id,
     }
 
 
@@ -138,13 +140,14 @@ def write_engagement_snapshot(
     db: Session,
     company_id: int,
     as_of: date,
+    pack_id=None,
 ) -> EngagementSnapshot | None:
-    """Compute ESL from context and persist EngagementSnapshot.
+    """Compute ESL from context and persist EngagementSnapshot (Issue #189).
 
-    Requires ReadinessSnapshot for company/as_of. Fetches SignalEvents (365d),
+    Requires ReadinessSnapshot for company/as_of/pack_id. Fetches SignalEvents (365d),
     OutreachHistory (last sent), Company alignment. Upserts EngagementSnapshot.
     """
-    ctx = compute_esl_from_context(db, company_id, as_of)
+    ctx = compute_esl_from_context(db, company_id, as_of, pack_id=pack_id)
     if not ctx:
         return None
 
@@ -158,12 +161,14 @@ def write_engagement_snapshot(
     outreach_score = compute_outreach_score(trs, esl_composite)
 
     cadence_blocked = ctx["cadence_blocked"]
+    pack_id = ctx["pack_id"]
 
     existing = (
         db.query(EngagementSnapshot)
         .filter(
             EngagementSnapshot.company_id == company_id,
             EngagementSnapshot.as_of == as_of,
+            EngagementSnapshot.pack_id == pack_id,
         )
         .first()
     )
@@ -192,6 +197,7 @@ def write_engagement_snapshot(
         cadence_blocked=cadence_blocked,
         explain=explain,
         outreach_score=outreach_score,
+        pack_id=pack_id,
     )
     db.add(snapshot)
     db.commit()

@@ -144,18 +144,21 @@ def get_briefing_data(
             items.append(item)
 
     esl_by_company: dict[int, dict] = {}
-    if items:
+    pack_id = get_default_pack_id(db)
+    if items and pack_id is not None:
         company_ids = [item.company_id for item in items]
         pairs = (
             db.query(ReadinessSnapshot, EngagementSnapshot)
             .join(
                 EngagementSnapshot,
                 (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
-                & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of),
+                & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
+                & (ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id),
             )
             .filter(
                 ReadinessSnapshot.company_id.in_(company_ids),
                 ReadinessSnapshot.as_of == briefing_date,
+                ReadinessSnapshot.pack_id == pack_id,
             )
             .all()
         )

@@ -79,8 +79,10 @@ def test_readiness_snapshot_explain_jsonb_persists(db: Session) -> None:
     assert snapshot.explain["top_events"][0]["contribution_points"] == 35
 
 
-def test_readiness_snapshot_unique_constraint(db: Session) -> None:
-    """Duplicate (company_id, as_of) raises IntegrityError."""
+def test_readiness_snapshot_unique_constraint(
+    db: Session, fractional_cto_pack_id
+) -> None:
+    """Duplicate (company_id, as_of, pack_id) raises IntegrityError (Issue #189)."""
     company = Company(name="UniqueCo", website_url="https://unique.example.com")
     db.add(company)
     db.commit()
@@ -95,6 +97,7 @@ def test_readiness_snapshot_unique_constraint(db: Session) -> None:
         pressure=55,
         leadership_gap=40,
         composite=62,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(s1)
     db.commit()
@@ -107,6 +110,7 @@ def test_readiness_snapshot_unique_constraint(db: Session) -> None:
         pressure=60,
         leadership_gap=30,
         composite=65,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(s2)
     with pytest.raises(IntegrityError):

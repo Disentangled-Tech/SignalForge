@@ -90,27 +90,29 @@ def get_emerging_companies(
     *,
     limit: int = 5,
     outreach_score_threshold: int = 30,
+    pack_id=None,
 ) -> list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]]:
-    """Query top N companies by OutreachScore for a date (Issue #102, #103).
+    """Query top N companies by OutreachScore for a date (Issue #102, #103, #189).
 
     Ranking contract (Issue #103): OutreachScore = round(TRS × ESL), 0–100.
     Companies are ranked by OutreachScore descending; threshold filter applied.
-
-    Joins ReadinessSnapshot with EngagementSnapshot. Returns (readiness_snapshot,
-    engagement_snapshot, company) for companies with OutreachScore >= threshold,
-    sorted by OutreachScore descending. Companies without EngagementSnapshot are
-    excluded. Cooldown (cadence_blocked) companies are included with Observe Only
-    badge; OutreachScore may be 0.
+    Pack-scoped: only returns data for the given pack (Issue #189).
     """
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        return []
+
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
         .join(
             EngagementSnapshot,
             (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
-            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of),
+            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
+            & (ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id),
         )
         .options(joinedload(ReadinessSnapshot.company))
-        .filter(ReadinessSnapshot.as_of == as_of)
+        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_id)
         .all()
     )
     results: list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]] = []

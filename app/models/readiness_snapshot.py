@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -32,6 +33,11 @@ class ReadinessSnapshot(Base):
     leadership_gap: Mapped[int] = mapped_column(Integer, nullable=False)
     composite: Mapped[int] = mapped_column(Integer, nullable=False)
     explain: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    pack_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_packs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
