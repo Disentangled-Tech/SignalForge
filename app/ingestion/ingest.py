@@ -11,7 +11,7 @@ from app.ingestion.base import SourceAdapter
 from app.ingestion.event_storage import store_signal_event
 from app.ingestion.normalize import normalize_raw_event
 from app.services.company_resolver import resolve_or_create_company
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +39,11 @@ def run_ingest(
     raw_events = adapter.fetch_events(since)
     source = adapter.source_name
     pack_id = get_default_pack_id(db)
+    pack = resolve_pack(db, pack_id) if pack_id else None
 
     for raw in raw_events:
         try:
-            normalized = normalize_raw_event(raw, source)
+            normalized = normalize_raw_event(raw, source, pack=pack)
             if normalized is None:
                 skipped_invalid += 1
                 continue

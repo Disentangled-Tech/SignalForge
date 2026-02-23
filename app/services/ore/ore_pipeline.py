@@ -10,14 +10,9 @@ from app.models import Company, OutreachRecommendation, ReadinessSnapshot
 from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
-from app.services.ore.draft_generator import (
-    CTAS,
-    PATTERN_FRAMES,
-    VALUE_ASSETS,
-    generate_ore_draft,
-)
+from app.services.ore.draft_generator import generate_ore_draft, get_ore_playbook
 from app.services.ore.policy_gate import check_policy_gate
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 
 def generate_ore_recommendation(
@@ -43,6 +38,9 @@ def generate_ore_recommendation(
     pack_id = get_default_pack_id(db)
     if pack_id is None:
         return None
+
+    pack = resolve_pack(db, pack_id)
+    playbook = get_ore_playbook(pack)
 
     snapshot = (
         db.query(ReadinessSnapshot)
@@ -84,9 +82,12 @@ def generate_ore_recommendation(
     draft_variants: list[dict] = []
     if gate.should_generate_draft:
         # Pick pattern frame from dominant dimension (simplified: use complexity)
-        pattern_frame = PATTERN_FRAMES.get("complexity", PATTERN_FRAMES["momentum"])
-        value_asset = VALUE_ASSETS[0]
-        cta = CTAS[0]
+        pattern_frames = playbook["pattern_frames"]
+        value_assets = playbook["value_assets"]
+        ctas = playbook["ctas"]
+        pattern_frame = pattern_frames.get("complexity", pattern_frames.get("momentum", ""))
+        value_asset = value_assets[0] if value_assets else ""
+        cta = ctas[0] if ctas else ""
 
         draft = generate_ore_draft(
             company=company,

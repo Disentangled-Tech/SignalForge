@@ -46,6 +46,8 @@ def compute_esl_from_context(
     if pack_id is None:
         return None
 
+    pack = resolve_pack(db, pack_id)
+
     # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
     pack_filter = or_(
         ReadinessSnapshot.pack_id == pack_id,
@@ -108,14 +110,13 @@ def compute_esl_from_context(
     )
 
     be = compute_base_engageability(readiness.composite)
-    svi = compute_svi(events, as_of)
+    svi = compute_svi(events, as_of, pack=pack)
     spi = compute_spi(pressure_snapshots, as_of)
     csi = compute_csi(events, as_of)
     sm = compute_stability_modifier(svi, spi, csi)
     cm = compute_cadence_modifier(last_outreach, as_of)
     am = compute_alignment_modifier(company.alignment_ok_to_contact)
     esl_composite = compute_esl_composite(be, sm, cm, am)
-    pack = resolve_pack(db, pack_id) if pack_id else None
     recommendation_type = map_esl_to_recommendation(esl_composite, pack=pack)
 
     stability_cap_triggered = sm < STABILITY_CAP_THRESHOLD

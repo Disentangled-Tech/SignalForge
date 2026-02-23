@@ -81,12 +81,18 @@ def compute_stability_modifier(svi: float, spi: float, csi: float) -> float:
     return round(max(0.0, min(1.0, 1.0 - contrib)), 2)
 
 
-def compute_svi(events: list[Any], as_of: date) -> float:
+def compute_svi(events: list[Any], as_of: date, pack: Pack | None = None) -> float:
     """Compute Stress Volatility Index from recent urgency events (Issue #106).
 
-    Events in last SVI_WINDOW_DAYS with event_type in SVI_EVENT_TYPES.
-    Returns 0 (low volatility) to 1 (high volatility).
+    Events in last SVI_WINDOW_DAYS with event_type in SVI_EVENT_TYPES (or pack
+    esl_policy.svi_event_types when pack provided). Returns 0 (low volatility)
+    to 1 (high volatility). Phase 2, Step 3.4.
     """
+    svi_types = SVI_EVENT_TYPES
+    if pack is not None:
+        raw = pack.esl_policy.get("svi_event_types") or []
+        svi_types = frozenset(str(x) for x in raw) if raw else SVI_EVENT_TYPES
+
     cutoff = datetime.combine(as_of - timedelta(days=SVI_WINDOW_DAYS), datetime.min.time()).replace(
         tzinfo=UTC
     )
@@ -94,7 +100,7 @@ def compute_svi(events: list[Any], as_of: date) -> float:
     count = 0
     for ev in events:
         etype = getattr(ev, "event_type", None)
-        if etype not in SVI_EVENT_TYPES:
+        if etype not in svi_types:
             continue
         ev_time = getattr(ev, "event_time", None)
         if ev_time is None:

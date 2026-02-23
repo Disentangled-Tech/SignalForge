@@ -31,6 +31,27 @@ def _event(etype: str, days_ago: int, confidence: float | None = 0.7) -> MockEve
     return MockEvent(event_type=etype, event_time=_days_ago(days_ago), confidence=confidence)
 
 
+class TestNormalizePackParity:
+    """normalize_raw_event(..., pack=cto_pack) accepts same events as pack=None (Phase 2, Step 3.3)."""
+
+    def test_normalize_with_pack_accepts_taxonomy_events(self) -> None:
+        """Events in pack taxonomy are accepted with pack; same as without pack."""
+        from app.ingestion.normalize import normalize_raw_event
+        from app.schemas.signal import RawEvent
+
+        raw = RawEvent(
+            company_name="Test Co",
+            event_type_candidate="funding_raised",
+            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        )
+        result_no_pack = normalize_raw_event(raw, "test")
+        cto_pack = _get_cto_pack_or_skip()
+        result_with_pack = normalize_raw_event(raw, "test", pack=cto_pack)
+        assert result_no_pack is not None
+        assert result_with_pack is not None
+        assert result_with_pack[0]["event_type"] == result_no_pack[0]["event_type"]
+
+
 class TestReadinessPackParity:
     """compute_readiness(events, as_of, pack=cto_pack) == compute_readiness(events, as_of)."""
 
@@ -70,6 +91,21 @@ class TestReadinessPackParity:
         assert result_with_pack["complexity"] == result_no_pack["complexity"]
         assert result_with_pack["pressure"] == result_no_pack["pressure"]
         assert result_with_pack["leadership_gap"] == result_no_pack["leadership_gap"]
+
+
+class TestSviPackParity:
+    """compute_svi(events, as_of, pack=cto_pack) == compute_svi(events, as_of) (Phase 2, Step 3.4)."""
+
+    def test_svi_event_types_parity(self) -> None:
+        """SVI with funding_raised (SVI event type) produces same result with and without pack."""
+        from app.services.esl.esl_engine import compute_svi
+
+        as_of = date.today()
+        events = [_event("funding_raised", 5)]
+        result_no_pack = compute_svi(events, as_of)
+        cto_pack = _get_cto_pack_or_skip()
+        result_with_pack = compute_svi(events, as_of, pack=cto_pack)
+        assert result_with_pack == result_no_pack
 
 
 class TestEslPackParity:
@@ -144,6 +180,50 @@ class TestScoringPackParity:
         score_no_pack = calculate_score(signals, "struggling_execution")
         score_with_pack = calculate_score(signals, "struggling_execution", pack=cto_pack)
         assert score_with_pack == score_no_pack == 75
+
+
+class TestOrePlaybookParity:
+    """get_ore_playbook(cto_pack) matches module constants (Phase 2, Step 3.5)."""
+
+    def test_playbook_pattern_frames_match_constants(self) -> None:
+        """Pack ore_outreach pattern_frames match PATTERN_FRAMES."""
+        from app.services.ore.draft_generator import PATTERN_FRAMES, get_ore_playbook
+
+        cto_pack = _get_cto_pack_or_skip()
+        playbook = get_ore_playbook(cto_pack)
+        for key in PATTERN_FRAMES:
+            assert key in playbook["pattern_frames"]
+            assert playbook["pattern_frames"][key] == PATTERN_FRAMES[key]
+
+    def test_playbook_value_assets_match_constants(self) -> None:
+        """Pack ore_outreach value_assets match VALUE_ASSETS."""
+        from app.services.ore.draft_generator import VALUE_ASSETS, get_ore_playbook
+
+        cto_pack = _get_cto_pack_or_skip()
+        playbook = get_ore_playbook(cto_pack)
+        assert playbook["value_assets"] == VALUE_ASSETS
+
+    def test_playbook_ctas_match_constants(self) -> None:
+        """Pack ore_outreach ctas match CTAS."""
+        from app.services.ore.draft_generator import CTAS, get_ore_playbook
+
+        cto_pack = _get_cto_pack_or_skip()
+        playbook = get_ore_playbook(cto_pack)
+        assert playbook["ctas"] == CTAS
+
+    def test_playbook_none_returns_constants(self) -> None:
+        """get_ore_playbook(None) returns module constants (fallback)."""
+        from app.services.ore.draft_generator import (
+            CTAS,
+            PATTERN_FRAMES,
+            VALUE_ASSETS,
+            get_ore_playbook,
+        )
+
+        playbook = get_ore_playbook(None)
+        assert playbook["pattern_frames"] == PATTERN_FRAMES
+        assert playbook["value_assets"] == VALUE_ASSETS
+        assert playbook["ctas"] == CTAS
 
 
 def _get_cto_pack_or_skip():

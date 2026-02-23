@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import TYPE_CHECKING, Any
 
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.company import Company
 from app.prompts.loader import render_prompt
 
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
+
 logger = logging.getLogger(__name__)
 
 # Pattern frames (generic, non-invasive) per ORE design spec §6
+# Fallback when pack not provided or playbook missing (Phase 2, Step 3.5)
 PATTERN_FRAMES = {
     "momentum": "When a team's pace picks up, tech decisions that worked earlier can start costing more.",
     "complexity": "When products add integrations/AI/enterprise asks, systems often need a stabilization pass.",
@@ -30,6 +35,26 @@ CTAS = [
     "Open to a 15-min compare-notes call?",
     "If helpful, I can share a one-page approach—want it?",
 ]
+
+
+def get_ore_playbook(pack: Pack | None) -> dict[str, Any]:
+    """Return ORE playbook values: pattern_frames, value_assets, ctas (Phase 2, Step 3.5).
+
+    When pack is provided and has ore_outreach playbook, use pack values;
+    otherwise fall back to module constants.
+    """
+    if pack is None:
+        return {
+            "pattern_frames": PATTERN_FRAMES,
+            "value_assets": VALUE_ASSETS,
+            "ctas": CTAS,
+        }
+    playbook = pack.playbooks.get("ore_outreach") or {}
+    return {
+        "pattern_frames": playbook.get("pattern_frames") or PATTERN_FRAMES,
+        "value_assets": playbook.get("value_assets") or VALUE_ASSETS,
+        "ctas": playbook.get("ctas") or CTAS,
+    }
 
 
 def _parse_json_safe(text: str) -> dict | None:
