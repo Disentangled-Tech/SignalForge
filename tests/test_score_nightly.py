@@ -53,6 +53,56 @@ class TestRunScoreNightly:
         assert snapshot.composite >= 0
         assert snapshot.explain is not None
 
+    @pytest.mark.integration
+    def test_nightly_score_creates_snapshots_with_pack_id(self, db: Session) -> None:
+        """Nightly score creates ReadinessSnapshot and EngagementSnapshot with pack_id (Issue #189)."""
+        pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+        if pack is None:
+            pytest.skip("fractional_cto_v1 pack not found (run migration 20260223_signal_packs)")
+
+        company = Company(name="PackCo", website_url="https://pack.example.com")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        result = run_score_nightly(db)
+
+        assert result["status"] == "completed"
+        assert result["companies_scored"] >= 1
+
+        rs = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert rs is not None
+        assert rs.pack_id == pack.id
+
+        es = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert es is not None
+        assert es.pack_id == pack.id
+
     def test_includes_watchlist_companies(self, db: Session) -> None:
         """Watchlist companies are attempted (may skip if no events)."""
         company = Company(name="WatchlistCo", website_url="https://watchlist.example.com")

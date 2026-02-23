@@ -19,8 +19,13 @@ def write_readiness_snapshot(
     """Compute readiness from SignalEvents and persist ReadinessSnapshot.
 
     Queries SignalEvents for company in last 365 days. If no events, returns None.
-    Upserts snapshot (unique on company_id, as_of).
+    Upserts snapshot (unique on company_id, as_of, pack_id). Issue #189.
     """
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        return None
+
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         return None
@@ -52,6 +57,7 @@ def write_readiness_snapshot(
         .filter(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of == as_of - timedelta(days=1),
+            ReadinessSnapshot.pack_id == pack_id,
         )
         .first()
     )
@@ -67,6 +73,7 @@ def write_readiness_snapshot(
         .filter(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of == as_of,
+            ReadinessSnapshot.pack_id == pack_id,
         )
         .first()
     )
@@ -91,6 +98,7 @@ def write_readiness_snapshot(
         leadership_gap=result["leadership_gap"],
         composite=result["composite"],
         explain=result["explain"],
+        pack_id=pack_id,
     )
     db.add(snapshot)
     db.commit()

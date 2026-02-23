@@ -39,11 +39,16 @@ def generate_ore_recommendation(
     if not company:
         return None
 
+    pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        return None
+
     snapshot = (
         db.query(ReadinessSnapshot)
         .filter(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of == as_of,
+            ReadinessSnapshot.pack_id == pack_id,
         )
         .first()
     )
@@ -59,7 +64,7 @@ def generate_ore_recommendation(
         cooldown = cooldown_active if cooldown_active is not None else False
         align = alignment_high if alignment_high is not None else True
     else:
-        ctx = compute_esl_from_context(db, company_id, as_of)
+        ctx = compute_esl_from_context(db, company_id, as_of, pack_id=pack_id)
         if not ctx:
             return None
         sm = ctx["stability_modifier"]
@@ -123,6 +128,7 @@ def generate_ore_recommendation(
         draft_variants=draft_variants if draft_variants else None,
         strategy_notes=None,
         safeguards_triggered=gate.safeguards_triggered or None,
+        pack_id=pack_id,
     )
     db.add(rec)
     db.commit()

@@ -33,22 +33,17 @@ def get_weekly_review_companies(
     *,
     limit: int = 5,
     outreach_score_threshold: int = 30,
+    pack_id=None,
 ) -> list[dict]:
-    """Query top N companies by OutreachScore for weekly review (Issue #108).
+    """Query top N companies by OutreachScore for weekly review (Issue #108, #189).
 
     Excludes companies in cooldown (60-day or 180-day declined per Issue #109).
-    Returns list of dicts with company, outreach_score, and merged explain block.
-
-    Args:
-        db: Database session.
-        as_of: Snapshot date to query.
-        limit: Max companies to return (weekly_review_limit).
-        outreach_score_threshold: Min OutreachScore to include.
-
-    Returns:
-        List of dicts: {company_id, company, readiness_snapshot, engagement_snapshot,
-        outreach_score, explain}. Sorted by OutreachScore DESC. No duplicates.
+    Pack-scoped (Issue #189).
     """
+    pack_id = pack_id or get_default_pack_id(db)
+    if pack_id is None:
+        return []
+
     as_of_dt = datetime.combine(as_of, datetime.min.time()).replace(tzinfo=timezone.utc)
 
     pairs = (
@@ -56,10 +51,11 @@ def get_weekly_review_companies(
         .join(
             EngagementSnapshot,
             (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
-            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of),
+            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
+            & (ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id),
         )
         .options(joinedload(ReadinessSnapshot.company))
-        .filter(ReadinessSnapshot.as_of == as_of)
+        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_id)
         .all()
     )
 
