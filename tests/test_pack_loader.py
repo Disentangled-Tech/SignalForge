@@ -9,7 +9,9 @@ from __future__ import annotations
 import pytest
 
 # Skip entire module when app.packs not implemented (TDD)
-pytest.importorskip("app.packs", reason="app.packs.loader not implemented; run when Step 1.2 complete")
+pytest.importorskip(
+    "app.packs", reason="app.packs.loader not implemented; run when Step 1.2 complete"
+)
 
 
 class TestPackLoader:
@@ -31,13 +33,15 @@ class TestPackLoader:
 
     def test_pack_taxonomy_has_signal_ids(self) -> None:
         """Pack taxonomy includes all 23 CTO event types from event_types.SIGNAL_EVENT_TYPES."""
-        from app.packs.loader import load_pack
         from app.ingestion.event_types import SIGNAL_EVENT_TYPES
+        from app.packs.loader import load_pack
 
         pack = load_pack("fractional_cto_v1", "1")
         tax = pack.taxonomy
         taxonomy_ids = set(
-            tax.get("signal_ids", []) if isinstance(tax, dict) else (getattr(tax, "signal_ids", None) or [])
+            tax.get("signal_ids", [])
+            if isinstance(tax, dict)
+            else (getattr(tax, "signal_ids", None) or [])
         )
         for etype in SIGNAL_EVENT_TYPES:
             assert etype in taxonomy_ids, f"Taxonomy missing event type: {etype}"
@@ -57,6 +61,53 @@ class TestPackLoader:
             load_pack("fractional_cto_v1", "99")
 
 
+class TestPackIdPathTraversalGuard:
+    """load_pack rejects pack_id/version with path traversal (Issue #189, Plan Step 4)."""
+
+    def test_pack_id_with_dotdot_raises(self) -> None:
+        """pack_id containing '..' raises ValueError."""
+        from app.packs.loader import load_pack
+
+        with pytest.raises(ValueError, match="must not contain"):
+            load_pack("../etc", "1")
+
+    def test_pack_id_with_slash_raises(self) -> None:
+        """pack_id containing '/' raises ValueError."""
+        from app.packs.loader import load_pack
+
+        with pytest.raises(ValueError, match="path separators"):
+            load_pack("foo/bar", "1")
+
+    def test_pack_id_with_backslash_raises(self) -> None:
+        """pack_id containing '\\' raises ValueError."""
+        from app.packs.loader import load_pack
+
+        with pytest.raises(ValueError, match="path separators"):
+            load_pack("foo\\bar", "1")
+
+    def test_pack_id_empty_raises(self) -> None:
+        """Empty pack_id raises ValueError."""
+        from app.packs.loader import load_pack
+
+        with pytest.raises(ValueError, match="non-empty"):
+            load_pack("", "1")
+
+    def test_version_with_dotdot_raises(self) -> None:
+        """version containing '..' raises ValueError."""
+        from app.packs.loader import load_pack
+
+        with pytest.raises(ValueError, match="must not contain"):
+            load_pack("fractional_cto_v1", "..")
+
+    def test_valid_pack_id_still_loads(self) -> None:
+        """Valid pack_id (alphanumeric, underscore, hyphen) loads successfully."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        assert pack is not None
+        assert pack.scoring is not None
+
+
 class TestPackSchemaValidation:
     """Pack YAML files validate against schema."""
 
@@ -67,7 +118,9 @@ class TestPackSchemaValidation:
         pack = load_pack("fractional_cto_v1", "1")
         manifest = getattr(pack, "manifest", pack) if hasattr(pack, "manifest") else pack
         assert getattr(manifest, "id", None) or (isinstance(manifest, dict) and "id" in manifest)
-        assert getattr(manifest, "version", None) or (isinstance(manifest, dict) and "version" in manifest)
+        assert getattr(manifest, "version", None) or (
+            isinstance(manifest, dict) and "version" in manifest
+        )
 
     def test_scoring_yaml_has_base_scores(self) -> None:
         """scoring.yaml has base scores for momentum, complexity, pressure, leadership_gap."""
@@ -76,5 +129,11 @@ class TestPackSchemaValidation:
         pack = load_pack("fractional_cto_v1", "1")
         scoring = pack.scoring
         assert scoring is not None
-        sc = scoring if isinstance(scoring, dict) else vars(scoring) if hasattr(scoring, "__dict__") else {}
+        sc = (
+            scoring
+            if isinstance(scoring, dict)
+            else vars(scoring)
+            if hasattr(scoring, "__dict__")
+            else {}
+        )
         assert bool(sc) or bool(scoring), "scoring config must not be empty"
