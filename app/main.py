@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     )
 
     # Mount API routes
+    from app.api.admin import router as admin_router
     from app.api.auth import router as auth_router
     from app.api.bias_views import router as bias_views_router
     from app.api.briefing import router as briefing_router
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     from app.api.views import router as views_router
     from app.api.watchlist import router as watchlist_router
 
+    app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(briefing_router, prefix="/api/briefing", tags=["briefing"])
     app.include_router(companies_router, prefix="/api/companies", tags=["companies"])

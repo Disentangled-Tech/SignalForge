@@ -100,7 +100,7 @@
     {% if active_pack %}
     <div class="card" style="margin-top: 1.5rem;">
         <h2>Active Signal Pack</h2>
-        <p><strong>{{ active_pack.name }}</strong> ({{ active_pack.pack_id }}) v{{ active_pack.version }}</p>
+        <p><strong>{{ active_pack.name }}</strong> ({{ active_pack.pack_id }}) v{{ active_pack.version }}{% if active_pack.schema_version %} — schema v{{ active_pack.schema_version }}{% endif %}</p>
         <p class="text-muted">Pack changes apply only to new observations going forward. No automatic reprocessing of historical data.</p>
     </div>
     {% endif %}

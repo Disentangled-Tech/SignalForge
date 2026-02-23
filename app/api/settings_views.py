@@ -77,6 +77,7 @@ def settings_page(
                 "pack_id": pack.manifest.get("id", ""),
                 "version": pack.manifest.get("version", ""),
                 "name": pack.manifest.get("name", ""),
+                "schema_version": pack.manifest.get("schema_version", ""),
             }
 
     return templates.TemplateResponse(
