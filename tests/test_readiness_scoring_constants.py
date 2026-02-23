@@ -14,6 +14,8 @@ from app.services.readiness.scoring_constants import (
     CAP_FOUNDER_URGENCY,
     CAP_JOBS_COMPLEXITY,
     CAP_JOBS_MOMENTUM,
+    QUIET_SIGNAL_AMPLIFIED_BASE,
+    QUIET_SIGNAL_LOOKBACK_DAYS,
     decay_complexity,
     decay_momentum,
     decay_pressure,
@@ -139,3 +141,11 @@ class TestConstantsExist:
         assert COMPOSITE_WEIGHTS["C"] == 0.30
         assert COMPOSITE_WEIGHTS["P"] == 0.25
         assert COMPOSITE_WEIGHTS["G"] == 0.15
+
+    def test_quiet_signal_amplification_constants(self) -> None:
+        """QUIET_SIGNAL_AMPLIFIED_BASE exists with expected structure (Issue #113)."""
+        assert QUIET_SIGNAL_LOOKBACK_DAYS == 365
+        assert "job_posted_infra" in QUIET_SIGNAL_AMPLIFIED_BASE
+        assert QUIET_SIGNAL_AMPLIFIED_BASE["job_posted_infra"] == {"M": 20, "C": 20}
+        assert QUIET_SIGNAL_AMPLIFIED_BASE["compliance_mentioned"] == {"C": 25}
+        assert QUIET_SIGNAL_AMPLIFIED_BASE["api_launched"] == {"C": 35}
