@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -18,11 +19,13 @@ def test_store_new_event_returns_signal_event(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
+    # Use unique source_event_id to avoid collision with stale DB data
+    source_event_id = f"cb-test-{uuid.uuid4().hex[:12]}"
     result = store_signal_event(
         db,
         company_id=company.id,
         source="crunchbase",
-        source_event_id="cb-001",
+        source_event_id=source_event_id,
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
     )
@@ -31,7 +34,7 @@ def test_store_new_event_returns_signal_event(db: Session) -> None:
     assert result.id is not None
     assert result.company_id == company.id
     assert result.source == "crunchbase"
-    assert result.source_event_id == "cb-001"
+    assert result.source_event_id == source_event_id
     assert result.event_type == "funding_raised"
 
 
@@ -92,6 +95,27 @@ def test_store_with_source_event_id_none_allows_multiple(db: Session) -> None:
     assert r1.id != r2.id
 
 
+def test_store_with_pack_id(db: Session, fractional_cto_pack_id) -> None:
+    """pack_id is stored when provided (Issue #189)."""
+    company = Company(name="Epsilon", website_url="https://epsilon.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    source_event_id = f"t-pack-{uuid.uuid4().hex[:12]}"
+    result = store_signal_event(
+        db,
+        company_id=company.id,
+        source="test",
+        source_event_id=source_event_id,
+        event_type="api_launched",
+        event_time=datetime(2026, 2, 18, 15, 0, 0, tzinfo=timezone.utc),
+        pack_id=fractional_cto_pack_id,
+    )
+    assert result is not None
+    assert result.pack_id == fractional_cto_pack_id
+
+
 def test_store_with_optional_fields(db: Session) -> None:
     """Optional fields (title, summary, url, raw, confidence) are stored."""
     company = Company(name="Delta", website_url="https://delta.example.com")
@@ -99,11 +123,12 @@ def test_store_with_optional_fields(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
+    source_event_id = f"t-opt-{uuid.uuid4().hex[:12]}"
     result = store_signal_event(
         db,
         company_id=company.id,
         source="test",
-        source_event_id="t-1",
+        source_event_id=source_event_id,
         event_type="api_launched",
         event_time=datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc),
         title="API v2",

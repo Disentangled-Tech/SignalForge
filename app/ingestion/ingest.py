@@ -8,9 +8,10 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.ingestion.base import SourceAdapter
-from app.ingestion.normalize import normalize_raw_event
 from app.ingestion.event_storage import store_signal_event
+from app.ingestion.normalize import normalize_raw_event
 from app.services.company_resolver import resolve_or_create_company
+from app.services.pack_resolver import get_default_pack_id
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ def run_ingest(
 
     raw_events = adapter.fetch_events(since)
     source = adapter.source_name
+    pack_id = get_default_pack_id(db)
 
     for raw in raw_events:
         try:
@@ -48,6 +50,7 @@ def run_ingest(
             event_data, company_create = normalized
             company, _ = resolve_or_create_company(db, company_create)
             event_data["company_id"] = company.id
+            event_data["pack_id"] = pack_id
 
             result = store_signal_event(db, **event_data)
             if result is None:

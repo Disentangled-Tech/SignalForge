@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from app.models.signal_event import SignalEvent
@@ -24,6 +26,7 @@ def store_signal_event(
     url: str | None = None,
     raw: dict | None = None,
     confidence: float | None = 0.7,
+    pack_id: UUID | None = None,
 ) -> SignalEvent | None:
     """Store a signal event with deduplication.
 
@@ -47,6 +50,8 @@ def store_signal_event(
         When the event occurred.
     title, summary, url, raw, confidence : optional
         Additional event fields.
+    pack_id : UUID | None
+        Signal pack UUID (Issue #189). When None, event is legacy/unassigned.
 
     Returns
     -------
@@ -81,6 +86,7 @@ def store_signal_event(
         url=url,
         raw=raw,
         confidence=confidence,
+        pack_id=pack_id,
     )
     db.add(event)
     db.commit()

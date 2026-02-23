@@ -7,8 +7,8 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot
-from app.services.esl.esl_engine import compute_outreach_score
 from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
+from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
 from app.services.ore.draft_generator import (
     CTAS,
@@ -17,6 +17,7 @@ from app.services.ore.draft_generator import (
     generate_ore_draft,
 )
 from app.services.ore.policy_gate import check_policy_gate
+from app.services.pack_resolver import get_default_pack_id
 
 
 def generate_ore_recommendation(

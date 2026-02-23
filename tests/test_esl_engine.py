@@ -233,3 +233,28 @@ def test_sm_under_07_caps_recommendation() -> None:
         alignment_high=True,
     )
     assert result.recommendation_type == "Soft Value Share"
+
+
+# ── Pack parameter parity (Issue #189, Plan Step 1.4) ─────────────────────────
+
+
+def test_map_esl_to_recommendation_accepts_pack_none() -> None:
+    """map_esl_to_recommendation(esl, pack=None) matches current boundaries."""
+    try:
+        result = map_esl_to_recommendation(0.55, pack=None)
+    except TypeError:
+        pytest.skip("map_esl_to_recommendation does not yet accept pack parameter (Step 1.4)")
+    assert result == "Low-Pressure Intro"
+
+
+def test_map_esl_to_recommendation_with_cto_pack_same_as_none() -> None:
+    """map_esl_to_recommendation(esl, pack=cto_pack) == map_esl_to_recommendation(esl) for CTO boundaries."""
+    try:
+        from app.packs.loader import load_pack
+        cto_pack = load_pack("fractional_cto_v1", "1")
+        for esl_val in [0.1, 0.4, 0.7, 0.9]:
+            r_none = map_esl_to_recommendation(esl_val)
+            r_pack = map_esl_to_recommendation(esl_val, pack=cto_pack)
+            assert r_pack == r_none
+    except ImportError:
+        pytest.skip("app.packs.loader not implemented")
