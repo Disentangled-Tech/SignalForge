@@ -120,6 +120,16 @@ Cloudways cron will call:
 
 Both require the `X-Internal-Token` header matching `INTERNAL_JOB_TOKEN`.
 
+**Event-driven pipeline** (ingest → derive → score → update_lead_feed): see [docs/pipeline.md](docs/pipeline.md).
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/pipeline.md](docs/pipeline.md) | Pipeline stages (ingest, derive, score, update_lead_feed) and API behavior |
+| [docs/deriver-engine.md](docs/deriver-engine.md) | Deriver engine: passthrough and pattern derivers, evidence, logging |
+| [docs/adapter-interface.md](docs/adapter-interface.md) | Ingestion adapter contract and RawEvent schema |
+
 ## License
 
 NONE
