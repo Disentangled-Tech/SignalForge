@@ -18,7 +18,11 @@ DEFAULT_CONFIDENCE: float = 0.7
 
 
 def _is_valid_event_type_for_pack(candidate: str, pack: Pack | None) -> bool:
-    """Return True if candidate is valid: pack taxonomy when pack provided, else event_types."""
+    """Return True if candidate is valid.
+
+    When pack is provided: validate against pack.taxonomy.signal_ids (production path).
+    When pack is None: use event_types fallback (test-only; production must pass pack).
+    """
     if pack is not None:
         ids = pack.taxonomy.get("signal_ids") if isinstance(pack.taxonomy, dict) else []
         return candidate in (ids if isinstance(ids, (list, set, frozenset)) else [])
@@ -63,8 +67,8 @@ def normalize_raw_event(
     """Normalize RawEvent to (signal_event_data, company_create).
 
     Returns None if event_type_candidate is not in the canonical taxonomy.
-    When pack is provided, validates against pack.taxonomy.signal_ids;
-    otherwise uses event_types.is_valid_event_type (Phase 2, Step 3.3).
+    When pack is provided, validates against pack.taxonomy.signal_ids.
+    When pack is None, uses event_types fallback (test-only; production must pass pack).
     Caller resolves company and stores the event.
     """
     if not _is_valid_event_type_for_pack(raw.event_type_candidate, pack):
