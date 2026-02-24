@@ -85,6 +85,8 @@ This validates and, when possible, starts:
    make dev
    ```
 
+   If you run the app in the same terminal after `pytest`, it may inherit `DATABASE_URL=signalforge_test`. Use a fresh shell or `unset DATABASE_URL` before starting the app to ensure you connect to `signalforge_dev`.
+
 7. **Run tests**
 
    ```bash

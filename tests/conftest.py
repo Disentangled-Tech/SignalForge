@@ -16,6 +16,7 @@ from tests.test_constants import TEST_INTERNAL_JOB_TOKEN, TEST_SECRET_KEY
 _test_user = os.getenv("PGUSER") or os.getenv("USER") or "postgres"
 _test_url = f"postgresql+psycopg://{_test_user}@localhost:5432/signalforge_test"
 os.environ["DATABASE_URL"] = _test_url
+os.environ["INGEST_USE_TEST_ADAPTER"] = "1"  # Enable TestAdapter for run_ingest_daily tests
 os.environ.setdefault("SECRET_KEY", TEST_SECRET_KEY)
 os.environ.setdefault("INTERNAL_JOB_TOKEN", TEST_INTERNAL_JOB_TOKEN)
 

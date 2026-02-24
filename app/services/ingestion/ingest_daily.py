@@ -7,6 +7,7 @@ normalize, resolve companies, store with deduplication.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
@@ -19,8 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 def _get_adapters() -> list:
-    """Return list of adapters for daily ingestion. MVP: TestAdapter only."""
-    return [TestAdapter()]
+    """Return list of adapters for daily ingestion.
+
+    TestAdapter only when INGEST_USE_TEST_ADAPTER=1 (pytest sets this).
+    Production returns [] until real adapters (Crunchbase, etc.) are configured.
+    """
+    if os.getenv("INGEST_USE_TEST_ADAPTER", "").lower() in ("1", "true"):
+        return [TestAdapter()]
+    return []
 
 
 def run_ingest_daily(db: Session) -> dict:
