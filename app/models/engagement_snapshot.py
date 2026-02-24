@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,9 +55,13 @@ class EngagementSnapshot(Base):
         ForeignKey("signal_packs.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # ESL decision gate (Phase 4, Issue #175): allow | allow_with_constraints | suppress
+    esl_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    esl_reason_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sensitivity_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

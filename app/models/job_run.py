@@ -26,6 +26,9 @@ class JobRun(Base):
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     companies_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    companies_esl_suppressed: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # score jobs: count with esl_decision=suppress (Phase 4, Issue #175)
     companies_analysis_changed: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )  # scan jobs: count of companies whose analysis changed (issue #61)

@@ -105,7 +105,7 @@ def _validate_taxonomy(taxonomy: dict[str, Any]) -> set[str]:
 
 
 def _validate_scoring(scoring: dict[str, Any], signal_ids: set[str]) -> None:
-    """Validate scoring base_scores reference only taxonomy signal_ids."""
+    """Validate scoring base_scores, decay, and suppressors when present (Issue #174)."""
     if not isinstance(scoring, dict):
         return
     base_scores = scoring.get("base_scores") or {}
@@ -119,6 +119,39 @@ def _validate_scoring(scoring: dict[str, Any], signal_ids: set[str]) -> None:
                 raise ValidationError(
                     f"scoring base_scores.{dim_name} references signal_id '{sig_id}' "
                     f"not in taxonomy.signal_ids"
+                )
+
+    # Optional: validate decay structure when present
+    decay = scoring.get("decay")
+    if decay is not None and isinstance(decay, dict):
+        for dim in ("momentum", "pressure", "complexity"):
+            d = decay.get(dim)
+            if d is None:
+                continue
+            if not isinstance(d, dict):
+                raise ValidationError(
+                    f"scoring decay.{dim} must be a dict of range keys to numeric values"
+                )
+            for key, val in d.items():
+                if not isinstance(key, str) or not key.strip():
+                    raise ValidationError(
+                        f"scoring decay.{dim} keys must be non-empty strings (e.g. '0-30', '91+')"
+                    )
+                if not isinstance(val, (int, float)):
+                    raise ValidationError(
+                        f"scoring decay.{dim}['{key}'] must be numeric, got {type(val).__name__}"
+                    )
+
+    # Optional: validate suppressors when present
+    suppressors = scoring.get("suppressors")
+    if suppressors is not None and isinstance(suppressors, dict):
+        for key in ("cto_hired_60_days", "cto_hired_180_days"):
+            val = suppressors.get(key)
+            if val is None:
+                continue
+            if not isinstance(val, (int, float)) or val < 0:
+                raise ValidationError(
+                    f"scoring suppressors.{key} must be non-negative number, got {val!r}"
                 )
 
 
@@ -187,17 +220,86 @@ def _validate_derivers(derivers: dict[str, Any], signal_ids: set[str]) -> None:
 
 
 def _validate_esl_policy(esl_policy: dict[str, Any], signal_ids: set[str]) -> None:
-    """Validate ESL svi_event_types reference taxonomy signal_ids when present."""
+    """Validate ESL svi_event_types and Issue #175 keys reference taxonomy signal_ids when present."""
     if not isinstance(esl_policy, dict):
         return
     svi_types = esl_policy.get("svi_event_types")
     if not svi_types or not isinstance(svi_types, list):
-        return
-    for sig in svi_types:
-        if sig not in signal_ids:
-            raise ValidationError(
-                f"esl_policy svi_event_types references '{sig}' not in taxonomy.signal_ids"
-            )
+        pass
+    else:
+        for sig in svi_types:
+            if sig not in signal_ids:
+                raise ValidationError(
+                    f"esl_policy svi_event_types references '{sig}' not in taxonomy.signal_ids"
+                )
+
+    # Issue #175: blocked_signals, sensitivity_mapping, prohibited_combinations, downgrade_rules
+    blocked = esl_policy.get("blocked_signals")
+    if blocked is not None and isinstance(blocked, list):
+        for sig in blocked:
+            if sig not in signal_ids:
+                raise ValidationError(
+                    f"esl_policy blocked_signals references '{sig}' not in taxonomy.signal_ids"
+                )
+
+    sensitivity = esl_policy.get("sensitivity_mapping")
+    if sensitivity is not None and isinstance(sensitivity, dict):
+        for sig in sensitivity:
+            if sig not in signal_ids:
+                raise ValidationError(
+                    f"esl_policy sensitivity_mapping references '{sig}' not in taxonomy.signal_ids"
+                )
+
+    prohibited = esl_policy.get("prohibited_combinations")
+    if prohibited is not None and isinstance(prohibited, list):
+        for i, pair in enumerate(prohibited):
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                raise ValidationError(
+                    f"esl_policy prohibited_combinations[{i}] must be a pair [signal_id, signal_id]"
+                )
+            a, b = str(pair[0]), str(pair[1])
+            if a not in signal_ids:
+                raise ValidationError(
+                    f"esl_policy prohibited_combinations[{i}] references '{a}' not in taxonomy.signal_ids"
+                )
+            if b not in signal_ids:
+                raise ValidationError(
+                    f"esl_policy prohibited_combinations[{i}] references '{b}' not in taxonomy.signal_ids"
+                )
+
+    downgrade = esl_policy.get("downgrade_rules")
+    if downgrade is not None and isinstance(downgrade, list):
+        valid_recommendation_types = _valid_recommendation_types_from_esl(esl_policy)
+        for i, rule in enumerate(downgrade):
+            if not isinstance(rule, dict):
+                raise ValidationError(
+                    f"esl_policy downgrade_rules[{i}] must be a dict with trigger_signal and max_recommendation"
+                )
+            trigger = rule.get("trigger_signal")
+            max_rec = rule.get("max_recommendation")
+            if not trigger:
+                raise ValidationError(
+                    f"esl_policy downgrade_rules[{i}] missing required field 'trigger_signal'"
+                )
+            if trigger not in signal_ids:
+                raise ValidationError(
+                    f"esl_policy downgrade_rules[{i}] trigger_signal '{trigger}' not in taxonomy.signal_ids"
+                )
+            if max_rec and valid_recommendation_types and max_rec not in valid_recommendation_types:
+                raise ValidationError(
+                    f"esl_policy downgrade_rules[{i}] max_recommendation '{max_rec}' not in "
+                    f"recommendation_boundaries"
+                )
+
+
+def _valid_recommendation_types_from_esl(esl_policy: dict[str, Any]) -> set[str]:
+    """Extract valid recommendation types from esl_policy recommendation_boundaries."""
+    boundaries = esl_policy.get("recommendation_boundaries") or []
+    valid: set[str] = set()
+    for b in boundaries:
+        if isinstance(b, (list, tuple)) and len(b) >= 2:
+            valid.add(str(b[1]))
+    return valid
 
 
 def _validate_version_semver(manifest: dict[str, Any]) -> None:

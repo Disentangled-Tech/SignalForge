@@ -14,6 +14,10 @@ from app.models.company import Company
 from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.services.esl.esl_engine import compute_outreach_score
+from app.services.esl.esl_gate_filter import (
+    get_effective_engagement_type,
+    is_suppressed_from_engagement,
+)
 from app.services.outreach_history import check_outreach_cooldown
 from app.services.pack_resolver import get_default_pack_id
 
@@ -41,6 +45,9 @@ def get_weekly_review_companies(
 
     Excludes companies in cooldown (60-day or 180-day declined per Issue #109).
     Pack-scoped (Issue #189).
+
+    Note: Pack minimum_threshold (R >= min) is not yet enforced here.
+    See docs/MINIMUM_THRESHOLD_ENFORCEMENT.md for enforcement plan.
     """
     pack_id = pack_id or get_default_pack_id(db)
     if pack_id is None:
@@ -69,6 +76,9 @@ def get_weekly_review_companies(
     for rs, es in pairs:
         if not rs.company:
             continue
+        # Exclude suppressed entities (Issue #175, Phase 3)
+        if is_suppressed_from_engagement(es.esl_decision, es.explain):
+            continue
         outreach_score = es.outreach_score
         if outreach_score is None:
             outreach_score = compute_outreach_score(rs.composite, es.esl_score)
@@ -91,6 +101,9 @@ def get_weekly_review_companies(
         if not cooldown.allowed:
             continue
         outreach_score = es.outreach_score if es.outreach_score is not None else compute_outreach_score(rs.composite, es.esl_score)
+        effective_type = get_effective_engagement_type(
+            es.engagement_type, es.explain, es.esl_decision
+        )
         explain = _merge_explain(rs.explain, es.explain)
         results.append({
             "company_id": company.id,
@@ -98,6 +111,7 @@ def get_weekly_review_companies(
             "readiness_snapshot": rs,
             "engagement_snapshot": es,
             "outreach_score": outreach_score,
+            "effective_engagement_type": effective_type,
             "explain": explain,
         })
     return results

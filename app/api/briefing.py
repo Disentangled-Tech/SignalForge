@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -14,7 +14,6 @@ from app.schemas.briefing import (
     BriefingResponse,
     EmergingCompanyBriefing,
 )
-from app.schemas.company import CompanyRead
 from app.services.company import _model_to_read
 
 router = APIRouter()
@@ -45,6 +44,8 @@ def _item_to_read(item, display_scores: dict, esl_by_company: dict) -> BriefingI
         outreach_recommendation=esl.get("engagement_type"),
         cadence_blocked=esl.get("cadence_blocked"),
         stability_cap_triggered=esl.get("stability_cap_triggered"),
+        esl_decision=esl.get("esl_decision"),
+        sensitivity_level=esl.get("sensitivity_level"),
     )
 
 
@@ -95,6 +96,8 @@ def api_briefing_daily(
             complexity=ec["snapshot"].complexity if ec.get("snapshot") else None,
             pressure=ec["snapshot"].pressure if ec.get("snapshot") else None,
             leadership_gap=ec["snapshot"].leadership_gap if ec.get("snapshot") else None,
+            esl_decision=ec.get("esl_decision"),
+            sensitivity_level=ec.get("sensitivity_level"),
         )
         for ec in data["emerging_companies"]
     ]

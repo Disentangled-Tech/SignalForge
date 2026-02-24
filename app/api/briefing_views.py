@@ -22,6 +22,10 @@ from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.user import User
 from app.services.briefing import get_emerging_companies
 from app.services.esl.esl_engine import compute_outreach_score
+from app.services.esl.esl_gate_filter import (
+    get_effective_engagement_type,
+    is_suppressed_from_engagement,
+)
 from app.services.pack_resolver import get_default_pack_id
 from app.services.readiness.human_labels import event_type_to_label
 from app.services.scoring import get_display_scores_for_companies
@@ -167,17 +171,31 @@ def get_briefing_data(
             )
             .all()
         )
+        suppressed_company_ids: set[int] = set()
         for rs, es in pairs:
-            outreach_score = compute_outreach_score(rs.composite, es.esl_score)
+            if is_suppressed_from_engagement(es.esl_decision, es.explain):
+                suppressed_company_ids.add(rs.company_id)
+                continue
+            effective_type = get_effective_engagement_type(
+                es.engagement_type, es.explain, es.esl_decision
+            )
+            esl_decision = es.esl_decision or (es.explain or {}).get("esl_decision")
+            sensitivity_level = es.sensitivity_level or (es.explain or {}).get(
+                "sensitivity_level"
+            )
             esl_by_company[rs.company_id] = {
                 "esl_score": es.esl_score,
-                "outreach_score": outreach_score,
-                "engagement_type": es.engagement_type,
+                "outreach_score": compute_outreach_score(rs.composite, es.esl_score),
+                "engagement_type": effective_type,
                 "cadence_blocked": es.cadence_blocked,
                 "stability_cap_triggered": (es.explain or {}).get(
                     "stability_cap_triggered", False
                 ),
+                "esl_decision": esl_decision,
+                "sensitivity_level": sensitivity_level,
             }
+        # Filter items: exclude companies with esl_decision == "suppress" (Issue #175)
+        items = [i for i in items if i.company_id not in suppressed_company_ids]
         if sort == _SORT_OUTREACH_SCORE:
             items.sort(
                 key=lambda i: esl_by_company.get(i.company_id, {}).get(
@@ -208,17 +226,30 @@ def get_briefing_data(
         outreach_score = compute_outreach_score(
             readiness_snap.composite, engagement_snap.esl_score
         )
+        effective_type = get_effective_engagement_type(
+            engagement_snap.engagement_type,
+            engagement_snap.explain,
+            engagement_snap.esl_decision,
+        )
+        esl_decision = engagement_snap.esl_decision or (
+            engagement_snap.explain or {}
+        ).get("esl_decision")
+        sensitivity_level = engagement_snap.sensitivity_level or (
+            engagement_snap.explain or {}
+        ).get("sensitivity_level")
         emerging_companies.append({
             "company": company,
             "snapshot": readiness_snap,
             "engagement_snapshot": engagement_snap,
             "outreach_score": outreach_score,
             "esl_score": engagement_snap.esl_score,
-            "engagement_type": engagement_snap.engagement_type,
+            "engagement_type": effective_type,
             "cadence_blocked": engagement_snap.cadence_blocked,
             "stability_cap_triggered": (engagement_snap.explain or {}).get(
                 "stability_cap_triggered", False
             ),
+            "esl_decision": esl_decision,
+            "sensitivity_level": sensitivity_level,
             "top_signals": top_signals,
         })
 

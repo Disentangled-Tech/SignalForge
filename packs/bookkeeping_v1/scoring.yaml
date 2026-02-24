@@ -1,0 +1,43 @@
+# Scoring for bookkeeping_v1 (Issue #175, Phase 3)
+# Minimal config for pack validation
+
+base_scores:
+  momentum:
+    layoffs_announced: 10
+    funding_raised: 20
+  complexity:
+    revenue_milestone: 15
+  pressure:
+    financial_distress: 15
+    revenue_milestone: 20
+    funding_raised: 25
+  leadership_gap: {}
+
+caps:
+  jobs_momentum: 30
+  jobs_complexity: 20
+  founder_urgency: 30
+  dimension_max: 100
+
+decay:
+  momentum:
+    "0-30": 1.0
+    "31-90": 0.7
+    "91+": 0.4
+  pressure:
+    "0-30": 1.0
+    "31-90": 0.7
+    "91+": 0.4
+  complexity:
+    "0-90": 1.0
+    "91+": 0.7
+
+composite_weights:
+  M: 0.25
+  C: 0.25
+  P: 0.25
+  G: 0.25
+
+suppressors: {}
+disqualifier_signals: {}
+minimum_threshold: 0

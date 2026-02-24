@@ -1,0 +1,22 @@
+# Signal taxonomy for bookkeeping_v1 (Issue #175, Phase 3)
+# Minimal pack for ESL gate testing: distress → suppress
+
+signal_ids:
+  - financial_distress
+  - revenue_milestone
+  - funding_raised
+  - layoffs_announced
+
+dimensions:
+  P:  # Pressure
+    - financial_distress
+    - revenue_milestone
+    - funding_raised
+  M:  # Momentum
+    - layoffs_announced
+
+labels:
+  financial_distress: "Financial distress"
+  revenue_milestone: "Revenue milestone"
+  funding_raised: "Funding raised"
+  layoffs_announced: "Layoffs announced"
