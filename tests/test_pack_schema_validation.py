@@ -667,6 +667,32 @@ class TestValidatePackSchemaEslPolicyIssue175:
             playbooks={},
         )
 
+    def test_downgrade_rules_max_recommendation_without_boundaries_raises(self) -> None:
+        """downgrade_rules with max_recommendation but no recommendation_boundaries raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        for boundaries in ([], None):
+            esl_policy = {
+                "svi_event_types": [],
+                "downgrade_rules": [
+                    {"trigger_signal": "funding_raised", "max_recommendation": "Arbitrary Type"},
+                ],
+            }
+            if boundaries is not None:
+                esl_policy["recommendation_boundaries"] = boundaries
+            with pytest.raises(
+                ValidationError,
+                match="max_recommendation|recommendation_boundaries",
+            ):
+                validate_pack_schema(
+                    manifest=_valid_manifest(),
+                    taxonomy=_valid_taxonomy(),
+                    scoring=_valid_scoring(),
+                    esl_policy=esl_policy,
+                    derivers=_valid_derivers(),
+                    playbooks={},
+                )
+
     def test_fractional_cto_v1_with_new_keys_passes(self) -> None:
         """fractional_cto_v1 with blocked_signals and prohibited_combinations passes (Phase 1)."""
         import json
