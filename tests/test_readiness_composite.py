@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
-import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Company, ReadinessSnapshot, SignalEvent
+from app.models import Company, SignalEvent
 from app.services.readiness.readiness_engine import (
     apply_global_suppressors,
     build_explain_payload,
@@ -32,7 +31,7 @@ class MockEvent:
 
 
 def _days_ago(days: int) -> datetime:
-    return datetime.now(timezone.utc) - timedelta(days=days)
+    return datetime.now(UTC) - timedelta(days=days)
 
 
 def _event(
@@ -157,8 +156,21 @@ class TestBuildExplainPayload:
         payload = build_explain_payload(0, 0, 0, 0, 0, [], ["company_status_suppressed"])
         assert payload["suppressors_applied"] == ["company_status_suppressed"]
 
+    def test_minimum_threshold_included_when_pack_defines_nonzero(self) -> None:
+        """minimum_threshold in explain when pack defines it (Issue #174)."""
+        payload = build_explain_payload(
+            70, 60, 55, 40, 59, [], [], _cfg={"minimum_threshold": 60}
+        )
+        assert payload["minimum_threshold"] == 60
 
-# ── compute_readiness ────────────────────────────────────────────────────
+    def test_minimum_threshold_omitted_when_zero_or_default(self) -> None:
+        """minimum_threshold not in payload when 0 (default)."""
+        payload = build_explain_payload(
+            70, 60, 55, 40, 59, [], [], _cfg={"minimum_threshold": 0}
+        )
+        assert "minimum_threshold" not in payload
+        payload_none = build_explain_payload(70, 60, 55, 40, 59, [], [])
+        assert "minimum_threshold" not in payload_none
 
 
 class TestComputeReadiness:
@@ -292,7 +304,7 @@ class TestWriteReadinessSnapshotPersists:
                 company_id=company.id,
                 source="test",
                 event_type=etype,
-                event_time=datetime.now(timezone.utc) - timedelta(days=i * 10),
+                event_time=datetime.now(UTC) - timedelta(days=i * 10),
                 confidence=0.8,
             )
             db.add(ev)
@@ -338,7 +350,7 @@ class TestWriteReadinessSnapshotPersists:
                 company_id=company.id,
                 source="test",
                 event_type=etype,
-                event_time=datetime.now(timezone.utc) - timedelta(days=i * 10),
+                event_time=datetime.now(UTC) - timedelta(days=i * 10),
                 confidence=0.8,
             )
             db.add(ev)
