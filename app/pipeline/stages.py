@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from typing import Any, Protocol
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -70,9 +72,55 @@ def _derive_stage(
     )
 
 
+def _update_lead_feed_stage(
+    db: Session,
+    workspace_id: str,
+    pack_id: str | None,
+    **kwargs: Any,
+) -> StageResult:
+    """Update lead_feed stage: upsert from ReadinessSnapshot + EngagementSnapshot (Phase 3)."""
+    from app.models.job_run import JobRun
+    from app.pipeline.lead_feed_writer import upsert_lead_feed
+
+    pack_uuid = UUID(str(pack_id)) if pack_id and isinstance(pack_id, str) else pack_id
+    ws_uuid = UUID(str(workspace_id)) if workspace_id and isinstance(workspace_id, str) else workspace_id
+
+    job = JobRun(job_type="update_lead_feed", status="running")
+    job.workspace_id = ws_uuid
+    job.pack_id = pack_uuid
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    try:
+        as_of = date.today()
+        count = upsert_lead_feed(db, workspace_id=workspace_id, pack_id=pack_id, as_of=as_of)
+        job.finished_at = datetime.now(UTC)
+        job.status = "completed"
+        job.companies_processed = count
+        db.commit()
+        return StageResult({
+            "status": "completed",
+            "job_run_id": job.id,
+            "rows_upserted": count,
+        })
+    except Exception as exc:
+        job.finished_at = datetime.now(UTC)
+        job.status = "failed"
+        job.error_message = str(exc)
+        db.commit()
+        return StageResult({
+            "status": "failed",
+            "job_run_id": job.id,
+            "rows_upserted": 0,
+            "error": str(exc),
+        })
+
+
 # Registry: job_type -> callable (db, workspace_id, pack_id, **kwargs) -> dict
 STAGE_REGISTRY: dict[str, PipelineStage] = {
     "ingest": _ingest_stage,
     "derive": _derive_stage,
     "score": _score_stage,
+    "update_lead_feed": _update_lead_feed_stage,
 }

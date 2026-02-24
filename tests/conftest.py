@@ -19,6 +19,7 @@ os.environ["DATABASE_URL"] = _test_url
 os.environ["INGEST_USE_TEST_ADAPTER"] = "1"  # Enable TestAdapter for run_ingest_daily tests
 os.environ.setdefault("SECRET_KEY", TEST_SECRET_KEY)
 os.environ.setdefault("INTERNAL_JOB_TOKEN", TEST_INTERNAL_JOB_TOKEN)
+os.environ.setdefault("WORKSPACE_JOB_RATE_LIMIT_PER_HOUR", "0")  # Disable for tests
 
 
 @pytest.fixture

@@ -44,8 +44,10 @@ class Settings:
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
-    # Pipeline (Phase 1, Issue #192) — per-workspace rate limit; 0 = disabled
-    workspace_job_rate_limit_per_hour: int = 0
+    # Pipeline (Phase 1, Issue #192) — per-workspace rate limit for /internal/* jobs.
+    # 0 = disabled. Default 10 (Phase 3) limits each workspace to 10 jobs/hour per job_type.
+    # Set WORKSPACE_JOB_RATE_LIMIT_PER_HOUR=0 to disable (e.g. for tests or heavy cron).
+    workspace_job_rate_limit_per_hour: int = 10
 
     # Alerts (Issue #92, v2-spec §13)
     alert_delta_threshold: int = 15  # readiness_jump when |delta| >= this

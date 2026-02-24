@@ -11,6 +11,7 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.outreach_history import OutreachHistory
 from app.models.outreach_recommendation import OutreachRecommendation
 from app.models.job_run import JobRun
+from app.models.lead_feed import LeadFeed
 from app.models.operator_profile import OperatorProfile
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_event import SignalEvent
@@ -33,6 +34,7 @@ __all__ = [
     "OutreachHistory",
     "OutreachRecommendation",
     "JobRun",
+    "LeadFeed",
     "OperatorProfile",
     "ReadinessSnapshot",
     "SignalEvent",

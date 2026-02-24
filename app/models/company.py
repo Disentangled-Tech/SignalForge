@@ -73,3 +73,6 @@ class Company(Base):
     aliases: Mapped[list["CompanyAlias"]] = relationship(
         "CompanyAlias", back_populates="company", cascade="all, delete-orphan"
     )
+    lead_feed: Mapped[list["LeadFeed"]] = relationship(
+        "LeadFeed", back_populates="company", cascade="all, delete-orphan"
+    )
