@@ -7,18 +7,24 @@ Writes readiness snapshots with explain payload and delta_1d.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models import JobRun, SignalEvent, Watchlist
 from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
+from app.services.pack_resolver import get_default_pack_id
 from app.services.readiness.snapshot_writer import write_readiness_snapshot
 
 logger = logging.getLogger(__name__)
 
 
-def run_score_nightly(db: Session) -> dict:
+def run_score_nightly(
+    db: Session,
+    workspace_id: str | UUID | None = None,
+    pack_id: str | UUID | None = None,
+) -> dict:
     """Run nightly TRS scoring for all eligible companies (v2-spec §12, Issue #104).
 
     Companies to score:
@@ -31,7 +37,15 @@ def run_score_nightly(db: Session) -> dict:
     Returns:
         dict with status, job_run_id, companies_scored, companies_skipped, error
     """
+    resolved_pack_id = pack_id or get_default_pack_id(db)
+    if isinstance(resolved_pack_id, str):
+        resolved_pack_id = UUID(resolved_pack_id) if resolved_pack_id else None
+
     job = JobRun(job_type="score", status="running")
+    if workspace_id is not None:
+        job.workspace_id = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+    if resolved_pack_id is not None:
+        job.pack_id = resolved_pack_id
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -41,7 +55,7 @@ def run_score_nightly(db: Session) -> dict:
         logger.info("Starting nightly score job, as_of=%s", as_of)
         cutoff_dt = datetime.combine(
             as_of - timedelta(days=365), datetime.min.time()
-        ).replace(tzinfo=timezone.utc)
+        ).replace(tzinfo=UTC)
 
         # Company IDs with SignalEvents in last 365 days
         ids_from_events = {
@@ -60,7 +74,7 @@ def run_score_nightly(db: Session) -> dict:
         ids_from_watchlist = {
             row[0]
             for row in db.query(Watchlist.company_id)
-            .filter(Watchlist.is_active == True)
+            .filter(Watchlist.is_active)
             .distinct()
             .all()
         }
@@ -74,11 +88,15 @@ def run_score_nightly(db: Session) -> dict:
         companies_engagement = 0
         for company_id in company_ids:
             try:
-                snapshot = write_readiness_snapshot(db, company_id, as_of)
+                snapshot = write_readiness_snapshot(
+                    db, company_id, as_of, pack_id=resolved_pack_id
+                )
                 if snapshot is not None:
                     companies_scored += 1
                     # Write EngagementSnapshot after ReadinessSnapshot (Issue #106)
-                    eng_snap = write_engagement_snapshot(db, company_id, as_of)
+                    eng_snap = write_engagement_snapshot(
+                        db, company_id, as_of, pack_id=resolved_pack_id
+                    )
                     if eng_snap is not None:
                         companies_engagement += 1
                 else:
@@ -89,7 +107,7 @@ def run_score_nightly(db: Session) -> dict:
                 errors.append(msg)
                 companies_skipped += 1
 
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "completed"
         job.companies_processed = companies_scored
         job.error_message = "; ".join(errors[:10]) if errors else None
@@ -111,7 +129,7 @@ def run_score_nightly(db: Session) -> dict:
 
     except Exception as exc:
         logger.exception("Nightly score job failed")
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)
         db.commit()
