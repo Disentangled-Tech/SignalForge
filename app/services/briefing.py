@@ -87,6 +87,94 @@ def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
     return companies
 
 
+# Minimal view objects for lead_feed projection (Phase 3)
+# Same interface as ReadinessSnapshot/EngagementSnapshot for briefing compatibility.
+class _ReadinessView:
+    def __init__(self, composite: int, top_reasons: list | None):
+        self.composite = composite
+        self.explain = {"top_events": top_reasons} if top_reasons else {}
+
+
+class _EngagementView:
+    def __init__(
+        self,
+        esl_score: float,
+        engagement_type: str,
+        cadence_blocked: bool,
+        stability_cap_triggered: bool,
+    ):
+        self.esl_score = esl_score
+        self.engagement_type = engagement_type
+        self.cadence_blocked = cadence_blocked
+        self.explain = (
+            {"stability_cap_triggered": True} if stability_cap_triggered else {}
+        )
+
+
+def get_emerging_companies_from_lead_feed(
+    db: Session,
+    as_of: date,
+    *,
+    workspace_id: str = "00000000-0000-0000-0000-000000000001",
+    limit: int = 5,
+    outreach_score_threshold: int = 30,
+    pack_id=None,
+) -> list[tuple[_ReadinessView, _EngagementView, Company]] | None:
+    """Query emerging companies from lead_feed when populated (Phase 3).
+
+    Returns None when lead_feed has no rows for this date (caller should fall back).
+    Returns same structure as get_emerging_companies for briefing compatibility.
+    """
+    from uuid import UUID
+
+    from app.models.lead_feed import LeadFeed
+
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        return None
+
+    ws_uuid = UUID(workspace_id) if isinstance(workspace_id, str) else workspace_id
+    pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
+
+    rows = (
+        db.query(LeadFeed)
+        .options(joinedload(LeadFeed.company))
+        .filter(
+            LeadFeed.workspace_id == ws_uuid,
+            LeadFeed.pack_id == pack_uuid,
+            LeadFeed.as_of == as_of,
+        )
+        .order_by(LeadFeed.outreach_score.desc().nullslast())
+        .all()
+    )
+    if not rows:
+        return None
+
+    results: list[tuple[_ReadinessView, _EngagementView, Company]] = []
+    for lf in rows:
+        if not lf.company:
+            continue
+        # Include cadence_blocked (Observe Only) even when outreach_score < threshold
+        os_val = lf.outreach_score or 0
+        if os_val < outreach_score_threshold and not lf.cadence_blocked:
+            continue
+        rs_view = _ReadinessView(lf.composite_score, lf.top_reasons)
+        es_view = _EngagementView(
+            lf.esl_score,
+            lf.engagement_type,
+            lf.cadence_blocked,
+            lf.stability_cap_triggered,
+        )
+        results.append((rs_view, es_view, lf.company))
+
+    results.sort(
+        key=lambda r: r[0].composite * r[1].esl_score,
+        reverse=True,
+    )
+    return results[:limit]
+
+
 def get_emerging_companies(
     db: Session,
     as_of: date,
@@ -164,6 +252,36 @@ def get_emerging_companies(
     # Rank by OutreachScore = round(TRS × ESL) descending (Issue #103)
     results.sort(key=lambda r: compute_outreach_score(r[0].composite, r[1].esl_score), reverse=True)
     return results[:limit]
+
+
+def get_emerging_companies_for_briefing(
+    db: Session,
+    as_of: date,
+    *,
+    limit: int = 5,
+    outreach_score_threshold: int = 30,
+    pack_id=None,
+) -> list[tuple[ReadinessSnapshot | _ReadinessView, EngagementSnapshot | _EngagementView, Company]]:
+    """Get emerging companies for briefing: read from lead_feed when populated, else fallback (Phase 3)."""
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    lead_result = get_emerging_companies_from_lead_feed(
+        db,
+        as_of,
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        limit=limit,
+        outreach_score_threshold=outreach_score_threshold,
+        pack_id=pack_id,
+    )
+    if lead_result is not None and len(lead_result) > 0:
+        return lead_result
+    return get_emerging_companies(
+        db,
+        as_of,
+        limit=limit,
+        outreach_score_threshold=outreach_score_threshold,
+        pack_id=pack_id,
+    )
 
 
 def _parse_json_safe(text: str) -> dict | None:

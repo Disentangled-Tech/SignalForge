@@ -318,6 +318,23 @@ async def run_update_lead_feed_endpoint(
         return {
             "status": result["status"],
             "job_run_id": result.get("job_run_id"),
+):
+    """Trigger update_lead_feed stage: populate lead_feed from snapshots (Phase 3).
+
+    Run after score. Upserts lead_feed from ReadinessSnapshot + EngagementSnapshot.
+    Idempotent. Pass X-Idempotency-Key to skip duplicate runs.
+    """
+    from app.pipeline.executor import run_stage
+
+    try:
+        result = run_stage(
+            db,
+            job_type="update_lead_feed",
+            idempotency_key=x_idempotency_key,
+        )
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
             "rows_upserted": result.get("rows_upserted", 0),
             "error": result.get("error"),
         }

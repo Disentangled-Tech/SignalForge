@@ -137,6 +137,12 @@ class TestRunStage:
         call_kwargs = mock_run_update.call_args[1]
         assert call_kwargs["workspace_id"] == DEFAULT_WORKSPACE_ID
         assert call_kwargs["pack_id"] is not None
+    def test_run_stage_update_lead_feed_calls_stage(self, db: Session) -> None:
+        """run_stage('update_lead_feed') runs update_lead_feed stage (Phase 3)."""
+        result = run_stage(db, job_type="update_lead_feed")
+        assert result["status"] in ("completed", "skipped")
+        assert "job_run_id" in result
+        assert "rows_upserted" in result
 
 
 class TestIdempotency:
@@ -344,3 +350,17 @@ class TestInternalEndpointsViaExecutor:
         assert "companies_scored" in data
         assert "companies_engagement" in data
         assert "companies_skipped" in data
+
+    def test_run_update_lead_feed_returns_same_shape(
+        self, client: TestClient
+    ) -> None:
+        """POST /internal/run_update_lead_feed returns expected keys (Phase 3)."""
+        response = client.post(
+            "/internal/run_update_lead_feed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "status" in data
+        assert "job_run_id" in data
+        assert "rows_upserted" in data
