@@ -292,6 +292,29 @@ class TestRunDerive:
         )
         assert response.status_code == 403
 
+    def test_run_derive_returns_400_when_no_pack(self, client: TestClient):
+        """POST /internal/run_derive returns 400 when executor raises (no pack, Phase 3)."""
+        from fastapi import HTTPException
+
+        def _raise_no_pack(*args, **kwargs):
+            raise HTTPException(
+                status_code=400,
+                detail="Derive stage requires a pack; no pack available",
+            )
+
+        with patch(
+            "app.pipeline.executor.run_stage",
+            side_effect=_raise_no_pack,
+        ):
+            response = client.post(
+                "/internal/run_derive",
+                headers={"X-Internal-Token": VALID_TOKEN},
+            )
+        assert response.status_code == 400
+        data = response.json()
+        assert "detail" in data
+        assert "Derive stage requires a pack" in str(data["detail"])
+
 
 # ── /internal/run_ingest ────────────────────────────────────────────
 

@@ -15,14 +15,14 @@ from app.db import engine
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _run_alembic_env(*args: str) -> subprocess.CompletedProcess[str]:
+def _run_alembic_env(*args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
     """Run alembic with current env (for tests that need DATABASE_URL)."""
     return subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=timeout,
         env=os.environ.copy(),
     )
 
@@ -100,7 +100,8 @@ def test_config_checksum_migration_fails_when_pack_missing(_ensure_migrations: N
         pytest.skip("fractional_cto_v1 pack not in repo")
 
     # Downgrade to ee6582573566 so we can re-run the config_checksum migration
-    result = _run_alembic_env("downgrade", "ee6582573566")
+    # Extended timeout: downgrade can be slow with many migrations
+    result = _run_alembic_env("downgrade", "ee6582573566", timeout=90)
     if result.returncode != 0:
         pytest.skip(f"Could not downgrade to ee6582573566: {result.stderr}")
 
@@ -109,7 +110,7 @@ def test_config_checksum_migration_fails_when_pack_missing(_ensure_migrations: N
         shutil.rmtree(backup_dir)
     shutil.move(str(pack_dir), str(backup_dir))
     try:
-        result = _run_alembic_env("upgrade", "20260224_config_checksum")
+        result = _run_alembic_env("upgrade", "20260224_config_checksum", timeout=90)
         assert result.returncode != 0, "Migration must fail when pack is missing"
         err = (result.stderr or result.stdout or "").lower()
         assert (
@@ -121,7 +122,7 @@ def test_config_checksum_migration_fails_when_pack_missing(_ensure_migrations: N
     finally:
         # Restore pack and re-upgrade to head
         shutil.move(str(backup_dir), str(pack_dir))
-        _run_alembic_env("upgrade", "head")
+        _run_alembic_env("upgrade", "head", timeout=90)
 
 
 def test_signal_instances_unique_migration_fails_with_duplicates(
@@ -152,7 +153,7 @@ def test_signal_instances_unique_migration_fails_with_duplicates(
             pytest.skip("No companies in DB")
         entity_id = row[0]
 
-        for i in range(2):
+        for _ in range(2):
             conn.execute(
                 text(
                     "INSERT INTO signal_instances (id, entity_id, signal_id, pack_id, strength) "
