@@ -1,13 +1,16 @@
 """Deriver engine: populate signal_instances from SignalEvents (Phase 2, Issue #192).
 
-Applies pack derivers (passthrough: event_type -> signal_id) to produce
-entity-level signal instances. Idempotent: upsert by (entity_id, signal_id, pack_id).
+Applies pack derivers (passthrough: event_type -> signal_id; pattern: regex on
+title/summary) to produce entity-level signal instances. Idempotent: upsert by
+(entity_id, signal_id, pack_id). Phase 1 (Issue #173): pattern derivers support.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+
+import re
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -24,6 +27,10 @@ if TYPE_CHECKING:
     from app.packs.loader import Pack
 
 logger = logging.getLogger(__name__)
+
+# Default fields to search for pattern derivers when source_fields not specified
+_DEFAULT_PATTERN_SOURCE_FIELDS = ("title", "summary")
+
 
 
 def _build_passthrough_map(pack: Pack | None) -> dict[str, str]:
@@ -42,6 +49,96 @@ def _build_passthrough_map(pack: Pack | None) -> dict[str, str]:
             sid = item.get("signal_id")
             if etype and sid:
                 result[str(etype)] = str(sid)
+    return result
+
+
+def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
+    """Build list of pattern deriver configs from pack derivers.pattern.
+
+    Each entry: {signal_id, pattern, source_fields, min_confidence}.
+    Patterns are precompiled for runtime (ADR-008).
+    """
+    if not pack or not pack.derivers:
+        return []
+    inner = pack.derivers.get("derivers") or pack.derivers
+    pattern_list = inner.get("pattern") if isinstance(inner, dict) else []
+    if not isinstance(pattern_list, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for item in pattern_list:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("signal_id")
+        pat_str = item.get("pattern") or item.get("regex")
+        if not sid or not pat_str:
+            continue
+        try:
+            compiled = re.compile(pat_str)
+        except re.error:
+            logger.warning("Invalid pattern deriver regex for signal_id=%s, skipping", sid)
+            continue
+        source_fields = item.get("source_fields")
+        if source_fields is None:
+            source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
+        elif not isinstance(source_fields, list):
+            source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
+        else:
+            source_fields = [
+                f for f in source_fields if f in _DEFAULT_PATTERN_SOURCE_FIELDS
+            ]
+            if not source_fields:
+                source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
+        min_confidence = item.get("min_confidence")
+        if min_confidence is not None:
+            min_confidence = float(min_confidence)
+        result.append(
+            {
+                "signal_id": str(sid),
+                "compiled": compiled,
+                "source_fields": source_fields,
+                "min_confidence": min_confidence,
+            }
+        )
+    return result
+
+
+def _evaluate_event_derivers(
+    ev: SignalEvent,
+    passthrough_map: dict[str, str],
+    pattern_derivers: list[dict[str, Any]],
+) -> list[tuple[str, str]]:
+    """Evaluate all derivers for a single event. Returns list of (signal_id, deriver_type).
+
+    Passthrough: event_type -> signal_id (exact match).
+    Pattern: regex match on title/summary (or source_fields); min_confidence filter.
+    deriver_type is 'passthrough' or 'pattern'.
+    """
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    # Passthrough: event_type -> signal_id
+    sid = passthrough_map.get(ev.event_type)
+    if sid and sid not in seen:
+        result.append((sid, "passthrough"))
+        seen.add(sid)
+
+    # Pattern: match against source_fields
+    ev_confidence = ev.confidence if ev.confidence is not None else 0.7
+    for cfg in pattern_derivers:
+        if cfg["min_confidence"] is not None and ev_confidence < cfg["min_confidence"]:
+            continue
+        text_parts: list[str] = []
+        for field in cfg["source_fields"]:
+            val = getattr(ev, field, None)
+            if val is not None and isinstance(val, str):
+                text_parts.append(val)
+        text = " ".join(text_parts) if text_parts else ""
+        if cfg["compiled"].search(text):
+            sid = cfg["signal_id"]
+            if sid not in seen:
+                result.append((sid, "pattern"))
+                seen.add(sid)
+
     return result
 
 
@@ -115,12 +212,13 @@ def _run_deriver_core(
     """Core deriver logic. Updates job in-place, commits, returns result dict."""
     pack = resolve_pack(db, pack_uuid)
     passthrough = _build_passthrough_map(pack)
+    pattern_derivers = _build_pattern_derivers(pack)
 
-    if not passthrough:
-        logger.warning("Pack has no passthrough derivers; deriver skipped")
+    if not passthrough and not pattern_derivers:
+        logger.warning("Pack has no passthrough or pattern derivers; deriver skipped")
         job.finished_at = datetime.now(UTC)
         job.status = "skipped"
-        job.error_message = "No passthrough derivers in pack"
+        job.error_message = "No passthrough or pattern derivers in pack"
         db.commit()
         return {
             "status": "skipped",
@@ -128,7 +226,7 @@ def _run_deriver_core(
             "instances_upserted": 0,
             "events_processed": 0,
             "events_skipped": 0,
-            "error": "No passthrough derivers in pack",
+            "error": "No passthrough or pattern derivers in pack",
         }
 
     # Query SignalEvents: pack_id matches; optionally scope to company_ids (for tests)
@@ -138,7 +236,6 @@ def _run_deriver_core(
     events = q.all()
 
     # Aggregate by (entity_id, signal_id): min first_seen, max last_seen, latest confidence
-    # Passthrough: event_type -> signal_id
     aggregated: dict[tuple[int, str], dict[str, Any]] = {}
     events_skipped = 0
 
@@ -146,30 +243,41 @@ def _run_deriver_core(
         if ev.company_id is None:
             events_skipped += 1
             continue
-        signal_id = passthrough.get(ev.event_type)
-        if not signal_id:
+        evaluated = _evaluate_event_derivers(ev, passthrough, pattern_derivers)
+        if not evaluated:
             events_skipped += 1
             continue
 
-        key = (ev.company_id, signal_id)
-        if key not in aggregated:
-            aggregated[key] = {
-                "entity_id": ev.company_id,
-                "signal_id": signal_id,
-                "first_seen": ev.event_time,
-                "last_seen": ev.event_time,
-                "confidence": ev.confidence,
-            }
-        else:
-            agg = aggregated[key]
-            if ev.event_time < agg["first_seen"]:
-                agg["first_seen"] = ev.event_time
-            if ev.event_time > agg["last_seen"]:
-                agg["last_seen"] = ev.event_time
-            if ev.confidence is not None and (
-                agg["confidence"] is None or ev.confidence > agg["confidence"]
-            ):
-                agg["confidence"] = ev.confidence
+        for signal_id, deriver_type in evaluated:
+            logger.info(
+                "deriver_triggered pack_id=%s signal_id=%s event_id=%s deriver_type=%s",
+                pack_uuid,
+                signal_id,
+                ev.id,
+                deriver_type,
+            )
+            key = (ev.company_id, signal_id)
+            if key not in aggregated:
+                aggregated[key] = {
+                    "entity_id": ev.company_id,
+                    "signal_id": signal_id,
+                    "first_seen": ev.event_time,
+                    "last_seen": ev.event_time,
+                    "confidence": ev.confidence,
+                    "evidence_event_ids": [ev.id],
+                }
+            else:
+                agg = aggregated[key]
+                if ev.event_time < agg["first_seen"]:
+                    agg["first_seen"] = ev.event_time
+                if ev.event_time > agg["last_seen"]:
+                    agg["last_seen"] = ev.event_time
+                if ev.confidence is not None and (
+                    agg["confidence"] is None or ev.confidence > agg["confidence"]
+                ):
+                    agg["confidence"] = ev.confidence
+                if ev.id not in agg["evidence_event_ids"]:
+                    agg["evidence_event_ids"].append(ev.id)
 
     events_processed = len(events) - events_skipped
 
@@ -183,15 +291,18 @@ def _run_deriver_core(
     for (entity_id, signal_id), agg in aggregated.items():
         first_seen = _ensure_utc(agg["first_seen"])
         last_seen = _ensure_utc(agg["last_seen"])
-        values.append({
-            "entity_id": entity_id,
-            "signal_id": signal_id,
-            "pack_id": pack_uuid,
-            "strength": 1.0,
-            "confidence": agg["confidence"],
-            "first_seen": first_seen,
-            "last_seen": last_seen,
-        })
+        values.append(
+            {
+                "entity_id": entity_id,
+                "signal_id": signal_id,
+                "pack_id": pack_uuid,
+                "strength": 1.0,
+                "confidence": agg["confidence"],
+                "first_seen": first_seen,
+                "last_seen": last_seen,
+                "evidence_event_ids": agg.get("evidence_event_ids"),
+            }
+        )
 
     if values:
         stmt = insert(SignalInstance).values(values)
@@ -211,6 +322,7 @@ def _run_deriver_core(
                     SignalInstance.confidence,
                 ),
                 "strength": 1.0,
+                "evidence_event_ids": stmt.excluded.evidence_event_ids,
             },
         )
         db.execute(stmt)

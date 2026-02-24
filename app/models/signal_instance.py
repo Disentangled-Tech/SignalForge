@@ -9,7 +9,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -42,11 +42,12 @@ class SignalInstance(Base):
     )
     strength: Mapped[float | None] = mapped_column(Float, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    first_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+    first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    evidence_event_ids: Mapped[list | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="SignalEvent IDs that contributed to this instance (Phase 2, Issue #173)",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

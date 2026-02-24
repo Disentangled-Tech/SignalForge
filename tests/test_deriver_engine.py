@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Company, SignalEvent, SignalInstance
-from app.pipeline.deriver_engine import _build_passthrough_map, run_deriver
+from app.pipeline.deriver_engine import (
+    _build_passthrough_map,
+    _build_pattern_derivers,
+    _evaluate_event_derivers,
+    run_deriver,
+)
 
 _DERIVER_TEST_DOMAINS = (
     "deriver.example.com",
@@ -17,6 +24,11 @@ _DERIVER_TEST_DOMAINS = (
     "skip.example.com",
     "fail.example.com",
     "multievent.example.com",
+    "pattern.example.com",
+    "log.example.com",
+    "evidence.example.com",
+    "singleev.example.com",
+    "crosspack.example.com",
 )
 
 
@@ -32,12 +44,12 @@ def _cleanup_deriver_test_data(db: Session):
         for row in db.query(Company.id).filter(Company.domain.in_(_DERIVER_TEST_DOMAINS)).all()
     ]
     if company_ids:
-        db.query(SignalInstance).filter(
-            SignalInstance.entity_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-        db.query(SignalEvent).filter(
-            SignalEvent.company_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
+        db.query(SignalInstance).filter(SignalInstance.entity_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db.query(SignalEvent).filter(SignalEvent.company_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
         db.query(Company).filter(Company.domain.in_(_DERIVER_TEST_DOMAINS)).delete(
             synchronize_session="fetch"
         )
@@ -54,12 +66,12 @@ def _cleanup_deriver_test_data(db: Session):
         for row in db.query(Company.id).filter(Company.domain.in_(_DERIVER_TEST_DOMAINS)).all()
     ]
     if company_ids:
-        db.query(SignalInstance).filter(
-            SignalInstance.entity_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-        db.query(SignalEvent).filter(
-            SignalEvent.company_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
+        db.query(SignalInstance).filter(SignalInstance.entity_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db.query(SignalEvent).filter(SignalEvent.company_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
         db.query(Company).filter(Company.domain.in_(_DERIVER_TEST_DOMAINS)).delete(
             synchronize_session="fetch"
         )
@@ -77,6 +89,10 @@ def _make_event(
     event_type: str,
     pack_id,
     event_time: datetime | None = None,
+    *,
+    title: str | None = None,
+    summary: str | None = None,
+    confidence: float | None = None,
 ) -> SignalEvent:
     ev = SignalEvent(
         source="test",
@@ -84,6 +100,9 @@ def _make_event(
         event_time=event_time or datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
         company_id=company_id,
         pack_id=pack_id,
+        title=title,
+        summary=summary,
+        confidence=confidence,
     )
     db.add(ev)
     db.flush()
@@ -103,8 +122,6 @@ class TestBuildPassthroughMap:
 
     def test_passthrough_from_pack(self) -> None:
         """Pack with passthrough derivers produces event_type -> signal_id map."""
-        from types import SimpleNamespace
-
         pack = SimpleNamespace(
             derivers={
                 "passthrough": [
@@ -116,6 +133,134 @@ class TestBuildPassthroughMap:
         m = _build_passthrough_map(pack)
         assert m["funding_raised"] == "funding_raised"
         assert m["cto_role_posted"] == "cto_role_posted"
+
+
+class TestBuildPatternDerivers:
+    """Tests for _build_pattern_derivers (Phase 1, Issue #173)."""
+
+    def test_empty_pack_returns_empty(self) -> None:
+        """None or empty pack returns empty list."""
+        assert _build_pattern_derivers(None) == []
+        assert _build_pattern_derivers(SimpleNamespace(derivers=None)) == []
+
+    def test_pattern_from_pack(self) -> None:
+        """Pack with pattern derivers produces list of configs with compiled regex."""
+        pack = SimpleNamespace(
+            derivers={
+                "derivers": {
+                    "pattern": [
+                        {
+                            "pattern": r"(?i)compliance",
+                            "signal_id": "compliance_mentioned",
+                            "source_fields": ["title", "summary"],
+                        },
+                    ],
+                }
+            }
+        )
+        result = _build_pattern_derivers(pack)
+        assert len(result) == 1
+        assert result[0]["signal_id"] == "compliance_mentioned"
+        assert result[0]["compiled"].search("We need SOC2 compliance")
+        assert result[0]["source_fields"] == ["title", "summary"]
+        assert result[0]["min_confidence"] is None
+
+
+class TestEvaluateEventDerivers:
+    """Tests for _evaluate_event_derivers (Phase 1, Issue #173)."""
+
+    def test_passthrough_match(self) -> None:
+        """Passthrough deriver matches event_type."""
+        ev = SimpleNamespace(
+            event_type="funding_raised",
+            title=None,
+            summary=None,
+            confidence=0.8,
+        )
+        passthrough = {"funding_raised": "funding_raised"}
+        pattern: list = []
+        result = _evaluate_event_derivers(ev, passthrough, pattern)
+        assert result == [("funding_raised", "passthrough")]
+
+    def test_pattern_match(self) -> None:
+        """Pattern deriver matches title/summary."""
+        ev = SimpleNamespace(
+            event_type="other",
+            title="Company achieves SOC2 compliance",
+            summary=None,
+            confidence=0.8,
+        )
+        passthrough = {}
+        pattern = [
+            {
+                "signal_id": "compliance_mentioned",
+                "compiled": re.compile(r"(?i)(soc2|compliance)"),
+                "source_fields": ["title", "summary"],
+                "min_confidence": None,
+            },
+        ]
+        result = _evaluate_event_derivers(ev, passthrough, pattern)
+        assert result == [("compliance_mentioned", "pattern")]
+
+    def test_pattern_no_match(self) -> None:
+        """Pattern deriver does not match when text lacks pattern."""
+        ev = SimpleNamespace(
+            event_type="other",
+            title="New product launch",
+            summary="Exciting news",
+            confidence=0.8,
+        )
+        passthrough = {}
+        pattern = [
+            {
+                "signal_id": "compliance_mentioned",
+                "compiled": re.compile(r"(?i)(soc2|gdpr)"),
+                "source_fields": ["title", "summary"],
+                "min_confidence": None,
+            },
+        ]
+        result = _evaluate_event_derivers(ev, passthrough, pattern)
+        assert result == []
+
+    def test_min_confidence_threshold_skips_low_confidence(self) -> None:
+        """Pattern deriver with min_confidence skips events below threshold."""
+        ev = SimpleNamespace(
+            event_type="other",
+            title="SOC2 compliance achieved",
+            summary=None,
+            confidence=0.5,
+        )
+        passthrough = {}
+        pattern = [
+            {
+                "signal_id": "compliance_mentioned",
+                "compiled": re.compile(r"(?i)soc2"),
+                "source_fields": ["title", "summary"],
+                "min_confidence": 0.6,
+            },
+        ]
+        result = _evaluate_event_derivers(ev, passthrough, pattern)
+        assert result == []
+
+    def test_min_confidence_threshold_allows_high_confidence(self) -> None:
+        """Pattern deriver with min_confidence allows events at or above threshold."""
+        ev = SimpleNamespace(
+            event_type="other",
+            title="SOC2 compliance achieved",
+            summary=None,
+            confidence=0.7,
+        )
+        passthrough = {}
+        pattern = [
+            {
+                "signal_id": "compliance_mentioned",
+                "compiled": re.compile(r"(?i)soc2"),
+                "source_fields": ["title", "summary"],
+                "min_confidence": 0.6,
+            },
+        ]
+        result = _evaluate_event_derivers(ev, passthrough, pattern)
+        assert result == [("compliance_mentioned", "pattern")]
 
 
 class TestRunDeriver:
@@ -147,9 +292,7 @@ class TestRunDeriver:
         _make_event(db, company.id, "cto_role_posted", fractional_cto_pack_id)
         db.commit()
 
-        result = run_deriver(
-            db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-        )
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
         assert result["status"] == "completed"
         assert result["instances_upserted"] == 3
         assert result["events_processed"] == 3
@@ -184,9 +327,7 @@ class TestRunDeriver:
         _make_event(db, company.id, "funding_raised", fractional_cto_pack_id, t2)
         db.commit()
 
-        result = run_deriver(
-            db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-        )
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
         assert result["status"] == "completed"
         assert result["instances_upserted"] == 1
         inst = (
@@ -202,9 +343,7 @@ class TestRunDeriver:
         assert inst.first_seen == t1
         assert inst.last_seen == t2
 
-    def test_deriver_idempotent_rerun_same_count(
-        self, db: Session, fractional_cto_pack_id
-    ) -> None:
+    def test_deriver_idempotent_rerun_same_count(self, db: Session, fractional_cto_pack_id) -> None:
         """Run derive twice; second run produces same signal_instances (idempotent)."""
         company = Company(
             name="IdemCo",
@@ -218,9 +357,7 @@ class TestRunDeriver:
         _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
         db.commit()
 
-        result1 = run_deriver(
-            db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-        )
+        result1 = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
         assert result1["status"] == "completed"
         assert result1["instances_upserted"] == 1
 
@@ -234,9 +371,7 @@ class TestRunDeriver:
         )
         assert count_after_first == 1
 
-        result2 = run_deriver(
-            db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-        )
+        result2 = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
         assert result2["status"] == "completed"
         assert result2["instances_upserted"] == 1
 
@@ -267,16 +402,12 @@ class TestRunDeriver:
         _make_event(db, company.id, "unknown_event_type", fractional_cto_pack_id)
         db.commit()
 
-        result = run_deriver(
-            db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-        )
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
         assert result["status"] == "completed"
         assert result["instances_upserted"] == 1
         assert result["events_skipped"] == 1
 
-    def test_deriver_exception_marks_job_failed(
-        self, db: Session, fractional_cto_pack_id
-    ) -> None:
+    def test_deriver_exception_marks_job_failed(self, db: Session, fractional_cto_pack_id) -> None:
         """When deriver raises, job is marked failed and result returned."""
         company = Company(
             name="FailCo",
@@ -293,9 +424,7 @@ class TestRunDeriver:
             "app.pipeline.deriver_engine._run_deriver_core",
             side_effect=RuntimeError("simulated failure"),
         ):
-            result = run_deriver(
-                db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-            )
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
         assert result["status"] == "failed"
         assert result["instances_upserted"] == 0
         assert "simulated failure" in (result.get("error") or "")
@@ -318,3 +447,280 @@ class TestRunDeriver:
         # Events with company_id=None are skipped; we must skip at least our 1
         assert result["status"] == "completed"
         assert result["events_skipped"] >= 1
+
+    def test_deriver_pattern_produces_signal_instance(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """Pattern deriver matches title/summary and produces SignalInstance (Phase 1)."""
+        from app.packs.loader import Pack
+
+        company = Company(
+            name="PatternTestCo",
+            domain="pattern.example.com",
+            website_url="https://pattern.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        _make_event(
+            db,
+            company.id,
+            "funding_raised",
+            fractional_cto_pack_id,
+            title="Series A and SOC2 compliance achieved",
+            summary="We completed our compliance audit",
+        )
+        db.commit()
+
+        mock_pack = Pack(
+            manifest={"id": "test", "version": "1", "name": "Test", "schema_version": "1"},
+            taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
+            scoring={},
+            esl_policy={},
+            playbooks={},
+            derivers={
+                "derivers": {
+                    "passthrough": [
+                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
+                    ],
+                    "pattern": [
+                        {
+                            "pattern": r"(?i)(soc2|compliance)",
+                            "signal_id": "compliance_mentioned",
+                            "source_fields": ["title", "summary"],
+                        },
+                    ],
+                }
+            },
+            config_checksum="",
+        )
+
+        with patch(
+            "app.pipeline.deriver_engine.resolve_pack",
+            return_value=mock_pack,
+        ):
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+        assert result["status"] == "completed"
+        assert result["instances_upserted"] == 2
+        assert result["events_processed"] == 1
+
+        instances = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .all()
+        )
+        signal_ids = {i.signal_id for i in instances}
+        assert signal_ids == {"funding_raised", "compliance_mentioned"}
+
+    def test_deriver_evidence_populated(self, db: Session, fractional_cto_pack_id) -> None:
+        """Deriver populates evidence_event_ids with contributing SignalEvent IDs (Phase 2)."""
+        company = Company(
+            name="EvidenceCo",
+            domain="evidence.example.com",
+            website_url="https://evidence.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        ev1 = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        ev2 = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+        assert result["instances_upserted"] == 1
+
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        assert inst.evidence_event_ids is not None
+        assert set(inst.evidence_event_ids) == {ev1.id, ev2.id}
+
+    def test_deriver_evidence_single_event(self, db: Session, fractional_cto_pack_id) -> None:
+        """Single event produces evidence_event_ids with one ID."""
+        company = Company(
+            name="SingleEvCo",
+            domain="singleev.example.com",
+            website_url="https://singleev.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        ev = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        assert inst.evidence_event_ids == [ev.id]
+
+    def test_deriver_logs_triggered(self, db: Session, fractional_cto_pack_id, caplog) -> None:
+        """Deriver logs deriver_triggered at INFO for each signal produced (Phase 3)."""
+        import logging
+
+        company = Company(
+            name="LogTestCo",
+            domain="log.example.com",
+            website_url="https://log.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        with caplog.at_level(logging.INFO):
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+        assert result["status"] == "completed"
+        assert result["instances_upserted"] == 1
+
+        triggered = [r for r in caplog.records if "deriver_triggered" in r.message]
+        assert len(triggered) == 1
+        assert triggered[0].levelname == "INFO"
+        assert "pack_id=" in triggered[0].message
+        assert "signal_id=funding_raised" in triggered[0].message
+        assert "event_id=" in triggered[0].message
+        assert "deriver_type=passthrough" in triggered[0].message
+
+    @pytest.mark.skip(reason="Requires second pack in signal_packs; Phase 4 scope")
+    def test_cross_pack_different_signals_from_same_events(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """Two packs produce different signal_ids from the same events (pack isolation)."""
+        from app.models import SignalPack
+        from app.packs.loader import Pack
+
+        company = Company(
+            name="CrossPackCo",
+            domain="crosspack.example.com",
+            website_url="https://crosspack.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        # Create second pack in DB (required for signal_events FK)
+        pack_b_row = SignalPack(
+            pack_id="bookkeeping_test",
+            version="1",
+            is_active=True,
+        )
+        db.add(pack_b_row)
+        db.commit()
+        db.refresh(pack_b_row)
+        pack_b_id = pack_b_row.id
+
+        # Same event content, but pack-scoped: one event per pack
+        _make_event(
+            db,
+            company.id,
+            "funding_raised",
+            fractional_cto_pack_id,
+            title="Series A and SOC2",
+            summary="Compliance achieved",
+        )
+        _make_event(
+            db,
+            company.id,
+            "funding_raised",
+            pack_b_id,
+            title="Series A and SOC2",
+            summary="Compliance achieved",
+        )
+        db.commit()
+
+        # Pack A (fractional_cto): passthrough funding_raised + pattern compliance
+        pack_cto = Pack(
+            manifest={"id": "cto", "version": "1", "name": "CTO", "schema_version": "1"},
+            taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
+            scoring={},
+            esl_policy={},
+            playbooks={},
+            derivers={
+                "derivers": {
+                    "passthrough": [
+                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
+                    ],
+                    "pattern": [
+                        {
+                            "pattern": r"(?i)(soc2|compliance)",
+                            "signal_id": "compliance_mentioned",
+                            "source_fields": ["title", "summary"],
+                        },
+                    ],
+                }
+            },
+            config_checksum="",
+        )
+
+        # Pack B (bookkeeping): only maps funding_raised -> revenue_milestone, no pattern
+        pack_bookkeeping = Pack(
+            manifest={"id": "bookkeeping", "version": "1", "name": "Bookkeeping", "schema_version": "1"},
+            taxonomy={"signal_ids": ["revenue_milestone"]},
+            scoring={},
+            esl_policy={},
+            playbooks={},
+            derivers={
+                "derivers": {
+                    "passthrough": [
+                        {"event_type": "funding_raised", "signal_id": "revenue_milestone"},
+                    ],
+                }
+            },
+            config_checksum="",
+        )
+
+        with patch("app.pipeline.deriver_engine.resolve_pack", side_effect=[pack_cto, pack_bookkeeping]):
+            # Run deriver with pack A (CTO)
+            run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+            instances_cto = (
+                db.query(SignalInstance)
+                .filter(
+                    SignalInstance.entity_id == company.id,
+                    SignalInstance.pack_id == fractional_cto_pack_id,
+                )
+                .all()
+            )
+            signal_ids_cto = {i.signal_id for i in instances_cto}
+
+            # Run deriver with pack B (bookkeeping) - use different pack_id
+            run_deriver(db, pack_id=pack_b_id, company_ids=[company.id])
+            instances_b = (
+                db.query(SignalInstance)
+                .filter(
+                    SignalInstance.entity_id == company.id,
+                    SignalInstance.pack_id == pack_b_id,
+                )
+                .all()
+            )
+            signal_ids_b = {i.signal_id for i in instances_b}
+
+        assert signal_ids_cto == {"funding_raised", "compliance_mentioned"}
+        assert signal_ids_b == {"revenue_milestone"}
+        assert signal_ids_cto != signal_ids_b
