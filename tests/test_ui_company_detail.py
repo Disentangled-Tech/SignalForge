@@ -15,11 +15,13 @@ from app.api.views import _require_ui_auth
 from app.db.session import get_db
 from app.models import Company, User
 
+from tests.test_constants import TEST_USERNAME_VIEWS
+
 
 def _make_user() -> MagicMock:
     user = MagicMock(spec=User)
     user.id = 1
-    user.username = "ui_test_user"
+    user.username = TEST_USERNAME_VIEWS
     return user
 
 
