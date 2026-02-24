@@ -59,7 +59,7 @@ class TestValidatePackSchemaHappyPath:
 
     def test_valid_full_pack_passes(self) -> None:
         """validate_pack_schema with all valid config does not raise."""
-        from app.packs.schemas import ValidationError, validate_pack_schema
+        from app.packs.schemas import validate_pack_schema
 
         validate_pack_schema(
             manifest=_valid_manifest(),
@@ -327,3 +327,169 @@ class TestValidationErrorType:
         err = ValidationError("signal_id ghost_signal not in taxonomy")
         assert "ghost_signal" in str(err)
         assert "taxonomy" in str(err)
+
+
+class TestValidatePackSchemaPlaybooks:
+    """Playbooks reference valid sensitivity levels when present (Issue #190)."""
+
+    def test_playbook_recommendation_types_invalid_raises(self) -> None:
+        """Playbook with recommendation_types not in esl_policy boundaries raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "test"},
+                "ctas": ["CTA"],
+                "recommendation_types": ["Invalid Type"],
+            }
+        }
+        with pytest.raises(ValidationError, match="Invalid Type|recommendation_boundaries"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_recommendation_types_valid_passes(self) -> None:
+        """Playbook with recommendation_types in boundaries passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "test"},
+                "ctas": ["CTA"],
+                "recommendation_types": ["Observe Only", "Standard Outreach"],
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_playbook_without_sensitivity_refs_passes(self) -> None:
+        """Playbook without sensitivity_levels or recommendation_types passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=_valid_playbooks(),
+        )
+
+
+class TestValidatePackSchemaStrictSemver:
+    """Version semver validation when strict_semver=True (Issue #190)."""
+
+    def test_strict_semver_invalid_version_raises(self) -> None:
+        """strict_semver=True with version '1' raises (not x.y.z)."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        manifest = {**_valid_manifest(), "version": "1"}
+        with pytest.raises(ValidationError, match="semver|x.y.z"):
+            validate_pack_schema(
+                manifest=manifest,
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=_valid_playbooks(),
+                strict_semver=True,
+            )
+
+    def test_strict_semver_valid_version_passes(self) -> None:
+        """strict_semver=True with version '1.0.0' passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        manifest = {**_valid_manifest(), "version": "1.0.0"}
+        validate_pack_schema(
+            manifest=manifest,
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=_valid_playbooks(),
+            strict_semver=True,
+        )
+
+    def test_non_strict_semver_accepts_legacy_version(self) -> None:
+        """strict_semver=False accepts version '1' (backward compat)."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=_valid_playbooks(),
+            strict_semver=False,
+        )
+
+
+class TestValidatePackSchemaStrictExplainability:
+    """Explainability validation when strict_explainability=True (Issue #190)."""
+
+    def test_strict_explainability_missing_templates_raises(self) -> None:
+        """strict_explainability=True without explainability_templates raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        with pytest.raises(ValidationError, match="explainability_templates"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=_valid_playbooks(),
+                strict_explainability=True,
+            )
+
+    def test_strict_explainability_missing_signal_raises(self) -> None:
+        """strict_explainability=True with missing signal_id in templates raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        taxonomy = {
+            **_valid_taxonomy(),
+            "explainability_templates": {"funding_raised": "{label} on {date}"},
+        }
+        with pytest.raises(ValidationError, match="cto_role_posted|missing"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=taxonomy,
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=_valid_playbooks(),
+                strict_explainability=True,
+            )
+
+    def test_strict_explainability_valid_passes(self) -> None:
+        """strict_explainability=True with all templates passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        taxonomy = {
+            **_valid_taxonomy(),
+            "explainability_templates": {
+                "funding_raised": "{label} observed on {date}",
+                "cto_role_posted": "{label} detected on {date}",
+            },
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=taxonomy,
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=_valid_playbooks(),
+            strict_explainability=True,
+        )
