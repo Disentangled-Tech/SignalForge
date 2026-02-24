@@ -96,7 +96,7 @@ def test_migration_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # Skip when pack migrations (20260223 or ee6582573566) are applied: downgrade
+    # Skip when pack migrations (20260223, ee6582573566, 20260224) are applied: downgrade
     # fails due to workspaces/signal_instances FKs, constraint mismatches,
     # and duplicate (company_id, as_of) when multiple packs have data.
     result = subprocess.run(
@@ -107,7 +107,7 @@ def test_migration_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
         timeout=10,
     )
     out = result.stdout or ""
-    if "20260223_signal_packs" in out or "ee6582573566" in out:
+    if "20260223_signal_packs" in out or "ee6582573566" in out or "20260224_config_checksum" in out:
         pytest.skip(
             "Full downgrade to base not supported with pack migrations "
             "(see migration docstring for downgrade limitations)"

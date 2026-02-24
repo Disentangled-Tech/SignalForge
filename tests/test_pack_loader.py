@@ -197,3 +197,68 @@ class TestPackSchemaValidation:
             else {}
         )
         assert bool(sc) or bool(scoring), "scoring config must not be empty"
+
+
+class TestPackConfigChecksum:
+    """Pack config_checksum computed and stable (Issue #190, Phase 3)."""
+
+    def test_load_pack_returns_config_checksum(self) -> None:
+        """load_pack returns Pack with config_checksum attribute."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        assert hasattr(pack, "config_checksum")
+        assert pack.config_checksum is not None
+        assert isinstance(pack.config_checksum, str)
+        assert len(pack.config_checksum) == 64
+        assert all(c in "0123456789abcdef" for c in pack.config_checksum)
+
+    def test_checksum_stable_for_same_config(self) -> None:
+        """Same pack config produces identical checksum on repeated loads."""
+        from app.packs.loader import load_pack
+
+        pack1 = load_pack("fractional_cto_v1", "1")
+        pack2 = load_pack("fractional_cto_v1", "1")
+        assert pack1.config_checksum == pack2.config_checksum
+
+    def test_compute_pack_config_checksum_deterministic(self) -> None:
+        """compute_pack_config_checksum produces same hash for same input."""
+        from app.packs.loader import compute_pack_config_checksum
+
+        cfg = {
+            "manifest": {"id": "test", "version": "1.0.0"},
+            "taxonomy": {"signal_ids": ["a", "b"]},
+            "scoring": {},
+            "esl_policy": {},
+            "derivers": {},
+            "playbooks": {},
+        }
+        h1 = compute_pack_config_checksum(**cfg)
+        h2 = compute_pack_config_checksum(**cfg)
+        assert h1 == h2
+        assert len(h1) == 64
+        assert all(c in "0123456789abcdef" for c in h1)
+
+    def test_compute_pack_config_checksum_different_on_input_change(self) -> None:
+        """Different config produces different checksum."""
+        from app.packs.loader import compute_pack_config_checksum
+
+        cfg1 = {
+            "manifest": {"id": "test", "version": "1.0.0"},
+            "taxonomy": {"signal_ids": ["a", "b"]},
+            "scoring": {},
+            "esl_policy": {},
+            "derivers": {},
+            "playbooks": {},
+        }
+        cfg2 = {
+            "manifest": {"id": "test", "version": "1.0.1"},
+            "taxonomy": {"signal_ids": ["a", "b"]},
+            "scoring": {},
+            "esl_policy": {},
+            "derivers": {},
+            "playbooks": {},
+        }
+        h1 = compute_pack_config_checksum(**cfg1)
+        h2 = compute_pack_config_checksum(**cfg2)
+        assert h1 != h2

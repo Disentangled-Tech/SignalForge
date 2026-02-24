@@ -9,11 +9,10 @@ Tests verify:
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
 
 @pytest.mark.integration
 def test_signal_packs_table_exists(db: Session) -> None:
@@ -195,3 +194,39 @@ def test_signal_pack_id_unique_per_version(db: Session) -> None:
     # Unique index on (pack_id, version)
     indexes = result.fetchall()
     assert len(indexes) >= 1
+
+
+@pytest.mark.integration
+def test_signal_packs_has_config_checksum_column(db: Session) -> None:
+    """signal_packs has config_checksum column (Issue #190, Phase 3)."""
+    result = db.execute(
+        text(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'signal_packs'
+            AND column_name = 'config_checksum'
+            """
+        )
+    )
+    assert result.scalar() == "config_checksum"
+
+
+@pytest.mark.integration
+def test_fractional_cto_v1_config_checksum_backfilled(db: Session) -> None:
+    """fractional_cto_v1 pack has config_checksum backfilled and matches loader."""
+    from app.packs.loader import load_pack
+
+    result = db.execute(
+        text(
+            """
+            SELECT config_checksum FROM signal_packs
+            WHERE pack_id = 'fractional_cto_v1' AND version = '1'
+            """
+        )
+    )
+    row = result.fetchone()
+    assert row is not None
+    assert row.config_checksum is not None
+    assert len(row.config_checksum) == 64
+    pack = load_pack("fractional_cto_v1", "1")
+    assert row.config_checksum == pack.config_checksum
