@@ -106,3 +106,13 @@ def fractional_cto_pack_id(db):
     if pack is None:
         pytest.skip("fractional_cto_v1 pack not found (run migration 20260223_signal_packs)")
     return pack.id
+
+
+@pytest.fixture
+def bookkeeping_pack_id(db):
+    """UUID of bookkeeping_v1 pack (Issue #175, Phase 3). Use for ESL gate tests."""
+    from app.models import SignalPack
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "bookkeeping_v1").first()
+    if pack is None:
+        pytest.skip("bookkeeping_v1 pack not found (run migration 20260224_bookkeeping_pack)")
+    return pack.id

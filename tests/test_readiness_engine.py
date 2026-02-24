@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, date, datetime, timedelta
 
 from app.services.readiness.readiness_engine import (
     compute_complexity,
@@ -25,7 +23,7 @@ class MockEvent:
 
 
 def _days_ago(days: int) -> datetime:
-    return datetime.now(timezone.utc) - timedelta(days=days)
+    return datetime.now(UTC) - timedelta(days=days)
 
 
 def _event(etype: str, days_ago: int, confidence: float | None = 0.7) -> MockEvent:
@@ -125,7 +123,7 @@ class TestQuietSignalAmplification:
             _event("job_posted_infra", 10),
             _event("funding_raised", 5),
         ]
-        m = compute_momentum(events, as_of)
+        _ = compute_momentum(events, as_of)
         c = compute_complexity(events, as_of)
         # Jobs: 10*1.0*0.7=7 (cap 30); funding: 35*1.0*0.7=24.5; M = 7+24.5=31.5→31 or 32
         # C: job_posted_infra 10*1.0*0.7=7
@@ -472,10 +470,7 @@ class TestReadinessEnginePackParameter:
 
         as_of = date.today()
         events = [_event("funding_raised", 5), _event("cto_role_posted", 50)]
-        try:
-            result = compute_readiness(events, as_of, pack=None)
-        except TypeError:
-            pytest.skip("compute_readiness does not yet accept pack parameter (Step 1.3)")
+        result = compute_readiness(events, as_of, pack=None)
         assert "composite" in result
         assert "momentum" in result
         assert result["leadership_gap"] == 70
@@ -487,11 +482,56 @@ class TestReadinessEnginePackParameter:
         as_of = date.today()
         events = [_event("funding_raised", 5), _event("job_posted_engineering", 10)]
         result_none = compute_readiness(events, as_of)
-        try:
-            from app.packs.loader import load_pack
-            cto_pack = load_pack("fractional_cto_v1", "1")
-            result_pack = compute_readiness(events, as_of, pack=cto_pack)
-            assert result_pack["composite"] == result_none["composite"]
-            assert result_pack["momentum"] == result_none["momentum"]
-        except ImportError:
-            pytest.skip("app.packs.loader not implemented")
+        from app.packs.loader import load_pack
+
+        cto_pack = load_pack("fractional_cto_v1", "1")
+        result_pack = compute_readiness(events, as_of, pack=cto_pack)
+        assert result_pack["composite"] == result_none["composite"]
+        assert result_pack["momentum"] == result_none["momentum"]
+
+
+class TestDisqualifierSignals:
+    """Disqualifier signals zero R when event present in window (Phase 2, Issue #174)."""
+
+    def test_disqualifier_cto_hired_zeros_composite_when_in_window(self) -> None:
+        """When pack defines cto_hired as disqualifier, R=0 when cto_hired in 180d."""
+        from types import SimpleNamespace
+
+        from app.services.readiness.readiness_engine import compute_readiness
+
+        # Mock pack with disqualifier_signals
+        pack = SimpleNamespace(
+            scoring={
+                "base_scores": {"momentum": {}, "complexity": {}, "pressure": {}, "leadership_gap": {}},
+                "quiet_signal": {},
+                "caps": {},
+                "composite_weights": {"M": 0.30, "C": 0.30, "P": 0.25, "G": 0.15},
+                "decay": {},
+                "suppressors": {"cto_hired_60_days": 70, "cto_hired_180_days": 50},
+                "disqualifier_signals": {"cto_hired": 180},
+            }
+        )
+        as_of = date.today()
+        events = [
+            _event("funding_raised", 5),
+            _event("cto_role_posted", 50),
+            _event("cto_hired", 45),
+        ]
+        result = compute_readiness(events, as_of, pack=pack)
+        assert result["composite"] == 0
+        assert "disqualifiers_applied" in result["explain"]
+        assert "cto_hired" in result["explain"]["disqualifiers_applied"]
+
+    def test_disqualifier_empty_preserves_composite(self) -> None:
+        """When pack has empty disqualifier_signals, R is not zeroed."""
+        from app.services.readiness.readiness_engine import compute_readiness
+
+        as_of = date.today()
+        events = [_event("funding_raised", 5), _event("cto_role_posted", 50)]
+        result_none = compute_readiness(events, as_of, pack=None)
+        from app.packs.loader import load_pack
+
+        cto_pack = load_pack("fractional_cto_v1", "1")
+        result_pack = compute_readiness(events, as_of, pack=cto_pack)
+        assert result_pack["composite"] == result_none["composite"]
+        assert "disqualifiers_applied" not in result_pack["explain"]

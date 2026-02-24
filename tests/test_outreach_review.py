@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +14,6 @@ from app.services.outreach_review import (
     get_latest_snapshot_date,
     get_weekly_review_companies,
 )
-
 
 # Use unique date to avoid collision with other tests
 _REVIEW_AS_OF = date(2099, 2, 1)
@@ -37,6 +36,7 @@ def _add_snapshots(
     composite: int = 80,
     esl_score: float = 0.8,
     outreach_score: int | None = None,
+    explain: dict | None = None,
 ) -> None:
     """Create ReadinessSnapshot + EngagementSnapshot for a company."""
     rs = ReadinessSnapshot(
@@ -55,6 +55,7 @@ def _add_snapshots(
         esl_score=esl_score,
         engagement_type="Standard Outreach",
         outreach_score=outreach_score or round(composite * esl_score),
+        explain=explain,
     )
     db.add(es)
     db.commit()
@@ -63,9 +64,9 @@ def _add_snapshots(
 @pytest.fixture
 def api_client(db: Session) -> TestClient:
     """TestClient with real DB and mocked auth."""
-    from app.main import app
     from app.api.deps import require_auth
     from app.db.session import get_db
+    from app.main import app
 
     def override_get_db():
         yield db
@@ -116,7 +117,7 @@ class TestGetWeeklyReviewCompanies:
         db.refresh(company)
 
         _add_snapshots(db, company.id, _REVIEW_AS_OF, composite=80, esl_score=0.9)
-        as_of_dt = datetime.combine(_REVIEW_AS_OF, datetime.min.time()).replace(tzinfo=timezone.utc)
+        as_of_dt = datetime.combine(_REVIEW_AS_OF, datetime.min.time()).replace(tzinfo=UTC)
         ten_days_ago = as_of_dt - timedelta(days=10)
         oh = OutreachHistory(
             company_id=company.id,
@@ -140,7 +141,7 @@ class TestGetWeeklyReviewCompanies:
         db.refresh(company)
 
         _add_snapshots(db, company.id, _REVIEW_AS_OF, composite=80, esl_score=0.9)
-        as_of_dt = datetime.combine(_REVIEW_AS_OF, datetime.min.time()).replace(tzinfo=timezone.utc)
+        as_of_dt = datetime.combine(_REVIEW_AS_OF, datetime.min.time()).replace(tzinfo=UTC)
         hundred_days_ago = as_of_dt - timedelta(days=100)
         oh = OutreachHistory(
             company_id=company.id,
@@ -165,7 +166,7 @@ class TestGetWeeklyReviewCompanies:
         db.refresh(company)
 
         _add_snapshots(db, company.id, _REVIEW_AS_OF, composite=80, esl_score=0.9)
-        as_of_dt = datetime.combine(_REVIEW_AS_OF, datetime.min.time()).replace(tzinfo=timezone.utc)
+        as_of_dt = datetime.combine(_REVIEW_AS_OF, datetime.min.time()).replace(tzinfo=UTC)
         sixty_one_days_ago = as_of_dt - timedelta(days=61)
         oh = OutreachHistory(
             company_id=company.id,
@@ -250,6 +251,78 @@ class TestGetWeeklyReviewCompanies:
             db, _REVIEW_AS_OF, limit=10, outreach_score_threshold=30
         )
         assert result == []
+
+    def test_excludes_suppressed_entities(self, db: Session) -> None:
+        """Companies with esl_decision=suppress in explain are excluded (Issue #175, Phase 3)."""
+        c1 = Company(name="Allowed Co", website_url="https://allowed.example.com")
+        c2 = Company(name="Suppressed Co", website_url="https://suppressed.example.com")
+        db.add_all([c1, c2])
+        db.commit()
+        db.refresh(c1)
+        db.refresh(c2)
+
+        _add_snapshots(db, c1.id, _REVIEW_AS_OF, composite=80, esl_score=0.9)
+        _add_snapshots(
+            db,
+            c2.id,
+            _REVIEW_AS_OF,
+            composite=80,
+            esl_score=0.9,
+            explain={"esl_decision": "suppress", "esl_reason_code": "blocked_signal"},
+        )
+        db.commit()
+
+        result = get_weekly_review_companies(
+            db, _REVIEW_AS_OF, limit=10, outreach_score_threshold=30
+        )
+
+        assert len(result) == 1
+        assert result[0]["company_id"] == c1.id
+
+    def test_applies_tone_constraint_for_allow_with_constraints(
+        self, db: Session
+    ) -> None:
+        """effective_engagement_type is capped when allow_with_constraints (Issue #175)."""
+        company = Company(
+            name="Constraint Co", website_url="https://constraint.example.com"
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        _add_snapshots(
+            db,
+            company.id,
+            _REVIEW_AS_OF,
+            composite=80,
+            esl_score=0.9,
+            explain={
+                "esl_decision": "allow_with_constraints",
+                "tone_constraint": "Soft Value Share",
+            },
+        )
+        db.commit()
+
+        # Manually set engagement_type to Standard Outreach on the snapshot
+        from app.models import EngagementSnapshot
+
+        es = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == _REVIEW_AS_OF,
+            )
+            .first()
+        )
+        es.engagement_type = "Standard Outreach"
+        db.commit()
+
+        result = get_weekly_review_companies(
+            db, _REVIEW_AS_OF, limit=10, outreach_score_threshold=30
+        )
+
+        assert len(result) == 1
+        assert result[0]["effective_engagement_type"] == "Soft Value Share"
 
 
 class TestGetLatestSnapshotDate:

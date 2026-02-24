@@ -9,12 +9,21 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, OutreachHistory, ReadinessSnapshot, SignalEvent
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    OutreachHistory,
+    ReadinessSnapshot,
+    SignalEvent,
+    SignalInstance,
+)
 from app.services.esl.esl_constants import STABILITY_CAP_THRESHOLD
+from app.services.esl.esl_decision import evaluate_esl_decision
 from app.services.esl.esl_engine import (
     build_esl_explain,
     compute_alignment_modifier,
@@ -29,6 +38,27 @@ from app.services.esl.esl_engine import (
     map_esl_to_recommendation,
 )
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
+
+
+def _get_signal_ids_for_company(
+    db: Session, company_id: int, pack_id: str | UUID | None
+) -> set[str]:
+    """Fetch signal_ids for company from SignalInstance (Issue #175).
+
+    Returns empty set when no SignalInstances (e.g. watchlist company).
+    """
+    if pack_id is None:
+        return set()
+    instances = (
+        db.query(SignalInstance.signal_id)
+        .filter(
+            SignalInstance.entity_id == company_id,
+            SignalInstance.pack_id == pack_id,
+        )
+        .distinct()
+        .all()
+    )
+    return {row[0] for row in instances if row[0]}
 
 
 def compute_esl_from_context(
@@ -145,6 +175,14 @@ def compute_esl_from_context(
         stability_cap_triggered=stability_cap_triggered,
     )
 
+    # Issue #175: ESL decision gate (Phase 2); Phase 4: also in dedicated columns
+    signal_ids = _get_signal_ids_for_company(db, company_id, pack_id)
+    esl_result = evaluate_esl_decision(signal_ids, pack)
+    explain["esl_decision"] = esl_result.decision
+    explain["esl_reason_code"] = esl_result.reason_code
+    explain["sensitivity_level"] = esl_result.sensitivity_level
+    explain["tone_constraint"] = esl_result.tone_constraint
+
     return {
         "esl_composite": esl_composite,
         "stability_modifier": sm,
@@ -154,6 +192,9 @@ def compute_esl_from_context(
         "alignment_high": company.alignment_ok_to_contact is not False,
         "trs": readiness.composite,
         "pack_id": pack_id,
+        "esl_decision": esl_result.decision,
+        "esl_reason_code": esl_result.reason_code,
+        "sensitivity_level": esl_result.sensitivity_level,
     }
 
 
@@ -183,6 +224,9 @@ def write_engagement_snapshot(
 
     cadence_blocked = ctx["cadence_blocked"]
     pack_id = ctx["pack_id"]
+    esl_decision = ctx.get("esl_decision")
+    esl_reason_code = ctx.get("esl_reason_code")
+    sensitivity_level = ctx.get("sensitivity_level")
 
     existing = (
         db.query(EngagementSnapshot)
@@ -203,6 +247,9 @@ def write_engagement_snapshot(
         existing.cadence_blocked = cadence_blocked
         existing.explain = explain
         existing.outreach_score = outreach_score
+        existing.esl_decision = esl_decision
+        existing.esl_reason_code = esl_reason_code
+        existing.sensitivity_level = sensitivity_level
         db.commit()
         db.refresh(existing)
         return existing
@@ -219,6 +266,9 @@ def write_engagement_snapshot(
         explain=explain,
         outreach_score=outreach_score,
         pack_id=pack_id,
+        esl_decision=esl_decision,
+        esl_reason_code=esl_reason_code,
+        sensitivity_level=sensitivity_level,
     )
     db.add(snapshot)
     db.commit()

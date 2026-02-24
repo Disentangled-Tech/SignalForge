@@ -1,0 +1,11 @@
+# ORE outreach playbook for bookkeeping_v1 (Issue #175, Phase 3)
+
+pattern_frames:
+  momentum: "When a team's pace changes, support needs often shift."
+  pressure: "When timelines get tighter, it helps to have a clear plan."
+
+value_assets:
+  - "Bookkeeping checklist"
+
+ctas:
+  - "Want me to send that checklist?"

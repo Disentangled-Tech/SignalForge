@@ -20,6 +20,7 @@ from app.models.signal_record import SignalRecord
 from app.prompts.loader import render_prompt
 from app.services.email_service import send_briefing_email
 from app.services.esl.esl_engine import compute_outreach_score
+from app.services.esl.esl_gate_filter import is_suppressed_from_engagement
 from app.services.outreach import generate_outreach
 from app.services.pack_resolver import get_default_pack_id
 from app.services.settings_resolver import get_resolved_settings
@@ -187,6 +188,9 @@ def get_emerging_companies(
     Ranking contract (Issue #103): OutreachScore = round(TRS × ESL), 0–100.
     Companies are ranked by OutreachScore descending; threshold filter applied.
     Pack-scoped: only returns data for the given pack (Issue #189).
+
+    Note: Pack minimum_threshold (R >= min) is not yet enforced here.
+    See docs/MINIMUM_THRESHOLD_ENFORCEMENT.md for enforcement plan.
     """
     if pack_id is None:
         pack_id = get_default_pack_id(db)
@@ -212,6 +216,9 @@ def get_emerging_companies(
     results: list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]] = []
     for rs, es in pairs:
         if not rs.company:
+            continue
+        # Exclude suppressed entities (Issue #175, Phase 3; Phase 4: prefer column)
+        if is_suppressed_from_engagement(es.esl_decision, es.explain):
             continue
         outreach_score = compute_outreach_score(rs.composite, es.esl_score)
         # Include cadence_blocked companies (Observe Only) even when outreach_score < threshold

@@ -1,5 +1,5 @@
-# ESL policy for fractional_cto_v1 (Issue #189)
-# Extracted from app/services/esl/esl_constants
+# ESL policy for bookkeeping_v1 (Issue #175, Phase 3)
+# blocked_signals: financial_distress → suppress (gate test)
 
 cadence_cooldown_days: 60
 declined_cooldown_days: 180
@@ -16,11 +16,6 @@ stability:
     spi: 0.35
     csi: 0.25
 
-alignment:
-  ok_modifier: 1.0
-  not_ok_modifier: 0.5
-  null_modifier: 1.0
-
 stability_cap_threshold: 0.7
 
 recommendation_boundaries:
@@ -31,13 +26,11 @@ recommendation_boundaries:
   - [0.9, "Direct Strategic Outreach"]
 
 svi_event_types:
-  - founder_urgency_language
-  - regulatory_deadline
-  - enterprise_customer
+  - financial_distress
   - revenue_milestone
   - funding_raised
 
-# Issue #175 — ESL pack policy binding (Phase 1)
-# Empty/minimal for parity: all entities get allow
-blocked_signals: []
+# Issue #175 Phase 3 — distress → suppress
+blocked_signals:
+  - financial_distress
 prohibited_combinations: []

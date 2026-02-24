@@ -340,6 +340,51 @@ def test_get_emerging_companies_cadence_blocked_included_with_observe_only(
     assert es.engagement_type == "Observe Only"
 
 
+def test_get_emerging_companies_excludes_suppressed_entities(db: Session) -> None:
+    """Companies with esl_decision=suppress in explain are excluded (Issue #175, Phase 3)."""
+    c1 = Company(name="Allowed Co", website_url="https://allowed.example.com")
+    c2 = Company(name="Suppressed Co", website_url="https://suppressed.example.com")
+    db.add_all([c1, c2])
+    db.commit()
+    db.refresh(c1)
+    db.refresh(c2)
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    as_of = date(2099, 1, 25)
+    for c in [c1, c2]:
+        rs = ReadinessSnapshot(
+            company_id=c.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
+            composite=80,
+            pack_id=pack_id,
+        )
+        db.add(rs)
+    _add_engagement_snapshot(db, c1.id, as_of, esl_score=0.8)
+    es2 = EngagementSnapshot(
+        company_id=c2.id,
+        as_of=as_of,
+        esl_score=0.8,
+        engagement_type="Standard Outreach",
+        cadence_blocked=False,
+        pack_id=pack_id,
+        explain={"esl_decision": "suppress", "esl_reason_code": "blocked_signal"},
+    )
+    db.add(es2)
+    db.commit()
+
+    result = get_emerging_companies(
+        db, as_of, limit=10, outreach_score_threshold=30
+    )
+
+    assert len(result) == 1
+    assert result[0][2].name == "Allowed Co"
+
+
 def test_get_emerging_companies_cadence_blocked_included_when_outreach_score_zero(
     db: Session,
 ) -> None:

@@ -31,8 +31,13 @@ from app.services.readiness.scoring_constants import (
     CAP_JOBS_COMPLEXITY,
     CAP_JOBS_MOMENTUM,
     COMPOSITE_WEIGHTS,
+    DEFAULT_DECAY_COMPLEXITY,
+    DEFAULT_DECAY_MOMENTUM,
+    DEFAULT_DECAY_PRESSURE,
     QUIET_SIGNAL_AMPLIFIED_BASE,
     QUIET_SIGNAL_LOOKBACK_DAYS,
+    SUPPRESS_CTO_HIRED_60_DAYS,
+    SUPPRESS_CTO_HIRED_180_DAYS,
     from_pack,
 )
 
@@ -128,6 +133,29 @@ class TestFromPackFractionalCtoMatchesDefaults:
         assert cfg["quiet_signal_lookback_days"] == QUIET_SIGNAL_LOOKBACK_DAYS
         assert cfg["quiet_signal_amplified_base"] == QUIET_SIGNAL_AMPLIFIED_BASE
 
+    def test_from_pack_decay_matches_module_defaults(self) -> None:
+        """Decay breakpoints from pack match DEFAULT_DECAY_* (Issue #174)."""
+        cfg = from_pack(_load_fractional_cto_scoring())
+        assert cfg["decay_momentum"] == DEFAULT_DECAY_MOMENTUM
+        assert cfg["decay_pressure"] == DEFAULT_DECAY_PRESSURE
+        assert cfg["decay_complexity"] == DEFAULT_DECAY_COMPLEXITY
+
+    def test_from_pack_suppressors_match_module_defaults(self) -> None:
+        """Suppressors from pack match SUPPRESS_CTO_HIRED_* (Issue #174)."""
+        cfg = from_pack(_load_fractional_cto_scoring())
+        assert cfg["suppress_cto_hired_60_days"] == SUPPRESS_CTO_HIRED_60_DAYS
+        assert cfg["suppress_cto_hired_180_days"] == SUPPRESS_CTO_HIRED_180_DAYS
+
+    def test_from_pack_minimum_threshold_defaults_to_zero(self) -> None:
+        """minimum_threshold defaults to 0 when pack omits it (Issue #174)."""
+        cfg = from_pack(_load_fractional_cto_scoring())
+        assert cfg["minimum_threshold"] == 0
+
+    def test_from_pack_disqualifier_signals_empty_for_cto(self) -> None:
+        """Fractional CTO pack has empty disqualifier_signals for parity (Phase 2)."""
+        cfg = from_pack(_load_fractional_cto_scoring())
+        assert cfg["disqualifier_signals"] == {}
+
 
 class TestReadinessParitySameEventsPackNoneVsCto:
     """compute_readiness(events, pack=None) == compute_readiness(events, pack=cto)."""
@@ -140,18 +168,15 @@ class TestReadinessParitySameEventsPackNoneVsCto:
             _event("cto_role_posted", 30),
         ]
         result_none = compute_readiness(events, _PARITY_AS_OF, pack=None)
-        try:
-            from app.packs.loader import load_pack
+        from app.packs.loader import load_pack
 
-            cto_pack = load_pack("fractional_cto_v1", "1")
-            result_pack = compute_readiness(events, _PARITY_AS_OF, pack=cto_pack)
-            assert result_pack["composite"] == result_none["composite"]
-            assert result_pack["momentum"] == result_none["momentum"]
-            assert result_pack["complexity"] == result_none["complexity"]
-            assert result_pack["pressure"] == result_none["pressure"]
-            assert result_pack["leadership_gap"] == result_none["leadership_gap"]
-        except ImportError:
-            pytest.skip("app.packs.loader not available")
+        cto_pack = load_pack("fractional_cto_v1", "1")
+        result_pack = compute_readiness(events, _PARITY_AS_OF, pack=cto_pack)
+        assert result_pack["composite"] == result_none["composite"]
+        assert result_pack["momentum"] == result_none["momentum"]
+        assert result_pack["complexity"] == result_none["complexity"]
+        assert result_pack["pressure"] == result_none["pressure"]
+        assert result_pack["leadership_gap"] == result_none["leadership_gap"]
 
 
 class TestEmergingCompaniesParityPackVsLegacy:
@@ -252,6 +277,16 @@ class TestEmergingCompaniesParityPackVsLegacy:
         expected_ids = {c.id for c in companies}
         assert pack_entity_ids == expected_ids
         assert legacy_entity_ids == expected_ids
+
+        # ESL decision (engagement_type) present and consistent for matching entities
+        pack_by_id = {c.id: es.engagement_type for _, es, c in result_pack}
+        legacy_by_id = {c.id: es.engagement_type for _, es, c in result_legacy}
+        for eid in expected_ids:
+            assert pack_by_id[eid], f"Pack result missing engagement_type for company {eid}"
+            assert legacy_by_id[eid], f"Legacy result missing engagement_type for company {eid}"
+            assert pack_by_id[eid] == legacy_by_id[eid], (
+                f"ESL decision mismatch for company {eid}: pack={pack_by_id[eid]!r} vs legacy={legacy_by_id[eid]!r}"
+            )
 
     @pytest.mark.integration
     def test_same_fixture_pack_vs_legacy_same_ordering_within_tolerance(
@@ -365,6 +400,10 @@ class TestEmergingCompaniesParityPackVsLegacy:
         # Same score bands (ordering by OutreachScore desc)
         assert pack_scores == [64, 60, 58, 54, 35]
         assert legacy_scores == [64, 60, 58, 54, 35]
+
+        # ESL decision (engagement_type) present for all results
+        assert all(es.engagement_type for _, es, _ in result_pack)
+        assert all(es.engagement_type for _, es, _ in result_legacy)
 
 
 # TestAdapter domains for ingest→derive→score harness
@@ -485,3 +524,20 @@ class TestIngestDeriveScoreParity:
             for snap in snapshots:
                 assert 0 <= snap.composite <= 100
                 assert snap.explain is not None
+
+            # Issue #175 Phase 2: ESL decision=allow for fractional CTO pack
+            eng_snapshots = (
+                db.query(EngagementSnapshot)
+                .filter(
+                    EngagementSnapshot.company_id.in_(c.id for c in companies),
+                    EngagementSnapshot.as_of == _PARITY_INGEST_AS_OF,
+                    EngagementSnapshot.pack_id == fractional_cto_pack_id,
+                )
+                .all()
+            )
+            for es in eng_snapshots:
+                assert es.explain is not None
+                assert es.explain.get("esl_decision") == "allow", (
+                    f"Fractional CTO pack must produce esl_decision=allow; "
+                    f"got {es.explain.get('esl_decision')!r} for company {es.company_id}"
+                )

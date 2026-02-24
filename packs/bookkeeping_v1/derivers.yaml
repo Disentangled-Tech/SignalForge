@@ -1,0 +1,12 @@
+# Derivers for bookkeeping_v1 (Issue #175, Phase 3)
+
+derivers:
+  passthrough:
+    - event_type: financial_distress
+      signal_id: financial_distress
+    - event_type: revenue_milestone
+      signal_id: revenue_milestone
+    - event_type: funding_raised
+      signal_id: funding_raised
+    - event_type: layoffs_announced
+      signal_id: layoffs_announced
