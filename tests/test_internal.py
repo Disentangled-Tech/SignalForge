@@ -187,6 +187,60 @@ class TestRunScore:
         assert data["status"] == "failed"
         assert "DB error" in data["error"]
 
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_score_with_workspace_and_pack_params(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_score passes workspace_id and pack_id to executor."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 99,
+            "companies_scored": 0,
+            "companies_engagement": 0,
+            "companies_skipped": 0,
+            "error": None,
+        }
+        workspace_id = "00000000-0000-0000-0000-000000000001"
+        pack_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+        response = client.post(
+            "/internal/run_score",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": workspace_id, "pack_id": pack_id},
+        )
+
+        assert response.status_code == 200
+        mock_run_stage.assert_called_once()
+        call_kwargs = mock_run_stage.call_args[1]
+        assert call_kwargs["workspace_id"] == workspace_id
+        assert str(call_kwargs["pack_id"]) == pack_id
+
+    def test_run_score_invalid_workspace_id_returns_422(
+        self, client: TestClient
+    ):
+        """POST /internal/run_score with invalid workspace_id returns 422."""
+        response = client.post(
+            "/internal/run_score",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": "not-a-uuid"},
+        )
+        assert response.status_code == 422
+        data = response.json()
+        assert "workspace_id" in data.get("detail", "").lower()
+        assert "uuid" in data.get("detail", "").lower()
+
+    def test_run_score_invalid_pack_id_returns_422(self, client: TestClient):
+        """POST /internal/run_score with invalid pack_id returns 422."""
+        response = client.post(
+            "/internal/run_score",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"pack_id": "not-a-uuid"},
+        )
+        assert response.status_code == 422
+        data = response.json()
+        assert "pack_id" in data.get("detail", "").lower()
+        assert "uuid" in data.get("detail", "").lower()
+
 
 # ── /internal/run_alert_scan ──────────────────────────────────────────
 

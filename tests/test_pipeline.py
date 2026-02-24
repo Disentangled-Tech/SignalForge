@@ -23,9 +23,7 @@ class TestRunStage:
     """Tests for run_stage executor."""
 
     @patch("app.services.ingestion.ingest_daily.run_ingest_daily")
-    def test_run_stage_ingest_calls_run_ingest_daily(
-        self, mock_ingest, db: Session
-    ) -> None:
+    def test_run_stage_ingest_calls_run_ingest_daily(self, mock_ingest, db: Session) -> None:
         """run_stage('ingest') calls run_ingest_daily with workspace_id and pack_id."""
         mock_ingest.return_value = {
             "status": "completed",
@@ -45,9 +43,7 @@ class TestRunStage:
         assert call_kwargs["pack_id"] is not None
 
     @patch("app.services.readiness.score_nightly.run_score_nightly")
-    def test_run_stage_score_calls_run_score_nightly(
-        self, mock_score, db: Session
-    ) -> None:
+    def test_run_stage_score_calls_run_score_nightly(self, mock_score, db: Session) -> None:
         """run_stage('score') calls run_score_nightly with workspace_id and pack_id."""
         mock_score.return_value = {
             "status": "completed",
@@ -65,15 +61,46 @@ class TestRunStage:
         assert call_kwargs["workspace_id"] == DEFAULT_WORKSPACE_ID
         assert call_kwargs["pack_id"] is not None
 
+    @patch("app.services.readiness.score_nightly.run_score_nightly")
+    def test_run_stage_score_uses_workspace_active_pack_when_pack_id_omitted(
+        self, mock_score, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """When workspace has active_pack_id and pack_id omitted, score stage uses that pack."""
+        mock_score.return_value = {
+            "status": "completed",
+            "job_run_id": 2,
+            "companies_scored": 0,
+            "companies_engagement": 0,
+            "companies_skipped": 0,
+            "error": None,
+        }
+        other_ws = Workspace(
+            id=UUID(OTHER_WORKSPACE_ID),
+            name="Other",
+            active_pack_id=fractional_cto_pack_id,
+        )
+        db.add(other_ws)
+        db.commit()
+
+        result = run_stage(
+            db,
+            job_type="score",
+            workspace_id=OTHER_WORKSPACE_ID,
+            pack_id=None,
+        )
+        assert result["status"] == "completed"
+        mock_score.assert_called_once()
+        call_kwargs = mock_score.call_args[1]
+        assert call_kwargs["workspace_id"] == OTHER_WORKSPACE_ID
+        assert call_kwargs["pack_id"] == str(fractional_cto_pack_id)
+
     def test_run_stage_unknown_job_type_raises(self, db: Session) -> None:
         """run_stage with unknown job_type raises ValueError."""
         with pytest.raises(ValueError, match="Unknown job_type"):
             run_stage(db, job_type="unknown_stage")
 
     @patch("app.pipeline.deriver_engine.run_deriver")
-    def test_run_stage_derive_calls_run_deriver(
-        self, mock_deriver, db: Session
-    ) -> None:
+    def test_run_stage_derive_calls_run_deriver(self, mock_deriver, db: Session) -> None:
         """run_stage('derive') calls run_deriver with workspace_id and pack_id."""
         mock_deriver.return_value = {
             "status": "completed",
@@ -95,9 +122,7 @@ class TestRunStage:
 class TestIdempotency:
     """Tests for idempotency_key behavior."""
 
-    def test_idempotency_key_returns_cached_when_completed_exists(
-        self, db: Session
-    ) -> None:
+    def test_idempotency_key_returns_cached_when_completed_exists(self, db: Session) -> None:
         """When idempotency_key matches completed run, return cached result."""
         job = JobRun(
             job_type="ingest",
@@ -110,9 +135,7 @@ class TestIdempotency:
         db.commit()
         db.refresh(job)
 
-        with patch(
-            "app.services.ingestion.ingest_daily.run_ingest_daily"
-        ) as mock_ingest:
+        with patch("app.services.ingestion.ingest_daily.run_ingest_daily") as mock_ingest:
             result = run_stage(
                 db,
                 job_type="ingest",
@@ -123,9 +146,7 @@ class TestIdempotency:
             assert result["job_run_id"] == job.id
             assert result["inserted"] == 5
 
-    def test_idempotency_isolated_by_workspace(
-        self, db: Session, fractional_cto_pack_id
-    ) -> None:
+    def test_idempotency_isolated_by_workspace(self, db: Session, fractional_cto_pack_id) -> None:
         """Same idempotency_key in different workspaces returns each workspace's cached result."""
         other_ws = Workspace(
             id=UUID(OTHER_WORKSPACE_ID),
@@ -155,9 +176,7 @@ class TestIdempotency:
         db.refresh(job_ws_a)
         db.refresh(job_ws_b)
 
-        with patch(
-            "app.services.ingestion.ingest_daily.run_ingest_daily"
-        ) as mock_ingest:
+        with patch("app.services.ingestion.ingest_daily.run_ingest_daily") as mock_ingest:
             result_a = run_stage(
                 db,
                 job_type="ingest",
@@ -188,32 +207,20 @@ class TestIdempotency:
 class TestRateLimit:
     """Tests for workspace rate limits."""
 
-    def test_check_workspace_rate_limit_disabled_returns_true(
-        self, db: Session
-    ) -> None:
+    def test_check_workspace_rate_limit_disabled_returns_true(self, db: Session) -> None:
         """When limit is 0 (disabled), check always returns True."""
-        with patch(
-            "app.pipeline.rate_limits.get_settings"
-        ) as mock_settings:
+        with patch("app.pipeline.rate_limits.get_settings") as mock_settings:
             mock_settings.return_value.workspace_job_rate_limit_per_hour = 0
             assert check_workspace_rate_limit(db, DEFAULT_WORKSPACE_ID, "ingest")
 
-    def test_check_workspace_rate_limit_under_limit_returns_true(
-        self, db: Session
-    ) -> None:
+    def test_check_workspace_rate_limit_under_limit_returns_true(self, db: Session) -> None:
         """When under limit, check returns True."""
-        with patch(
-            "app.pipeline.rate_limits.get_settings"
-        ) as mock_settings:
+        with patch("app.pipeline.rate_limits.get_settings") as mock_settings:
             mock_settings.return_value.workspace_job_rate_limit_per_hour = 10
             with patch.object(db, "scalar", return_value=5):
-                assert check_workspace_rate_limit(
-                    db, DEFAULT_WORKSPACE_ID, "ingest"
-                )
+                assert check_workspace_rate_limit(db, DEFAULT_WORKSPACE_ID, "ingest")
 
-    def test_rate_limit_returns_429_when_exceeded(
-        self, client: TestClient
-    ) -> None:
+    def test_rate_limit_returns_429_when_exceeded(self, client: TestClient) -> None:
         """POST /internal/run_ingest returns 429 when rate limit exceeded."""
         with patch(
             "app.pipeline.executor.check_workspace_rate_limit",

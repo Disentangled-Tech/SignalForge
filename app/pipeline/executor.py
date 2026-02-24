@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.job_run import JobRun
 from app.pipeline.rate_limits import check_workspace_rate_limit
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_pack_for_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def run_stage(
     collisions when the same key may be used across workspaces.
     """
     ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
-    pack = pack_id or get_default_pack_id(db)
+    pack = pack_id or get_pack_for_workspace(db, ws_id)
     pack_str = str(pack) if pack else None
 
     if idempotency_key:
@@ -100,6 +100,7 @@ def _cached_result(job: JobRun, job_type: str) -> dict:
             **base,
             "companies_scored": job.companies_processed or 0,
             "companies_engagement": job.companies_processed or 0,
+            "companies_esl_suppressed": job.companies_esl_suppressed or 0,
             "companies_skipped": 0,
             "error": job.error_message,
         }
