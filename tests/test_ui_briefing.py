@@ -16,11 +16,13 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_db, require_ui_auth
 from app.models import Company, EngagementSnapshot, ReadinessSnapshot, SignalPack, User
 
+from tests.test_constants import TEST_USERNAME_VIEWS
+
 
 def _make_user() -> MagicMock:
     user = MagicMock(spec=User)
     user.id = 1
-    user.username = "ui_test_user"
+    user.username = TEST_USERNAME_VIEWS
     return user
 
 
