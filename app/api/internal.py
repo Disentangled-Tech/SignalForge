@@ -13,6 +13,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import validate_uuid_param_or_422
 from app.config import get_settings
 from app.db.session import get_db
 
@@ -81,21 +82,6 @@ async def run_briefing(
         return {"status": "failed", "error": str(exc)}
 
 
-def _parse_uuid_or_422(value: str | None, param_name: str) -> None:
-    """Validate value is a valid UUID; raise HTTPException 422 if not."""
-    if not value or not value.strip():
-        return
-    try:
-        from uuid import UUID
-
-        UUID(value.strip())
-    except (ValueError, TypeError):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid {param_name}: must be a valid UUID",
-        ) from None
-
-
 @router.post("/run_score")
 async def run_score(
     db: Session = Depends(get_db),
@@ -122,8 +108,8 @@ async def run_score(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
@@ -195,8 +181,8 @@ async def run_derive_endpoint(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
@@ -248,8 +234,8 @@ async def run_ingest_endpoint(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
@@ -301,8 +287,8 @@ async def run_update_lead_feed_endpoint(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None

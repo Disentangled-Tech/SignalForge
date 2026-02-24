@@ -49,6 +49,9 @@ class Settings:
     # Set WORKSPACE_JOB_RATE_LIMIT_PER_HOUR=0 to disable (e.g. for tests or heavy cron).
     workspace_job_rate_limit_per_hour: int = 10
 
+    # Multi-workspace (Issue #225): when True, briefing/review scope by workspace_id
+    multi_workspace_enabled: bool = False
+
     # Alerts (Issue #92, v2-spec §13)
     alert_delta_threshold: int = 15  # readiness_jump when |delta| >= this
 
@@ -121,6 +124,9 @@ class Settings:
                 "WORKSPACE_JOB_RATE_LIMIT_PER_HOUR",
                 str(self.workspace_job_rate_limit_per_hour),
             )
+        )
+        self.multi_workspace_enabled = (
+            os.getenv("MULTI_WORKSPACE_ENABLED", "false").lower() == "true"
         )
         self.alert_delta_threshold = int(
             os.getenv("ALERT_DELTA_THRESHOLD", str(self.alert_delta_threshold))

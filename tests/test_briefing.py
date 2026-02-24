@@ -300,6 +300,43 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
+    def test_generate_briefing_sets_workspace_id_on_items(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+    ):
+        """When workspace_id provided, BriefingItems are created with that workspace_id."""
+        import uuid
+
+        mock_resolved.return_value = _default_resolved()
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+
+        ws_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        result = generate_briefing(db, workspace_id=ws_uuid)
+
+        assert len(result) == 1
+        item = db.add.call_args[0][0]
+        assert isinstance(item, BriefingItem)
+        assert item.workspace_id == uuid.UUID(ws_uuid)
+        mock_select.assert_called_once_with(db, workspace_id=ws_uuid)
+
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
     def test_skips_company_without_analysis(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
     ):

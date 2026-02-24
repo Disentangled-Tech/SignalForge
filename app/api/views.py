@@ -346,7 +346,7 @@ def companies_import_submit(
         try:
             content = csv_file.file.read().decode("utf-8")
             reader = csv.DictReader(io.StringIO(content))
-            for idx, row in enumerate(reader, start=1):
+            for _idx, row in enumerate(reader, start=1):
                 name = (row.get("company_name") or "").strip()
                 if not name:
                     continue

@@ -929,6 +929,65 @@ class TestPhase4DualPath:
         assert leads[0]["top_signal_ids"] == ["cto_role_posted", "funding_round"]
         assert leads[0]["esl_decision"] == "allow"
 
+    def test_get_emerging_companies_includes_cadence_blocked_when_using_feed(
+        self,
+        db: Session,
+        lead_feed_company: Company,
+        fractional_cto_pack_id: UUID,
+    ) -> None:
+        """cadence_blocked (Observe Only) companies with outreach_score=0 appear when feed path used.
+
+        Regression: feed path must match legacy path behavior (Issue #108).
+        """
+        from app.services.briefing import get_emerging_companies
+        from app.services.esl.esl_engine import compute_outreach_score
+
+        as_of = date(2099, 2, 10)
+        rs = ReadinessSnapshot(
+            company_id=lead_feed_company.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
+            composite=80,
+            pack_id=fractional_cto_pack_id,
+        )
+        es = EngagementSnapshot(
+            company_id=lead_feed_company.id,
+            as_of=as_of,
+            esl_score=0.0,  # CM=0 → ESL=0 → outreach_score=0
+            engagement_type="Observe Only",
+            cadence_blocked=True,
+            pack_id=fractional_cto_pack_id,
+            esl_decision="allow",
+        )
+        db.add(rs)
+        db.add(es)
+        db.commit()
+
+        build_lead_feed_from_snapshots(
+            db,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            pack_id=fractional_cto_pack_id,
+            as_of=as_of,
+        )
+        db.commit()
+
+        result = get_emerging_companies(
+            db,
+            as_of,
+            limit=10,
+            outreach_score_threshold=30,
+            pack_id=fractional_cto_pack_id,
+        )
+
+        assert len(result) == 1
+        assert result[0][2].id == lead_feed_company.id
+        assert result[0][1].cadence_blocked is True
+        assert result[0][1].engagement_type == "Observe Only"
+        assert compute_outreach_score(result[0][0].composite, result[0][1].esl_score) == 0
+
 
 class TestLeadFeedIndices:
     """Phase 4: Verify lead_feed indices exist for performance (Issue #225)."""

@@ -145,7 +145,9 @@ def get_leads_from_feed(
         else:
             outreach_score = row.composite_score
 
-        if outreach_score < outreach_score_threshold:
+        # Include cadence_blocked (Observe Only) even when outreach_score < threshold
+        # (parity with get_emerging_companies legacy path, Issue #108)
+        if outreach_score < outreach_score_threshold and not (es and es.cadence_blocked):
             continue
         result.append({
             "entity_id": row.entity_id,

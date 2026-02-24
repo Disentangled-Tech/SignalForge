@@ -54,6 +54,13 @@ Implements Phases 2–4 of the scoring engine pack refactor plus maintainer-requ
 - **evidence_event_ids**: Merge + deduplication via `jsonb_array_elements` + `jsonb_agg(DISTINCT)` on upsert
 - **Tests**: `test_deriver_evidence_merge_handles_null_and_empty_existing`; `test_run_update_lead_feed_invalid_workspace_id_returns_422`, `test_run_update_lead_feed_invalid_pack_id_returns_422`
 
+### Suggested follow-ups (implemented)
+
+- **workspace_id UUID validation**: When `multi_workspace_enabled` and `workspace_id` provided, validate as UUID; return 422 for invalid values (briefing JSON API and HTML routes)
+- **Shared validation**: `validate_uuid_param_or_422` in `app/api/deps.py`; internal.py uses it for run_score/run_derive/run_ingest/run_update_lead_feed
+- **Multi-workspace tests**: `test_briefing_json_invalid_workspace_id_returns_422`, `test_briefing_json_multi_workspace_scopes_by_workspace_id`; `TestMultiWorkspaceBriefing` for HTML briefing
+- **Workspace access control**: Documented in `docs/MULTI_TENANT_BRIEFING_TODO.md` — user–workspace membership required before enabling multi-workspace in production
+
 ### Documentation
 
 - **`docs/MINIMUM_THRESHOLD_ENFORCEMENT.md`**: Where `minimum_threshold` is stored and enforced

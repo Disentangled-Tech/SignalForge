@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -18,6 +20,12 @@ class BriefingItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Workspace that owns this briefing (multi-tenant)",
     )
     analysis_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("analysis_records.id", ondelete="CASCADE"), nullable=False

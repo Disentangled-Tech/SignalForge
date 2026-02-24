@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import get_db, require_ui_auth
+from app.api.deps import get_db, require_ui_auth, validate_uuid_param_or_422
 from app.config import get_settings
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
@@ -20,13 +20,14 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.user import User
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.briefing import get_emerging_companies_for_briefing
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.esl.esl_gate_filter import (
     get_effective_engagement_type,
     is_suppressed_from_engagement,
 )
-from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace, resolve_pack
 from app.services.readiness.human_labels import event_type_to_label
 from app.services.scoring import get_display_scores_for_companies
 
@@ -74,7 +75,15 @@ def briefing_generate(
     try:
         from app.services.briefing import generate_briefing
 
-        generate_briefing(db)
+        settings = get_settings()
+        workspace_id: str | None = None
+        if settings.multi_workspace_enabled:
+            workspace_id = request.query_params.get("workspace_id") or getattr(
+                request.state, "workspace_id", None
+            )
+            if workspace_id is not None:
+                validate_uuid_param_or_422(workspace_id, "workspace_id")
+        generate_briefing(db, workspace_id=workspace_id)
         # Check for partial failures (issue #32)
         latest = (
             db.query(JobRun)
@@ -114,13 +123,14 @@ def get_briefing_data(
     db: Session,
     briefing_date: date,
     sort: str = _SORT_SCORE,
+    workspace_id: str | None = None,
 ) -> dict:
     """Fetch briefing data for a date (Issue #110). Shared by HTML and JSON API.
 
     Returns dict with: items, emerging_companies, display_scores, esl_by_company.
 
-    TODO(multi-tenant): Scope by workspace_id when multi-workspace is enabled;
-    get_emerging_companies and pack_id resolution should use workspace active pack.
+    When multi_workspace_enabled and workspace_id provided, scopes emerging companies
+    and pack resolution to that workspace (Issue #225).
     """
     if sort not in _VALID_SORTS:
         sort = _SORT_SCORE
@@ -131,6 +141,8 @@ def get_briefing_data(
         .filter(BriefingItem.briefing_date == briefing_date)
         .join(Company, BriefingItem.company_id == Company.id)
     )
+    if workspace_id is not None:
+        base_query = base_query.filter(BriefingItem.workspace_id == workspace_id)
 
     if sort == _SORT_SCORE:
         base_query = base_query.order_by(Company.cto_need_score.desc().nulls_last())
@@ -153,7 +165,8 @@ def get_briefing_data(
             items.append(item)
 
     esl_by_company: dict[int, dict] = {}
-    pack_id = get_default_pack_id(db)
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    pack_id = get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
     if items and pack_id is not None:
         company_ids = [item.company_id for item in items]
         pack_match = or_(
@@ -214,12 +227,13 @@ def get_briefing_data(
 
     settings = get_settings()
     pack = resolve_pack(db, pack_id) if pack_id else None
-    emerging_triples = get_emerging_companies(
     emerging_triples = get_emerging_companies_for_briefing(
         db,
         briefing_date,
         limit=settings.weekly_review_limit,
         outreach_score_threshold=settings.outreach_score_threshold,
+        workspace_id=workspace_id,
+        pack_id=pack_id,
     )
     emerging_companies: list[dict] = []
     for readiness_snap, engagement_snap, company in emerging_triples:
@@ -274,7 +288,15 @@ def _render_briefing(
 ) -> HTMLResponse:
     """Query briefing items for a date and render the template."""
     sort = request.query_params.get("sort", _SORT_SCORE)
-    data = get_briefing_data(db, briefing_date, sort)
+    settings = get_settings()
+    workspace_id: str | None = None
+    if settings.multi_workspace_enabled:
+        workspace_id = request.query_params.get("workspace_id") or getattr(
+            request.state, "workspace_id", None
+        )
+        if workspace_id is not None:
+            validate_uuid_param_or_422(workspace_id, "workspace_id")
+    data = get_briefing_data(db, briefing_date, sort, workspace_id=workspace_id)
     items = data["items"]
     emerging_companies = data["emerging_companies"]
     display_scores = data["display_scores"]
@@ -305,6 +327,10 @@ def _render_briefing(
         )
     )
 
+    generate_action = "/briefing/generate"
+    if workspace_id is not None:
+        generate_action = f"/briefing/generate?workspace_id={workspace_id}"
+
     return templates.TemplateResponse(
         request,
         "briefing/today.html",
@@ -323,6 +349,7 @@ def _render_briefing(
             "job_has_failures": job_has_failures,
             "emerging_companies": emerging_companies,
             "esl_by_company": esl_by_company,
+            "generate_action": generate_action,
         },
     )
 

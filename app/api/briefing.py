@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.briefing_views import get_briefing_data
-from app.api.deps import get_db, require_auth
+from app.api.deps import get_db, require_auth, validate_uuid_param_or_422
+from app.config import get_settings
 from app.schemas.briefing import (
     BriefingItemRead,
     BriefingResponse,
@@ -60,6 +61,10 @@ def api_briefing_daily(
         "score",
         description="Sort order: score, recent, outreach, outreach_score",
     ),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID (when multi_workspace_enabled). Default workspace if omitted.",
+    ),
     db: Session = Depends(get_db),
     _auth: None = Depends(require_auth),
 ) -> BriefingResponse:
@@ -67,9 +72,16 @@ def api_briefing_daily(
 
     Returns briefing items and emerging companies with ESL score, outreach
     recommendation, stability flags, and cooldown flags.
+
+    When multi_workspace_enabled, pass workspace_id to scope emerging companies.
+    Invalid workspace_id returns 422.
     """
     briefing_date = date_param if date_param is not None else date.today()
-    data = get_briefing_data(db, briefing_date, sort)
+    settings = get_settings()
+    ws_id = workspace_id if settings.multi_workspace_enabled else None
+    if ws_id is not None:
+        validate_uuid_param_or_422(ws_id, "workspace_id")
+    data = get_briefing_data(db, briefing_date, sort, workspace_id=ws_id)
 
     items = [
         _item_to_read(

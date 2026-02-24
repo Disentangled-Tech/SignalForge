@@ -9,7 +9,32 @@ from app.db.session import get_db  # re-export
 from app.models.user import User
 from app.services.auth import get_user_from_token
 
-__all__ = ["get_db", "get_current_user", "require_auth", "require_ui_auth"]
+__all__ = [
+    "get_db",
+    "get_current_user",
+    "require_auth",
+    "require_ui_auth",
+    "validate_uuid_param_or_422",
+]
+
+
+def validate_uuid_param_or_422(value: str | None, param_name: str) -> None:
+    """Validate value is a valid UUID; raise HTTPException 422 if not.
+
+    Use when workspace_id or pack_id is provided and must be a valid UUID.
+    Empty/None values pass (caller handles omission).
+    """
+    if not value or not value.strip():
+        return
+    try:
+        from uuid import UUID
+
+        UUID(value.strip())
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {param_name}: must be a valid UUID",
+        ) from None
 
 # Cookie name for browser sessions
 AUTH_COOKIE = "access_token"
