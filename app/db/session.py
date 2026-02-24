@@ -16,7 +16,10 @@ engine = create_engine(
     pool_size=5,
     max_overflow=10,
     echo=settings.debug,
-    connect_args={"connect_timeout": settings.db_connect_timeout},
+    connect_args={
+        "connect_timeout": settings.db_connect_timeout,
+        "options": "-c timezone=UTC",
+    },
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
