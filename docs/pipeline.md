@@ -11,6 +11,14 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 
 ## API Behavior
 
+### POST /internal/run_score
+
+- **Optional query params** (Phase 3):
+  - `workspace_id` (UUID): Workspace to score for. When omitted, uses default workspace.
+  - `pack_id` (UUID): Pack to use for scoring. When omitted, uses workspace's `active_pack_id`; falls back to default pack when workspace has none.
+- **Validation**: Invalid UUIDs for `workspace_id` or `pack_id` return **422 Unprocessable Entity** with detail `"Invalid {param}: must be a valid UUID"`.
+- **Pack resolution**: When `pack_id` omitted, `get_pack_for_workspace(db, workspace_id)` resolves the pack. Ensures workspace-specific pack selection for multi-tenant readiness.
+
 ### POST /internal/run_derive
 
 - **Requires a pack**: The derive stage requires a pack to be available (default pack or explicit `pack_id`). If no pack is installed or resolvable, the endpoint returns **400 Bad Request** with detail `"Derive stage requires a pack; no pack available"`.

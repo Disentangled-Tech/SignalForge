@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 _SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
 # Allowed source_fields for pattern derivers (SignalEvent string attributes only).
-# Excludes raw (JSONB), url (unbounded), and non-string fields (ADR-008 defense in depth).
+# Excludes raw (JSONB) and non-string fields (ADR-008 defense in depth).
+# Includes: title, summary, url, source.
 ALLOWED_PATTERN_SOURCE_FIELDS: frozenset[str] = frozenset({
     "title",
     "summary",
@@ -224,6 +225,8 @@ def _validate_esl_policy(esl_policy: dict[str, Any], signal_ids: set[str]) -> No
     if not isinstance(esl_policy, dict):
         return
     svi_types = esl_policy.get("svi_event_types")
+    # Use pass (not return): when svi_event_types is empty/absent, skip svi validation
+    # but continue to validate Issue #175 keys (blocked_signals, prohibited_combinations, etc.)
     if not svi_types or not isinstance(svi_types, list):
         pass
     else:

@@ -81,11 +81,30 @@ async def run_briefing(
         return {"status": "failed", "error": str(exc)}
 
 
+def _parse_uuid_or_422(value: str | None, param_name: str) -> None:
+    """Validate value is a valid UUID; raise HTTPException 422 if not."""
+    if not value or not value.strip():
+        return
+    try:
+        from uuid import UUID
+
+        UUID(value.strip())
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {param_name}: must be a valid UUID",
+        ) from None
+
+
 @router.post("/run_score")
 async def run_score(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
     x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+    workspace_id: str | None = Query(None, description="Workspace ID; uses default if omitted"),
+    pack_id: str | None = Query(
+        None, description="Pack UUID; uses workspace active pack if omitted"
+    ),
 ):
     """Trigger nightly TRS scoring (Issue #104).
 
@@ -95,13 +114,25 @@ async def run_score(
     Idempotency: Pass X-Idempotency-Key to skip duplicate runs. Use
     workspace-scoped keys (e.g. ``{workspace_id}:{timestamp}``) to avoid
     collisions across workspaces.
+
+    Pack resolution (Phase 3): When pack_id omitted, uses workspace's
+    active_pack_id; falls back to default pack when workspace has none.
     """
+    from uuid import UUID
+
     from app.pipeline.executor import run_stage
 
+    _parse_uuid_or_422(workspace_id, "workspace_id")
+    _parse_uuid_or_422(pack_id, "pack_id")
+
     try:
+        pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
+        ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
         result = run_stage(
             db,
             job_type="score",
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
             idempotency_key=x_idempotency_key,
         )
         return {
@@ -109,6 +140,7 @@ async def run_score(
             "job_run_id": result["job_run_id"],
             "companies_scored": result["companies_scored"],
             "companies_engagement": result.get("companies_engagement", 0),
+            "companies_esl_suppressed": result.get("companies_esl_suppressed", 0),
             "companies_skipped": result["companies_skipped"],
             "error": result.get("error"),
         }
@@ -148,18 +180,32 @@ async def run_derive_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
     x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+    workspace_id: str | None = Query(None, description="Workspace ID; uses default if omitted"),
+    pack_id: str | None = Query(
+        None, description="Pack UUID; uses workspace active pack if omitted"
+    ),
 ):
     """Trigger derive stage: populate signal_instances from SignalEvents (Phase 2).
 
-    Run after ingest. Applies pack passthrough derivers. Idempotent.
+    Run after ingest. Applies pack passthrough and pattern derivers. Idempotent.
     Pass X-Idempotency-Key to skip duplicate runs.
+    Pack resolution: when pack_id omitted, uses workspace active_pack_id.
     """
+    from uuid import UUID
+
     from app.pipeline.executor import run_stage
 
+    _parse_uuid_or_422(workspace_id, "workspace_id")
+    _parse_uuid_or_422(pack_id, "pack_id")
+
     try:
+        pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
+        ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
         result = run_stage(
             db,
             job_type="derive",
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
             idempotency_key=x_idempotency_key,
         )
         return {
@@ -182,6 +228,10 @@ async def run_ingest_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
     x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+    workspace_id: str | None = Query(None, description="Workspace ID; uses default if omitted"),
+    pack_id: str | None = Query(
+        None, description="Pack UUID; uses workspace active pack if omitted"
+    ),
 ):
     """Trigger daily ingestion (Issue #90).
 
@@ -191,13 +241,24 @@ async def run_ingest_endpoint(
     Idempotency: Pass X-Idempotency-Key to skip duplicate runs. Use
     workspace-scoped keys (e.g. ``{workspace_id}:{timestamp}``) to avoid
     collisions across workspaces.
+    Pack resolution: when pack_id omitted, uses workspace active_pack_id.
+    Ingested events are written to the resolved pack (Phase 3).
     """
+    from uuid import UUID
+
     from app.pipeline.executor import run_stage
 
+    _parse_uuid_or_422(workspace_id, "workspace_id")
+    _parse_uuid_or_422(pack_id, "pack_id")
+
     try:
+        pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
+        ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
         result = run_stage(
             db,
             job_type="ingest",
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
             idempotency_key=x_idempotency_key,
         )
         return {
@@ -280,4 +341,3 @@ async def run_bias_audit_endpoint(
     except Exception as exc:
         logger.exception("Internal bias audit failed")
         return {"status": "failed", "error": str(exc)}
-

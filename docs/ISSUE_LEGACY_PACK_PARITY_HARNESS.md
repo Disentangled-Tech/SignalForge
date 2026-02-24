@@ -10,6 +10,11 @@
 JobRun tracks `companies_esl_suppressed` for score jobs. Briefing/ORE prefer columns
 over explain when reading.
 
+**ORE behavior change (Phase 4)**: `get_weekly_review_companies` now excludes entities
+where `esl_decision == "suppress"`. Previously ORE could return suppressed companies;
+they are now filtered out. Briefing (`get_emerging_companies`) already filtered
+suppressed in Phase 3.
+
 ## Overview
 
 The Legacy-vs-Pack Parity Harness ensures that when migrating from the legacy pipeline (pre-pack, `pack_id=NULL`) to the pack pipeline (fractional_cto_v1), we do not introduce subtle breakage. The harness runs the same fixed fixture through both paths and asserts parity.
@@ -40,6 +45,6 @@ The Legacy-vs-Pack Parity Harness ensures that when migrating from the legacy pi
 
 ## Follow-ups
 
-- [ ] Extend harness to compare `select_top_companies` (legacy) vs `get_emerging_companies` (pack) when both paths are fully wired
+- [ ] Extend harness to compare `select_top_companies` (legacy) vs `get_emerging_companies` (pack) when both paths are fully wired (requires aligned fixture: AnalysisRecord + snapshots; `test_get_emerging_companies_pack_returns_companies_with_snapshots` added for pack path)
 - [ ] Add ESL decision and sensitivity label assertions when those fields are exposed in test fixtures (per TDD_rules follow-ups)
 - [ ] Add outreach draft constraints assertion (tone, required elements, no forbidden phrases)

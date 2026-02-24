@@ -186,3 +186,91 @@ def test_signal_instances_unique_migration_fails_with_duplicates(
             )
             conn.commit()
         _run_alembic_env("upgrade", "head")
+
+
+@pytest.mark.integration
+def test_esl_decision_columns_backfill_preserves_suppress_from_explain(
+    _ensure_migrations: None,
+) -> None:
+    """Migration 20260224_esl_decision_cols backfills from explain when present.
+
+    Rows with explain.esl_decision='suppress' must get esl_decision='suppress' in column.
+    Rows with no explain or invalid explain get esl_decision='allow'.
+    """
+    result = _run_alembic_env("downgrade", "20260224_evidence_event_ids", timeout=90)
+    if result.returncode != 0:
+        pytest.skip(f"Could not downgrade: {result.stderr}")
+
+    with engine.connect() as conn:
+        pack_row = conn.execute(
+            text("SELECT id FROM signal_packs WHERE pack_id = 'fractional_cto_v1' LIMIT 1")
+        ).fetchone()
+        if not pack_row:
+            _run_alembic_env("upgrade", "head", timeout=90)
+            pytest.skip("fractional_cto_v1 pack not found")
+        pack_id = pack_row[0]
+
+        company_row = conn.execute(text("SELECT id FROM companies LIMIT 1")).fetchone()
+        if not company_row:
+            _run_alembic_env("upgrade", "head", timeout=90)
+            pytest.skip("No companies in DB")
+        company_id = company_row[0]
+
+        # Row with explain.esl_decision=suppress
+        conn.execute(
+            text("""
+                INSERT INTO engagement_snapshots
+                (company_id, as_of, esl_score, engagement_type, explain, pack_id)
+                VALUES (:cid, '2099-01-01'::date, 0.5, 'Observe Only',
+                    '{"esl_decision":"suppress","esl_reason_code":"blocked_signal"}'::jsonb, :pid)
+            """),
+            {"cid": company_id, "pid": str(pack_id)},
+        )
+        # Row with no explain (legacy)
+        conn.execute(
+            text("""
+                INSERT INTO engagement_snapshots
+                (company_id, as_of, esl_score, engagement_type, explain, pack_id)
+                VALUES (:cid, '2099-01-02'::date, 0.5, 'Observe Only', NULL, :pid)
+            """),
+            {"cid": company_id, "pid": str(pack_id)},
+        )
+        conn.commit()
+
+    try:
+        result = _run_alembic_env("upgrade", "20260224_esl_decision_cols", timeout=90)
+        assert result.returncode == 0, f"Upgrade failed: {result.stderr}"
+
+        with engine.connect() as conn:
+            row_suppress = conn.execute(
+                text("""
+                    SELECT esl_decision, esl_reason_code FROM engagement_snapshots
+                    WHERE company_id = :cid AND as_of = '2099-01-01'
+                """),
+                {"cid": company_id},
+            ).fetchone()
+            row_legacy = conn.execute(
+                text("""
+                    SELECT esl_decision, esl_reason_code FROM engagement_snapshots
+                    WHERE company_id = :cid AND as_of = '2099-01-02'
+                """),
+                {"cid": company_id},
+            ).fetchone()
+
+        assert row_suppress is not None
+        assert row_suppress[0] == "suppress", f"Expected suppress, got {row_suppress[0]}"
+        assert row_suppress[1] == "blocked_signal"
+
+        assert row_legacy is not None
+        assert row_legacy[0] == "allow", f"Expected allow, got {row_legacy[0]}"
+        assert row_legacy[1] == "legacy"
+    finally:
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    "DELETE FROM engagement_snapshots WHERE company_id = :cid AND as_of >= '2099-01-01'"
+                ),
+                {"cid": company_id},
+            )
+            conn.commit()
+        _run_alembic_env("upgrade", "head", timeout=90)

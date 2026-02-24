@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.ingest import run_ingest
 from app.models import JobRun
+from app.services.pack_resolver import get_default_pack_id
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +78,13 @@ def run_ingest_daily(
         total_skipped_invalid = 0
         all_errors: list[str] = []
 
+        resolved_pack_id = pack_id or get_default_pack_id(db)
+        if isinstance(resolved_pack_id, str):
+            resolved_pack_id = UUID(str(resolved_pack_id)) if resolved_pack_id else None
+
         for adapter in adapters:
             try:
-                result = run_ingest(db, adapter, since)
+                result = run_ingest(db, adapter, since, pack_id=resolved_pack_id)
                 total_inserted += result["inserted"]
                 total_skipped_duplicate += result["skipped_duplicate"]
                 total_skipped_invalid += result["skipped_invalid"]

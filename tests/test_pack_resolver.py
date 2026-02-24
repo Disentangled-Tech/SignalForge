@@ -1,6 +1,6 @@
 """Pack resolver tests (Issue #189, Plan Step 3, Issue #172).
 
-Tests for resolve_pack and get_default_pack_id.
+Tests for resolve_pack, get_default_pack_id, and get_pack_for_workspace.
 """
 
 from __future__ import annotations
@@ -10,7 +10,12 @@ import uuid
 import pytest
 
 from app.models.signal_pack import SignalPack
-from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.models.workspace import Workspace
+from app.services.pack_resolver import (
+    get_default_pack_id,
+    get_pack_for_workspace,
+    resolve_pack,
+)
 
 
 class TestResolvePack:
@@ -43,10 +48,14 @@ class TestResolvePackInvalidSchema:
     @pytest.mark.integration
     def test_resolve_pack_returns_none_when_validation_fails(self, db) -> None:
         """resolve_pack returns None when pack has invalid schema."""
-        invalid_pack_row = db.query(SignalPack).filter(
-            SignalPack.pack_id == "invalid_schema_pack",
-            SignalPack.version == "1",
-        ).first()
+        invalid_pack_row = (
+            db.query(SignalPack)
+            .filter(
+                SignalPack.pack_id == "invalid_schema_pack",
+                SignalPack.version == "1",
+            )
+            .first()
+        )
         if invalid_pack_row is None:
             invalid_pack_row = SignalPack(
                 id=uuid.uuid4(),
@@ -74,3 +83,51 @@ class TestGetDefaultPackId:
             pytest.skip("fractional_cto_v1 pack not installed (run migration)")
         assert pack_id is not None
         assert isinstance(pack_id, uuid.UUID)
+
+
+class TestGetPackForWorkspace:
+    """get_pack_for_workspace returns workspace active pack or default (Phase 3)."""
+
+    def test_get_pack_for_workspace_returns_active_pack_when_set(
+        self, db, fractional_cto_pack_id
+    ) -> None:
+        """When workspace has active_pack_id, return that pack."""
+        ws_id = uuid.uuid4()
+        ws = Workspace(id=ws_id, name="Test", active_pack_id=fractional_cto_pack_id)
+        db.add(ws)
+        db.commit()
+
+        result = get_pack_for_workspace(db, ws_id)
+        assert result == fractional_cto_pack_id
+
+    def test_get_pack_for_workspace_returns_default_when_active_pack_null(
+        self, db, fractional_cto_pack_id
+    ) -> None:
+        """When workspace has no active_pack_id, fall back to default pack."""
+        ws_id = uuid.uuid4()
+        ws = Workspace(id=ws_id, name="Test", active_pack_id=None)
+        db.add(ws)
+        db.commit()
+
+        result = get_pack_for_workspace(db, ws_id)
+        assert result == fractional_cto_pack_id
+
+    def test_get_pack_for_workspace_accepts_str_workspace_id(
+        self, db, fractional_cto_pack_id
+    ) -> None:
+        """get_pack_for_workspace accepts workspace_id as string."""
+        ws_id = uuid.uuid4()
+        ws = Workspace(id=ws_id, name="Test", active_pack_id=fractional_cto_pack_id)
+        db.add(ws)
+        db.commit()
+
+        result = get_pack_for_workspace(db, str(ws_id))
+        assert result == fractional_cto_pack_id
+
+    def test_get_pack_for_workspace_returns_default_when_workspace_not_found(
+        self, db, fractional_cto_pack_id
+    ) -> None:
+        """When workspace does not exist, fall back to default pack."""
+        unknown_ws_id = uuid.uuid4()
+        result = get_pack_for_workspace(db, unknown_ws_id)
+        assert result == fractional_cto_pack_id

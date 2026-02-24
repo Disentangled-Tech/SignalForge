@@ -228,6 +228,84 @@ class TestValidatePackSchemaScoringCrossRef:
             )
 
 
+class TestValidatePackSchemaScoringDecayAndSuppressors:
+    """Scoring decay and suppressors structure when present (Issue #174)."""
+
+    def test_decay_momentum_non_dict_raises(self) -> None:
+        """decay.momentum must be dict when decay present."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        scoring = {
+            **_valid_scoring(),
+            "decay": {"momentum": "not_a_dict"},
+        }
+        with pytest.raises(ValidationError, match="decay|momentum|dict"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=scoring,
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_decay_invalid_value_type_raises(self) -> None:
+        """decay values must be numeric."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        scoring = {
+            **_valid_scoring(),
+            "decay": {"momentum": {"0-30": "one"}},
+        }
+        with pytest.raises(ValidationError, match="numeric"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=scoring,
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_suppressors_negative_value_raises(self) -> None:
+        """suppressors values must be non-negative."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        scoring = {
+            **_valid_scoring(),
+            "suppressors": {"cto_hired_60_days": -1},
+        }
+        with pytest.raises(ValidationError, match="non-negative"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=scoring,
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_valid_decay_and_suppressors_passes(self) -> None:
+        """Valid decay and suppressors pass validation."""
+        from app.packs.schemas import validate_pack_schema
+
+        scoring = {
+            **_valid_scoring(),
+            "decay": {
+                "momentum": {"0-30": 1.0, "31-60": 0.7, "91+": 0.0},
+            },
+            "suppressors": {"cto_hired_60_days": 70, "cto_hired_180_days": 50},
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=scoring,
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks={},
+        )
+
+
 class TestValidatePackSchemaDeriversPattern:
     """Pattern derivers: pattern/regex required, signal_id in taxonomy, source_fields whitelist."""
 
@@ -436,6 +514,193 @@ class TestValidatePackSchemaEslPolicy:
             esl_policy=esl_policy,
             derivers=_valid_derivers(),
             playbooks={},
+        )
+
+
+class TestValidatePackSchemaEslPolicyIssue175:
+    """ESL policy Issue #175: blocked_signals, sensitivity_mapping, prohibited_combinations, downgrade_rules."""
+
+    def test_blocked_signals_unknown_signal_raises(self) -> None:
+        """blocked_signals with signal not in taxonomy raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "blocked_signals": ["ghost_signal"],
+        }
+        with pytest.raises(ValidationError, match="blocked_signals|ghost_signal|taxonomy"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=esl_policy,
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_blocked_signals_valid_passes(self) -> None:
+        """blocked_signals with valid taxonomy refs passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "blocked_signals": ["funding_raised"],
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=esl_policy,
+            derivers=_valid_derivers(),
+            playbooks={},
+        )
+
+    def test_sensitivity_mapping_unknown_signal_raises(self) -> None:
+        """sensitivity_mapping with key not in taxonomy raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "sensitivity_mapping": {"ghost_signal": "high"},
+        }
+        with pytest.raises(ValidationError, match="sensitivity_mapping|ghost_signal|taxonomy"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=esl_policy,
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_prohibited_combinations_unknown_signal_raises(self) -> None:
+        """prohibited_combinations with signal not in taxonomy raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "prohibited_combinations": [["funding_raised", "ghost_signal"]],
+        }
+        with pytest.raises(ValidationError, match="prohibited_combinations|ghost_signal|taxonomy"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=esl_policy,
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_prohibited_combinations_valid_passes(self) -> None:
+        """prohibited_combinations with valid pairs passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "prohibited_combinations": [["funding_raised", "cto_role_posted"]],
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=esl_policy,
+            derivers=_valid_derivers(),
+            playbooks={},
+        )
+
+    def test_downgrade_rules_unknown_trigger_raises(self) -> None:
+        """downgrade_rules with trigger_signal not in taxonomy raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "downgrade_rules": [
+                {"trigger_signal": "ghost_signal", "max_recommendation": "Observe Only"},
+            ],
+        }
+        with pytest.raises(ValidationError, match="downgrade_rules|ghost_signal|taxonomy"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=esl_policy,
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_downgrade_rules_invalid_max_recommendation_raises(self) -> None:
+        """downgrade_rules with max_recommendation not in boundaries raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "downgrade_rules": [
+                {"trigger_signal": "funding_raised", "max_recommendation": "Invalid Type"},
+            ],
+        }
+        with pytest.raises(ValidationError, match="max_recommendation|recommendation_boundaries"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=esl_policy,
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_downgrade_rules_valid_passes(self) -> None:
+        """downgrade_rules with valid trigger and max_recommendation passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        esl_policy = {
+            **_valid_esl_policy(),
+            "downgrade_rules": [
+                {"trigger_signal": "funding_raised", "max_recommendation": "Observe Only"},
+            ],
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=esl_policy,
+            derivers=_valid_derivers(),
+            playbooks={},
+        )
+
+    def test_fractional_cto_v1_with_new_keys_passes(self) -> None:
+        """fractional_cto_v1 with blocked_signals and prohibited_combinations passes (Phase 1)."""
+        import json
+        from pathlib import Path
+
+        import yaml
+
+        from app.packs.schemas import validate_pack_schema
+
+        packs_root = Path(__file__).resolve().parent.parent / "packs"
+        pack_dir = packs_root / "fractional_cto_v1"
+        with (pack_dir / "pack.json").open() as f:
+            manifest = json.load(f)
+        with (pack_dir / "taxonomy.yaml").open() as f:
+            taxonomy = yaml.safe_load(f) or {}
+        with (pack_dir / "scoring.yaml").open() as f:
+            scoring = yaml.safe_load(f) or {}
+        with (pack_dir / "esl_policy.yaml").open() as f:
+            esl_policy = yaml.safe_load(f) or {}
+        with (pack_dir / "derivers.yaml").open() as f:
+            derivers = yaml.safe_load(f) or {}
+        playbooks = {}
+        if (pack_dir / "playbooks").is_dir():
+            for p in (pack_dir / "playbooks").glob("*.yaml"):
+                with p.open() as f:
+                    playbooks[p.stem] = yaml.safe_load(f) or {}
+
+        validate_pack_schema(
+            manifest=manifest,
+            taxonomy=taxonomy,
+            scoring=scoring,
+            esl_policy=esl_policy,
+            derivers=derivers,
+            playbooks=playbooks,
         )
 
 

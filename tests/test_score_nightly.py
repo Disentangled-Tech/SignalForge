@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from app.models import (
     SignalEvent,
     SignalPack,
     Watchlist,
+    Workspace,
 )
 from app.services.readiness.score_nightly import run_score_nightly
 from app.services.readiness.snapshot_writer import write_readiness_snapshot as real_write
@@ -49,6 +51,8 @@ class TestRunScoreNightly:
 
         assert result["status"] == "completed"
         assert result["companies_scored"] >= 1
+        assert "companies_esl_suppressed" in result
+        assert result["companies_esl_suppressed"] >= 0
         snapshot = (
             db.query(ReadinessSnapshot)
             .filter(
@@ -110,6 +114,33 @@ class TestRunScoreNightly:
         )
         assert es is not None
         assert es.pack_id == pack.id
+
+    @pytest.mark.integration
+    def test_run_score_nightly_with_workspace_id_uses_workspace_active_pack(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """run_score_nightly(workspace_id=X, pack_id=None) uses workspace's active_pack_id (Phase 3)."""
+        ws_id = uuid.uuid4()
+        ws = Workspace(
+            id=ws_id,
+            name="WorkspaceWithPack",
+            active_pack_id=fractional_cto_pack_id,
+        )
+        db.add(ws)
+        db.commit()
+
+        result = run_score_nightly(db, workspace_id=ws_id, pack_id=None)
+
+        assert result["status"] == "completed"
+        job = (
+            db.query(JobRun)
+            .filter(JobRun.job_type == "score")
+            .order_by(JobRun.id.desc())
+            .first()
+        )
+        assert job is not None
+        assert job.workspace_id == ws_id
+        assert job.pack_id == fractional_cto_pack_id
 
     @pytest.mark.integration
     def test_run_score_nightly_with_explicit_pack_id_uses_pack(

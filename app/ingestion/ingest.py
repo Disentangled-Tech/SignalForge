@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -20,11 +21,18 @@ def run_ingest(
     db: Session,
     adapter: SourceAdapter,
     since: datetime,
+    pack_id: UUID | str | None = None,
 ) -> dict:
     """Run ingestion for an adapter.
 
     Fetches raw events, normalizes, resolves companies, and stores signal events.
     One event failure does not stop the run (per PRD).
+
+    Args:
+        db: Database session.
+        adapter: Source adapter to fetch events from.
+        since: Fetch events since this datetime.
+        pack_id: Pack UUID to assign events to. When None, uses default pack (Phase 3).
 
     Returns
     -------
@@ -38,8 +46,10 @@ def run_ingest(
 
     raw_events = adapter.fetch_events(since)
     source = adapter.source_name
-    pack_id = get_default_pack_id(db)
-    pack = resolve_pack(db, pack_id) if pack_id else None
+    resolved_pack_id = pack_id or get_default_pack_id(db)
+    if isinstance(resolved_pack_id, str):
+        resolved_pack_id = UUID(resolved_pack_id) if resolved_pack_id else None
+    pack = resolve_pack(db, resolved_pack_id) if resolved_pack_id else None
 
     for raw in raw_events:
         try:
@@ -51,7 +61,7 @@ def run_ingest(
             event_data, company_create = normalized
             company, _ = resolve_or_create_company(db, company_create)
             event_data["company_id"] = company.id
-            event_data["pack_id"] = pack_id
+            event_data["pack_id"] = resolved_pack_id
 
             result = store_signal_event(db, **event_data)
             if result is None:

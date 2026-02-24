@@ -405,6 +405,68 @@ class TestEmergingCompaniesParityPackVsLegacy:
         assert all(es.engagement_type for _, es, _ in result_pack)
         assert all(es.engagement_type for _, es, _ in result_legacy)
 
+    @pytest.mark.integration
+    def test_get_emerging_companies_pack_returns_companies_with_snapshots(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """get_emerging_companies (pack) returns companies when ReadinessSnapshot + EngagementSnapshot exist.
+
+        Follow-up from docs/ISSUE_LEGACY_PACK_PARITY_HARNESS.md: pack path surfaces companies
+        from snapshots. select_top_companies uses different data (AnalysisRecord); full comparison
+        deferred until both paths share aligned fixture (see ISSUE_LEGACY_PACK_PARITY_HARNESS.md).
+        """
+        companies = [
+            Company(
+                name=f"Emerging Co {i}",
+                website_url=f"https://emerging{i}.parity.example.com",
+            )
+            for i in range(3)
+        ]
+        db.add_all(companies)
+        db.commit()
+        for c in companies:
+            db.refresh(c)
+
+        composites = [70, 65, 60]
+        esl_scores = [0.9] * 3
+        for i, c in enumerate(companies):
+            rs = ReadinessSnapshot(
+                company_id=c.id,
+                as_of=_PARITY_AS_OF,
+                momentum=70,
+                complexity=60,
+                pressure=55,
+                leadership_gap=40,
+                composite=composites[i],
+                pack_id=fractional_cto_pack_id,
+            )
+            db.add(rs)
+            es = EngagementSnapshot(
+                company_id=c.id,
+                as_of=_PARITY_AS_OF,
+                esl_score=esl_scores[i],
+                engagement_type="Standard Outreach",
+                cadence_blocked=False,
+                pack_id=fractional_cto_pack_id,
+            )
+            db.add(es)
+        db.commit()
+
+        emerging = get_emerging_companies(
+            db,
+            _PARITY_AS_OF,
+            limit=5,
+            outreach_score_threshold=30,
+            pack_id=fractional_cto_pack_id,
+        )
+        emerging_ids = {c.id for _, _, c in emerging}
+        expected_ids = {c.id for c in companies}
+
+        assert emerging_ids == expected_ids, (
+            f"get_emerging_companies(pack) should return all companies with snapshots; "
+            f"got {emerging_ids}, expected {expected_ids}"
+        )
+
 
 # TestAdapter domains for ingest→derive→score harness
 _PARITY_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
