@@ -66,3 +66,25 @@ labels:
   advisor_request: "Advisor help requested"
   no_cto_detected: "No CTO detected"
   cto_hired: "CTO hired"
+
+# Explainability templates per signal (Issue #190, Phase 2)
+# Used when strict_explainability=True; supports human-readable signal explanations
+explainability_templates:
+  funding_raised: "{signal_label} observed on {date}"
+  job_posted_engineering: "{signal_label} observed on {date}"
+  job_posted_infra: "{signal_label} observed on {date}"
+  headcount_growth: "{signal_label} observed on {date}"
+  launch_major: "{signal_label} observed on {date}"
+  api_launched: "{signal_label} observed on {date}"
+  ai_feature_launched: "{signal_label} observed on {date}"
+  enterprise_feature: "{signal_label} observed on {date}"
+  compliance_mentioned: "{signal_label} observed on {date}"
+  enterprise_customer: "{signal_label} observed on {date}"
+  regulatory_deadline: "{signal_label} observed on {date}"
+  founder_urgency_language: "{signal_label} observed on {date}"
+  revenue_milestone: "{signal_label} observed on {date}"
+  cto_role_posted: "{signal_label} observed on {date}"
+  no_cto_detected: "{signal_label} observed on {date}"
+  fractional_request: "{signal_label} observed on {date}"
+  advisor_request: "{signal_label} observed on {date}"
+  cto_hired: "{signal_label} observed on {date}"

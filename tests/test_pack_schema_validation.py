@@ -493,3 +493,40 @@ class TestValidatePackSchemaStrictExplainability:
             playbooks=_valid_playbooks(),
             strict_explainability=True,
         )
+
+    def test_fractional_cto_v1_passes_when_explainability_enforced(self) -> None:
+        """fractional_cto_v1 passes validation with strict_explainability=True (Issue #190)."""
+        import json
+        from pathlib import Path
+
+        import yaml
+
+        from app.packs.schemas import validate_pack_schema
+
+        packs_root = Path(__file__).resolve().parent.parent / "packs"
+        pack_dir = packs_root / "fractional_cto_v1"
+        with (pack_dir / "pack.json").open() as f:
+            manifest = json.load(f)
+        with (pack_dir / "taxonomy.yaml").open() as f:
+            taxonomy = yaml.safe_load(f) or {}
+        with (pack_dir / "scoring.yaml").open() as f:
+            scoring = yaml.safe_load(f) or {}
+        with (pack_dir / "esl_policy.yaml").open() as f:
+            esl_policy = yaml.safe_load(f) or {}
+        with (pack_dir / "derivers.yaml").open() as f:
+            derivers = yaml.safe_load(f) or {}
+        playbooks = {}
+        if (pack_dir / "playbooks").is_dir():
+            for p in (pack_dir / "playbooks").glob("*.yaml"):
+                with p.open() as f:
+                    playbooks[p.stem] = yaml.safe_load(f) or {}
+
+        validate_pack_schema(
+            manifest=manifest,
+            taxonomy=taxonomy,
+            scoring=scoring,
+            esl_policy=esl_policy,
+            derivers=derivers,
+            playbooks=playbooks,
+            strict_explainability=True,
+        )

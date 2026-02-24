@@ -4,6 +4,7 @@ Validates pack manifest, taxonomy, scoring, esl_policy, derivers, and playbooks
 for cross-reference consistency. Raises ValidationError on invalid config.
 
 Phase 1 (Issue #190): playbook refs, semver (optional), ethical gates.
+Phase 2 (Issue #190): regex safety validation for derivers (ADR-008).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import re
 from typing import Any
 
 from app.packs.ethical_constants import validate_esl_policy_against_core_bans
+from app.packs.regex_validator import validate_deriver_regex_safety
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ def validate_pack_schema(
         _validate_explainability(taxonomy, signal_ids)
     _validate_scoring(scoring, signal_ids)
     _validate_derivers(derivers, signal_ids)
+    validate_deriver_regex_safety(derivers)
     _validate_esl_policy(esl_policy, signal_ids)
     _validate_playbooks(playbooks, taxonomy, esl_policy)
     _validate_ethical_policy(esl_policy)
