@@ -228,6 +228,134 @@ class TestValidatePackSchemaScoringCrossRef:
             )
 
 
+class TestValidatePackSchemaDeriversPattern:
+    """Pattern derivers: pattern/regex required, signal_id in taxonomy, source_fields whitelist."""
+
+    def test_pattern_missing_pattern_and_regex_raises(self) -> None:
+        """Pattern deriver without pattern or regex raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        taxonomy = {**_valid_taxonomy(), "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"]}
+        scoring = {
+            "base_scores": {
+                "momentum": {"funding_raised": 35},
+                "leadership_gap": {"cto_role_posted": 70, "compliance_mentioned": 20},
+            },
+            "composite_weights": {"M": 0.30, "C": 0.30, "P": 0.25, "G": 0.15},
+            "caps": {"dimension_max": 100},
+        }
+        derivers = {
+            "derivers": {
+                "passthrough": [{"event_type": "funding_raised", "signal_id": "funding_raised"}],
+                "pattern": [
+                    {"signal_id": "compliance_mentioned", "source_fields": ["title", "summary"]},
+                ],
+            }
+        }
+        with pytest.raises(ValidationError, match="pattern|regex"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=taxonomy,
+                scoring=scoring,
+                esl_policy=_valid_esl_policy(),
+                derivers=derivers,
+                playbooks={},
+            )
+
+    def test_pattern_signal_id_not_in_taxonomy_raises(self) -> None:
+        """Pattern deriver with signal_id not in taxonomy raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        derivers = {
+            "derivers": {
+                "pattern": [
+                    {
+                        "signal_id": "ghost_signal",
+                        "pattern": r"(?i)compliance",
+                        "source_fields": ["title", "summary"],
+                    },
+                ],
+            }
+        }
+        with pytest.raises(ValidationError, match="ghost_signal|taxonomy"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=derivers,
+                playbooks={},
+            )
+
+    def test_pattern_source_fields_disallowed_raises(self) -> None:
+        """Pattern deriver with disallowed source_fields raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        taxonomy = {**_valid_taxonomy(), "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"]}
+        scoring = {
+            "base_scores": {
+                "momentum": {"funding_raised": 35},
+                "leadership_gap": {"cto_role_posted": 70, "compliance_mentioned": 20},
+            },
+            "composite_weights": {"M": 0.30, "C": 0.30, "P": 0.25, "G": 0.15},
+            "caps": {"dimension_max": 100},
+        }
+        derivers = {
+            "derivers": {
+                "pattern": [
+                    {
+                        "signal_id": "compliance_mentioned",
+                        "pattern": r"(?i)compliance",
+                        "source_fields": ["title", "raw"],
+                    },
+                ],
+            }
+        }
+        with pytest.raises(ValidationError, match="raw|not allowed"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=taxonomy,
+                scoring=scoring,
+                esl_policy=_valid_esl_policy(),
+                derivers=derivers,
+                playbooks={},
+            )
+
+    def test_pattern_source_fields_allowed_passes(self) -> None:
+        """Pattern deriver with allowed source_fields passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        taxonomy = {**_valid_taxonomy(), "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"]}
+        scoring = {
+            "base_scores": {
+                "momentum": {"funding_raised": 35},
+                "leadership_gap": {"cto_role_posted": 70, "compliance_mentioned": 20},
+            },
+            "composite_weights": {"M": 0.30, "C": 0.30, "P": 0.25, "G": 0.15},
+            "caps": {"dimension_max": 100},
+        }
+        derivers = {
+            "derivers": {
+                "passthrough": [{"event_type": "funding_raised", "signal_id": "funding_raised"}],
+                "pattern": [
+                    {
+                        "signal_id": "compliance_mentioned",
+                        "pattern": r"(?i)compliance",
+                        "source_fields": ["title", "summary", "url", "source"],
+                    },
+                ],
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=taxonomy,
+            scoring=scoring,
+            esl_policy=_valid_esl_policy(),
+            derivers=derivers,
+            playbooks={},
+        )
+
+
 class TestValidatePackSchemaDeriversCrossRef:
     """Derivers passthrough signal_id must be in taxonomy."""
 
