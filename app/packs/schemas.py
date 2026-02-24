@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 # Semver pattern: x.y.z where x,y,z are non-negative integers
 _SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 
+# Allowed source_fields for pattern derivers (SignalEvent string attributes only).
+# Excludes raw (JSONB), url (unbounded), and non-string fields (ADR-008 defense in depth).
+ALLOWED_PATTERN_SOURCE_FIELDS: frozenset[str] = frozenset({
+    "title",
+    "summary",
+    "url",
+    "source",
+})
+
 
 class ValidationError(Exception):
     """Raised when pack schema validation fails."""
@@ -114,25 +123,67 @@ def _validate_scoring(scoring: dict[str, Any], signal_ids: set[str]) -> None:
 
 
 def _validate_derivers(derivers: dict[str, Any], signal_ids: set[str]) -> None:
-    """Validate derivers passthrough signal_ids are in taxonomy."""
+    """Validate derivers passthrough and pattern signal_ids are in taxonomy.
+
+    Pack structure: derivers must be under the "derivers" key, e.g.:
+      derivers:
+        passthrough: [...]
+        pattern: [...]
+
+    Pattern source_fields (when present) must be a subset of allowed fields:
+    title, summary, url, source.
+    """
     if not isinstance(derivers, dict):
         raise ValidationError("derivers must be a dict")
     inner = derivers.get("derivers") or {}
-    passthrough = inner.get("passthrough") if isinstance(inner, dict) else []
-    if not isinstance(passthrough, list):
+    if not isinstance(inner, dict):
         return
-    for i, entry in enumerate(passthrough):
-        if not isinstance(entry, dict):
-            continue
-        if "signal_id" not in entry:
-            raise ValidationError(
-                f"derivers passthrough entry at index {i} missing required field 'signal_id'"
-            )
-        sid = entry.get("signal_id")
-        if sid not in signal_ids:
-            raise ValidationError(
-                f"derivers passthrough references signal_id '{sid}' not in taxonomy.signal_ids"
-            )
+
+    # Passthrough derivers
+    passthrough = inner.get("passthrough") or []
+    if isinstance(passthrough, list):
+        for i, entry in enumerate(passthrough):
+            if not isinstance(entry, dict):
+                continue
+            if "signal_id" not in entry:
+                raise ValidationError(
+                    f"derivers passthrough entry at index {i} missing required field 'signal_id'"
+                )
+            sid = entry.get("signal_id")
+            if sid not in signal_ids:
+                raise ValidationError(
+                    f"derivers passthrough references signal_id '{sid}' not in taxonomy.signal_ids"
+                )
+
+    # Pattern derivers (Phase 1, Issue #173)
+    pattern_list = inner.get("pattern") or []
+    if isinstance(pattern_list, list):
+        for i, entry in enumerate(pattern_list):
+            if not isinstance(entry, dict):
+                continue
+            if "signal_id" not in entry:
+                raise ValidationError(
+                    f"derivers pattern entry at index {i} missing required field 'signal_id'"
+                )
+            if "pattern" not in entry and "regex" not in entry:
+                raise ValidationError(
+                    f"derivers pattern entry at index {i} must have 'pattern' or 'regex'"
+                )
+            sid = entry.get("signal_id")
+            if sid not in signal_ids:
+                raise ValidationError(
+                    f"derivers pattern references signal_id '{sid}' not in taxonomy.signal_ids"
+                )
+            # Whitelist source_fields (defense in depth, ADR-008)
+            source_fields = entry.get("source_fields")
+            if source_fields is not None and isinstance(source_fields, list):
+                for j, field in enumerate(source_fields):
+                    if field not in ALLOWED_PATTERN_SOURCE_FIELDS:
+                        raise ValidationError(
+                            f"derivers pattern entry at index {i} source_fields[{j}] "
+                            f"'{field}' not allowed; must be one of "
+                            f"{sorted(ALLOWED_PATTERN_SOURCE_FIELDS)}"
+                        )
 
 
 def _validate_esl_policy(esl_policy: dict[str, Any], signal_ids: set[str]) -> None:

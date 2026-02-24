@@ -608,7 +608,6 @@ class TestRunDeriver:
         assert "event_id=" in triggered[0].message
         assert "deriver_type=passthrough" in triggered[0].message
 
-    @pytest.mark.skip(reason="Requires second pack in signal_packs; Phase 4 scope")
     def test_cross_pack_different_signals_from_same_events(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
@@ -724,3 +723,7 @@ class TestRunDeriver:
         assert signal_ids_cto == {"funding_raised", "compliance_mentioned"}
         assert signal_ids_b == {"revenue_milestone"}
         assert signal_ids_cto != signal_ids_b
+
+        # Cleanup: remove test pack (cascade deletes its signal_instances)
+        db.query(SignalPack).filter(SignalPack.id == pack_b_id).delete()
+        db.commit()
