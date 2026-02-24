@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from app.models.job_run import JobRun
 
-
 # ── Fixtures ────────────────────────────────────────────────────────
 
 VALID_TOKEN = "test-internal-token"  # matches conftest.py env setup
@@ -245,6 +244,53 @@ class TestRunAlertScan:
         data = response.json()
         assert data["status"] == "failed"
         assert "Alert scan error" in data["error"]
+
+
+# ── /internal/run_derive ────────────────────────────────────────────
+
+
+class TestRunDerive:
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_derive_valid_token_returns_same_shape(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_derive with valid token returns expected keys."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 88,
+            "instances_upserted": 10,
+            "events_processed": 10,
+            "events_skipped": 0,
+            "error": None,
+        }
+
+        response = client.post(
+            "/internal/run_derive",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["job_run_id"] == 88
+        assert data["instances_upserted"] == 10
+        assert data["events_processed"] == 10
+        mock_run_stage.assert_called_once()
+        call_kwargs = mock_run_stage.call_args[1]
+        assert call_kwargs["job_type"] == "derive"
+
+    def test_run_derive_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_derive without token header returns 422."""
+        response = client.post("/internal/run_derive")
+        assert response.status_code == 422
+
+    def test_run_derive_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_derive with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_derive",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
 
 
 # ── /internal/run_ingest ────────────────────────────────────────────

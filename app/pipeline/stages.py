@@ -56,8 +56,23 @@ def _score_stage(
     return StageResult(run_score_nightly(db, workspace_id=workspace_id, pack_id=pack_id))
 
 
+def _derive_stage(
+    db: Session,
+    workspace_id: str,
+    pack_id: str | None,
+    **kwargs: Any,
+) -> StageResult:
+    """Derive stage: populates signal_instances from SignalEvents (Phase 2)."""
+    from app.pipeline.deriver_engine import run_deriver
+
+    return StageResult(
+        run_deriver(db, workspace_id=workspace_id, pack_id=pack_id)
+    )
+
+
 # Registry: job_type -> callable (db, workspace_id, pack_id, **kwargs) -> dict
 STAGE_REGISTRY: dict[str, PipelineStage] = {
     "ingest": _ingest_stage,
+    "derive": _derive_stage,
     "score": _score_stage,
 }

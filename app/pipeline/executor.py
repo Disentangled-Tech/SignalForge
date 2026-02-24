@@ -103,4 +103,12 @@ def _cached_result(job: JobRun, job_type: str) -> dict:
             "companies_skipped": 0,
             "error": job.error_message,
         }
+    if job_type == "derive":
+        return {
+            **base,
+            "instances_upserted": job.companies_processed or 0,
+            "events_processed": 0,
+            "events_skipped": 0,
+            "error": job.error_message,
+        }
     return base

@@ -70,6 +70,27 @@ class TestRunStage:
         with pytest.raises(ValueError, match="Unknown job_type"):
             run_stage(db, job_type="unknown_stage")
 
+    @patch("app.pipeline.deriver_engine.run_deriver")
+    def test_run_stage_derive_calls_run_deriver(
+        self, mock_deriver, db: Session
+    ) -> None:
+        """run_stage('derive') calls run_deriver with workspace_id and pack_id."""
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 3,
+            "instances_upserted": 5,
+            "events_processed": 5,
+            "events_skipped": 0,
+        }
+        result = run_stage(db, job_type="derive")
+        assert result["status"] == "completed"
+        assert result["job_run_id"] == 3
+        assert result["instances_upserted"] == 5
+        mock_deriver.assert_called_once()
+        call_kwargs = mock_deriver.call_args[1]
+        assert call_kwargs["workspace_id"] == DEFAULT_WORKSPACE_ID
+        assert call_kwargs["pack_id"] is not None
+
 
 class TestIdempotency:
     """Tests for idempotency_key behavior."""
