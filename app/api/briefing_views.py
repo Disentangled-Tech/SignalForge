@@ -20,7 +20,7 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.user import User
-from app.services.briefing import get_emerging_companies
+from app.services.briefing import get_emerging_companies_for_briefing
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.pack_resolver import get_default_pack_id
 from app.services.readiness.human_labels import event_type_to_label
@@ -192,7 +192,7 @@ def get_briefing_data(
         display_scores = get_display_scores_for_companies(db, company_ids)
 
     settings = get_settings()
-    emerging_triples = get_emerging_companies(
+    emerging_triples = get_emerging_companies_for_briefing(
         db,
         briefing_date,
         limit=settings.weekly_review_limit,

@@ -216,6 +216,38 @@ async def run_ingest_endpoint(
         return {"status": "failed", "error": str(exc)}
 
 
+@router.post("/run_update_lead_feed")
+async def run_update_lead_feed_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+):
+    """Trigger update_lead_feed stage: populate lead_feed from snapshots (Phase 3).
+
+    Run after score. Upserts lead_feed from ReadinessSnapshot + EngagementSnapshot.
+    Idempotent. Pass X-Idempotency-Key to skip duplicate runs.
+    """
+    from app.pipeline.executor import run_stage
+
+    try:
+        result = run_stage(
+            db,
+            job_type="update_lead_feed",
+            idempotency_key=x_idempotency_key,
+        )
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
+            "rows_upserted": result.get("rows_upserted", 0),
+            "error": result.get("error"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Internal update_lead_feed job failed")
+        return {"status": "failed", "error": str(exc)}
+
+
 @router.post("/run_bias_audit")
 async def run_bias_audit_endpoint(
     db: Session = Depends(get_db),

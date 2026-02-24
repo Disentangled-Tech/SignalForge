@@ -29,6 +29,7 @@ from app.models import (  # noqa: F401
     Company,
     CompanyAlias,
     JobRun,
+    LeadFeed,
     OperatorProfile,
     ReadinessSnapshot,
     SignalEvent,
