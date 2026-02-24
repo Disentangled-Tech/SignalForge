@@ -23,6 +23,8 @@ from app.services.readiness.scoring_constants import (
     COMPOSITE_WEIGHTS,
     QUIET_SIGNAL_AMPLIFIED_BASE,
     QUIET_SIGNAL_LOOKBACK_DAYS,
+    SUPPRESS_CTO_HIRED_60_DAYS,
+    SUPPRESS_CTO_HIRED_180_DAYS,
     decay_complexity,
     decay_momentum,
     decay_pressure,
@@ -31,10 +33,6 @@ from app.services.readiness.scoring_constants import (
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
-
-# Leadership gap suppressors (v2-spec §4.3, §4.4)
-SUPPRESS_CTO_HIRED_60_DAYS: int = 70
-SUPPRESS_CTO_HIRED_180_DAYS: int = 50
 
 DEFAULT_CONFIDENCE: float = 0.7
 
@@ -125,6 +123,32 @@ def _cfg_base(cfg: dict | None, key: str, default: dict) -> dict:
     return cfg.get(key, default)
 
 
+def _decay_from_cfg(days: int, dimension: str, _cfg: dict | None = None) -> float:
+    """Return decay multiplier for days since event using pack config or module defaults (Issue #174).
+
+    dimension: "M" (momentum), "P" (pressure), "C" (complexity).
+    When _cfg has decay_<dim> as list of (max_days, value), uses that; else uses module decay_*.
+    """
+    if days < 0:
+        days = 0
+    if _cfg:
+        key = {"M": "decay_momentum", "P": "decay_pressure", "C": "decay_complexity"}.get(dimension)
+        if key:
+            breakpoints = _cfg.get(key)
+            if breakpoints and isinstance(breakpoints, list):
+                for max_days, mult in breakpoints:
+                    if days <= max_days:
+                        return float(mult)
+                return 0.0
+    if dimension == "M":
+        return decay_momentum(days)
+    if dimension == "P":
+        return decay_pressure(days)
+    if dimension == "C":
+        return decay_complexity(days)
+    return 1.0
+
+
 def compute_momentum(events: list[Any], as_of: date, _cfg: dict | None = None) -> int:
     """Compute Momentum (M) 0..100 from events (v2-spec §4.3).
 
@@ -149,7 +173,7 @@ def compute_momentum(events: list[Any], as_of: date, _cfg: dict | None = None) -
         if days > WINDOW_MOMENTUM_DAYS:
             continue
         base = _get_effective_base(etype, "M", has_funding, _cfg) or bs[etype]
-        decay = decay_momentum(days)
+        decay = _decay_from_cfg(days, "M", _cfg)
         conf = _get_confidence(ev)
         contrib = base * decay * conf
         if etype in MOMENTUM_JOB_TYPES:
@@ -187,7 +211,7 @@ def compute_complexity(events: list[Any], as_of: date, _cfg: dict | None = None)
         if days > WINDOW_COMPLEXITY_DAYS:
             continue
         base = _get_effective_base(etype, "C", has_funding, _cfg) or bs[etype]
-        decay = decay_complexity(days)
+        decay = _decay_from_cfg(days, "C", _cfg)
         conf = _get_confidence(ev)
         contrib = base * decay * conf
         if etype in COMPLEXITY_JOB_TYPES:
@@ -222,7 +246,7 @@ def compute_pressure(events: list[Any], as_of: date, _cfg: dict | None = None) -
         if days > WINDOW_PRESSURE_DAYS:
             continue
         base = bs[etype]
-        decay = decay_pressure(days)
+        decay = _decay_from_cfg(days, "P", _cfg)
         conf = _get_confidence(ev)
         contrib = base * decay * conf
         if etype in PRESSURE_FOUNDER_URGENCY_TYPES:
@@ -303,6 +327,32 @@ def compute_composite(M: int, C: int, P: int, G: int, _cfg: dict | None = None) 
     return int(round(max(0, min(raw, cap_dim))))
 
 
+def _check_disqualifier_signals(
+    events: list[Any], as_of: date, _cfg: dict | None = None
+) -> tuple[bool, list[str]]:
+    """Check if any disqualifier signal is present within its window (Phase 2, Issue #174).
+
+    disqualifier_signals: {event_type: window_days}. When event present within window, R=0.
+    Returns (disqualified, list of event_types that triggered).
+    """
+    dq = (_cfg or {}).get("disqualifier_signals") or {}
+    if not dq or not isinstance(dq, dict):
+        return (False, [])
+    triggered: list[str] = []
+    for ev in events:
+        etype = getattr(ev, "event_type", None)
+        ev_time = getattr(ev, "event_time", None)
+        if etype is None or ev_time is None or etype not in dq:
+            continue
+        window_days = dq.get(etype)
+        if not isinstance(window_days, (int, float)) or window_days <= 0:
+            continue
+        days = _days_since(ev_time, as_of)
+        if days <= int(window_days):
+            triggered.append(etype)
+    return (len(triggered) > 0, triggered)
+
+
 def apply_global_suppressors(
     M: int, C: int, P: int, G: int, company_status: str | None = None
 ) -> tuple[int, int, int, int, list[str]]:
@@ -335,13 +385,13 @@ def _event_contribution_to_dimension(
     bs_g = _cfg_base(_cfg, "base_scores_leadership_gap", BASE_SCORES_LEADERSHIP_GAP)
     if dimension == "M" and etype in bs_m:
         base = _get_effective_base(etype, "M", has_funding, _cfg) or bs_m[etype]
-        return base * decay_momentum(days) * conf
+        return base * _decay_from_cfg(days, "M", _cfg) * conf
     if dimension == "C" and etype in bs_c:
         base = _get_effective_base(etype, "C", has_funding, _cfg) or bs_c[etype]
-        return base * decay_complexity(days) * conf
+        return base * _decay_from_cfg(days, "C", _cfg) * conf
     if dimension == "P" and etype in bs_p:
         base = bs_p[etype]
-        return base * decay_pressure(days) * conf
+        return base * _decay_from_cfg(days, "P", _cfg) * conf
     if dimension == "G" and etype in bs_g and etype != "cto_hired":
         base = bs_g[etype]
         return base  # state-based, no decay
@@ -404,12 +454,16 @@ def build_explain_payload(
     top_events: list[dict[str, Any]],
     suppressors_applied: list[str],
     quiet_signal_amplification_applied: list[str] | None = None,
+    disqualifiers_applied: list[str] | None = None,
     _cfg: dict | None = None,
 ) -> dict[str, Any]:
     """Build explain JSON payload (v2-spec §4.5).
 
     Issue #113: quiet_signal_amplification_applied lists event types that received
     amplified base when company had no funding in lookback window.
+    Issue #174: minimum_threshold included when pack defines it.
+    Enforcement: see docs/MINIMUM_THRESHOLD_ENFORCEMENT.md (briefing/lead-feed).
+    Phase 2: disqualifiers_applied lists event types that zeroed R when present in window.
     """
     cw = (_cfg or {}).get("composite_weights", COMPOSITE_WEIGHTS)
     payload: dict[str, Any] = {
@@ -420,6 +474,11 @@ def build_explain_payload(
     }
     if quiet_signal_amplification_applied:
         payload["quiet_signal_amplification_applied"] = quiet_signal_amplification_applied
+    if disqualifiers_applied:
+        payload["disqualifiers_applied"] = disqualifiers_applied
+    min_thresh = (_cfg or {}).get("minimum_threshold")
+    if min_thresh is not None and min_thresh != 0:
+        payload["minimum_threshold"] = min_thresh
     return payload
 
 
@@ -450,6 +509,10 @@ def compute_readiness(
 
     R = compute_composite(M, C, P, G, _cfg=_cfg)
 
+    disqualified, disqualifiers_applied = _check_disqualifier_signals(events, as_of, _cfg)
+    if disqualified:
+        R = 0
+
     top_events = compute_event_contributions(events, as_of, limit=top_events_limit, _cfg=_cfg)
 
     has_funding = _has_funding_in_window(events, as_of, _cfg=_cfg)
@@ -458,7 +521,9 @@ def compute_readiness(
     quiet_amplified = [t for t in quiet_base if t in event_types_present] if not has_funding else []
 
     explain = build_explain_payload(
-        M, C, P, G, R, top_events, suppressors_applied, quiet_amplified, _cfg=_cfg
+        M, C, P, G, R, top_events, suppressors_applied, quiet_amplified,
+        disqualifiers_applied=disqualifiers_applied or None,
+        _cfg=_cfg,
     )
 
     return {

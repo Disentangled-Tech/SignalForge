@@ -62,6 +62,18 @@ decay:
     "181-365": 0.6
     "366+": 0.4
 
+# Leadership gap suppressors (v2-spec §4.4, Issue #174)
+suppressors:
+  cto_hired_60_days: 70
+  cto_hired_180_days: 50
+
+# Phase 2 (Issue #174): minimum threshold and disqualifier signals
+# minimum_threshold: 0 default; R below this is treated as 0 for briefing (optional)
+minimum_threshold: 0
+# disqualifier_signals: event_type -> window_days; when present in window, R=0
+# Empty for fractional_cto_v1 to preserve parity with legacy (pack=None)
+disqualifier_signals: {}
+
 # Pain-signal weights and stage bonuses (from app/services/scoring.py)
 pain_signal_weights:
   hiring_engineers: 15

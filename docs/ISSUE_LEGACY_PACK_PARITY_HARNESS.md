@@ -1,7 +1,14 @@
 # Legacy-vs-Pack Parity Harness — Tracking
 
-**Status**: Implemented (Phase 4 follow-up)  
-**Reference**: rules/TDD_rules.md, `.cursor/plans/deriver_engine_pack-driven_implementation_459de0b6.plan.md`
+**Status**: Phase 2 complete. Parity harness must pass before merge.  
+**Reference**: rules/TDD_rules.md, `.cursor/plans/scoring_engine_pack_refactor_ebb7e057.plan.md`
+
+**Phase 2 (Issue #174, CTO Pack Extraction)**: Added `minimum_threshold`, `disqualifier_signals` to pack scoring. Fractional CTO pack uses empty disqualifiers for parity. Full parity harness passes: `compute_readiness(events, pack=None)` == `compute_readiness(events, pack=cto)` for all fixture scenarios. `TestReadinessEnginePackParameter` skips removed.
+
+**Phase 4 (Issue #175)**: ESL decision moved from explain JSONB to dedicated columns
+(`esl_decision`, `esl_reason_code`, `sensitivity_level`) on engagement_snapshots.
+JobRun tracks `companies_esl_suppressed` for score jobs. Briefing/ORE prefer columns
+over explain when reading.
 
 ## Overview
 
@@ -11,7 +18,11 @@ The Legacy-vs-Pack Parity Harness ensures that when migrating from the legacy pi
 
 | Test File | Tests |
 |-----------|-------|
-| `tests/test_legacy_pack_parity.py` | `TestFromPackFractionalCtoMatchesDefaults`, `TestReadinessParitySameEventsPackNoneVsCto`, `TestEmergingCompaniesParityPackVsLegacy` |
+| `tests/test_legacy_pack_parity.py` | `TestFromPackFractionalCtoMatchesDefaults`, `TestReadinessParitySameEventsPackNoneVsCto`, `TestEmergingCompaniesParityPackVsLegacy`, `TestIngestDeriveScoreParity` |
+
+**Phase 2 parity tests** (must pass before merge):
+- `test_from_pack_minimum_threshold_defaults_to_zero`, `test_from_pack_disqualifier_signals_empty_for_cto`
+- `test_same_events_pack_none_vs_cto_produces_same_composite` (no skip)
 
 ## Fixture Dataset (TDD_rules)
 
@@ -30,5 +41,5 @@ The Legacy-vs-Pack Parity Harness ensures that when migrating from the legacy pi
 ## Follow-ups
 
 - [ ] Extend harness to compare `select_top_companies` (legacy) vs `get_emerging_companies` (pack) when both paths are fully wired
-- [ ] Add ESL decision and sensitivity label assertions when those fields are exposed in test fixtures
+- [ ] Add ESL decision and sensitivity label assertions when those fields are exposed in test fixtures (per TDD_rules follow-ups)
 - [ ] Add outreach draft constraints assertion (tone, required elements, no forbidden phrases)
