@@ -143,6 +143,40 @@ async def run_alert_scan(
         return {"status": "failed", "error": str(exc)}
 
 
+@router.post("/run_derive")
+async def run_derive_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+):
+    """Trigger derive stage: populate signal_instances from SignalEvents (Phase 2).
+
+    Run after ingest. Applies pack passthrough derivers. Idempotent.
+    Pass X-Idempotency-Key to skip duplicate runs.
+    """
+    from app.pipeline.executor import run_stage
+
+    try:
+        result = run_stage(
+            db,
+            job_type="derive",
+            idempotency_key=x_idempotency_key,
+        )
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
+            "instances_upserted": result.get("instances_upserted", 0),
+            "events_processed": result.get("events_processed", 0),
+            "events_skipped": result.get("events_skipped", 0),
+            "error": result.get("error"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Internal derive job failed")
+        return {"status": "failed", "error": str(exc)}
+
+
 @router.post("/run_ingest")
 async def run_ingest_endpoint(
     db: Session = Depends(get_db),

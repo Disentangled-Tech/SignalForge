@@ -4,10 +4,11 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app.db import engine
 
@@ -120,4 +121,67 @@ def test_config_checksum_migration_fails_when_pack_missing(_ensure_migrations: N
     finally:
         # Restore pack and re-upgrade to head
         shutil.move(str(backup_dir), str(pack_dir))
+        _run_alembic_env("upgrade", "head")
+
+
+def test_signal_instances_unique_migration_fails_with_duplicates(
+    _ensure_migrations: None,
+) -> None:
+    """Migration 20260224_signal_instances_unique fails with clear message when duplicates exist."""
+    # Downgrade to just before the unique constraint migration
+    result = _run_alembic_env("downgrade", "20260224_job_runs_indexes")
+    if result.returncode != 0:
+        pytest.skip(f"Could not downgrade: {result.stderr}")
+
+    # Insert duplicate signal_instances (same entity_id, signal_id, pack_id)
+    with engine.connect() as conn:
+        # Get a valid pack_id and entity_id from existing data
+        row = conn.execute(
+            text(
+                "SELECT id FROM signal_packs WHERE pack_id = 'fractional_cto_v1' LIMIT 1"
+            )
+        ).fetchone()
+        if not row:
+            _run_alembic_env("upgrade", "head")
+            pytest.skip("fractional_cto_v1 pack not found")
+        pack_id = row[0]
+
+        row = conn.execute(text("SELECT id FROM companies LIMIT 1")).fetchone()
+        if not row:
+            _run_alembic_env("upgrade", "head")
+            pytest.skip("No companies in DB")
+        entity_id = row[0]
+
+        for i in range(2):
+            conn.execute(
+                text(
+                    "INSERT INTO signal_instances (id, entity_id, signal_id, pack_id, strength) "
+                    "VALUES (:id, :entity_id, 'funding_raised', :pack_id, 1.0)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "entity_id": entity_id,
+                    "pack_id": str(pack_id),
+                },
+            )
+        conn.commit()
+
+    try:
+        result = _run_alembic_env("upgrade", "20260224_signal_instances_unique")
+        assert result.returncode != 0, "Migration must fail when duplicates exist"
+        err = (result.stderr or result.stdout or "").lower()
+        assert "duplicate" in err, f"Error should mention duplicates: {result.stderr}"
+        assert "signal_instances" in err or "resolve" in err, (
+            f"Error should mention signal_instances or resolve: {result.stderr}"
+        )
+    finally:
+        # Clean up duplicates and restore to head
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    "DELETE FROM signal_instances WHERE entity_id = :eid AND signal_id = 'funding_raised'"
+                ),
+                {"eid": entity_id},
+            )
+            conn.commit()
         _run_alembic_env("upgrade", "head")
