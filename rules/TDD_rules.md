@@ -26,6 +26,7 @@ Your job:
    - Regression tests
    - Integration tests (DB) using @pytest.mark.integration
    - UI tests for server-rendered HTML (via FastAPI TestClient + BeautifulSoup)
+5) Tests must clean up after themselves, deleting any test data they create.
 
 Non-negotiable rules:
 - No “assert True” or trivial tests.

@@ -11,13 +11,12 @@ from app.models import Company, SignalEvent
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.ingest import run_ingest
 
-# Test domains used by TestAdapter
 _TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 
 
 @pytest.fixture(autouse=True)
 def _cleanup_test_adapter_data(db: Session) -> None:
-    """Remove test adapter data before each test for isolation."""
+    """Remove test adapter data before each test (handles pre-existing data from prior runs)."""
     db.query(SignalEvent).filter(SignalEvent.source == "test").delete(
         synchronize_session="fetch"
     )

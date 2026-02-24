@@ -22,7 +22,7 @@ _REVIEW_AS_OF = date(2099, 2, 1)
 
 @pytest.fixture(autouse=True)
 def _clean_review_test_data(db: Session) -> None:
-    """Remove test data to avoid pollution."""
+    """Remove test data before each test (handles pre-existing data)."""
     db.execute(delete(OutreachHistory))
     db.execute(delete(EngagementSnapshot).where(EngagementSnapshot.as_of == _REVIEW_AS_OF))
     db.execute(delete(ReadinessSnapshot).where(ReadinessSnapshot.as_of == _REVIEW_AS_OF))

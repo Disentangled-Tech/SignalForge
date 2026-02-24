@@ -15,7 +15,7 @@ from app.services.esl.esl_engine import compute_outreach_score
 
 @pytest.fixture(autouse=True)
 def _clean_emerging_test_data(db: Session) -> None:
-    """Remove readiness/engagement snapshots with future dates to avoid test pollution."""
+    """Remove readiness/engagement snapshots with future dates (handles pre-existing data)."""
     db.execute(delete(EngagementSnapshot).where(EngagementSnapshot.as_of >= date(2099, 1, 1)))
     db.execute(delete(ReadinessSnapshot).where(ReadinessSnapshot.as_of >= date(2099, 1, 1)))
     db.commit()

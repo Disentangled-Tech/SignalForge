@@ -162,6 +162,12 @@ def test_readiness_snapshots_pack_id_column_accepts_fk(db: Session) -> None:
         pytest.skip("No companies in DB")
     company_id = company_row[0]
     as_of = date(2099, 9, 9)
+    # Remove any pre-existing snapshot to avoid UniqueViolation from prior runs
+    db.execute(
+        text("DELETE FROM readiness_snapshots WHERE company_id = :cid AND as_of = :as_of AND pack_id = :pid"),
+        {"cid": company_id, "as_of": as_of, "pid": pack_id},
+    )
+    db.commit()
     db.execute(
         text(
             """

@@ -12,10 +12,10 @@ from sqlalchemy.orm import Session
 
 from tests.test_constants import TEST_INTERNAL_JOB_TOKEN, TEST_SECRET_KEY
 
-# Load .env for tests (macOS often uses $USER, not "postgres")
+# Force test DB when pytest runs; don't inherit from .env (avoids polluting signalforge_dev)
 _test_user = os.getenv("PGUSER") or os.getenv("USER") or "postgres"
 _test_url = f"postgresql+psycopg://{_test_user}@localhost:5432/signalforge_test"
-os.environ.setdefault("DATABASE_URL", _test_url)
+os.environ["DATABASE_URL"] = _test_url
 os.environ.setdefault("SECRET_KEY", TEST_SECRET_KEY)
 os.environ.setdefault("INTERNAL_JOB_TOKEN", TEST_INTERNAL_JOB_TOKEN)
 
@@ -25,6 +25,21 @@ def client() -> TestClient:
     """FastAPI test client."""
     from app.main import app
     return TestClient(app)
+
+
+@pytest.fixture
+def client_with_db(db: Session) -> TestClient:
+    """TestClient with get_db overridden to use the test db session (for integration tests)."""
+    from app.main import app
+    from app.db.session import get_db
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    c = TestClient(app)
+    yield c
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture(scope="session")
@@ -61,13 +76,21 @@ def _ensure_migrations() -> None:
 
 @pytest.fixture
 def db(_ensure_migrations: None) -> Session:
-    """Database session for model tests."""
-    from app.db import SessionLocal
-    session = SessionLocal()
+    """Database session for model tests. All changes are rolled back after each test."""
+    from app.db import engine
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(
+        bind=connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
     try:
         yield session
     finally:
         session.close()
+        transaction.rollback()
+        connection.close()
 
 
 # Issue #189: fractional_cto_v1 pack - UUID varies by migration; query DB at runtime
