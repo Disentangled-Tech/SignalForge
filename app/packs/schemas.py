@@ -288,11 +288,17 @@ def _validate_esl_policy(esl_policy: dict[str, Any], signal_ids: set[str]) -> No
                 raise ValidationError(
                     f"esl_policy downgrade_rules[{i}] trigger_signal '{trigger}' not in taxonomy.signal_ids"
                 )
-            if max_rec and valid_recommendation_types and max_rec not in valid_recommendation_types:
-                raise ValidationError(
-                    f"esl_policy downgrade_rules[{i}] max_recommendation '{max_rec}' not in "
-                    f"recommendation_boundaries"
-                )
+            if max_rec:
+                if not valid_recommendation_types:
+                    raise ValidationError(
+                        f"esl_policy downgrade_rules[{i}] max_recommendation requires "
+                        f"recommendation_boundaries to be defined and non-empty"
+                    )
+                if max_rec not in valid_recommendation_types:
+                    raise ValidationError(
+                        f"esl_policy downgrade_rules[{i}] max_recommendation '{max_rec}' not in "
+                        f"recommendation_boundaries"
+                    )
 
 
 def _valid_recommendation_types_from_esl(esl_policy: dict[str, Any]) -> set[str]:
