@@ -242,6 +242,7 @@ async def run_ingest_endpoint(
     workspace-scoped keys (e.g. ``{workspace_id}:{timestamp}``) to avoid
     collisions across workspaces.
     Pack resolution: when pack_id omitted, uses workspace active_pack_id.
+    Ingested events are written to the resolved pack (Phase 3).
     """
     from uuid import UUID
 

@@ -141,6 +141,7 @@ class TestRunScore:
             "job_run_id": 99,
             "companies_scored": 5,
             "companies_engagement": 4,
+            "companies_esl_suppressed": 1,
             "companies_skipped": 2,
             "error": None,
         }
@@ -156,6 +157,7 @@ class TestRunScore:
         assert data["job_run_id"] == 99
         assert data["companies_scored"] == 5
         assert data["companies_engagement"] == 4
+        assert data["companies_esl_suppressed"] == 1
         assert data["companies_skipped"] == 2
         mock_score.assert_called_once()
 

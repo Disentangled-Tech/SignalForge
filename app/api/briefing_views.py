@@ -118,6 +118,9 @@ def get_briefing_data(
     """Fetch briefing data for a date (Issue #110). Shared by HTML and JSON API.
 
     Returns dict with: items, emerging_companies, display_scores, esl_by_company.
+
+    TODO(multi-tenant): Scope by workspace_id when multi-workspace is enabled;
+    get_emerging_companies and pack_id resolution should use workspace active pack.
     """
     if sort not in _VALID_SORTS:
         sort = _SORT_SCORE

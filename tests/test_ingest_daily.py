@@ -77,11 +77,11 @@ class TestRunIngestDaily:
         # Second run - patch run_ingest to capture since
         captured_since = None
 
-        def capture_since(inner_db, adapter, since):
+        def capture_since(inner_db, adapter, since, pack_id=None):
             nonlocal captured_since
             captured_since = since
             from app.ingestion.ingest import run_ingest
-            return run_ingest(inner_db, adapter, since)
+            return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch(
             "app.services.ingestion.ingest_daily.run_ingest",
@@ -107,11 +107,11 @@ class TestRunIngestDaily:
 
         captured_since = None
 
-        def capture_since(inner_db, adapter, since):
+        def capture_since(inner_db, adapter, since, pack_id=None):
             nonlocal captured_since
             captured_since = since
             from app.ingestion.ingest import run_ingest
-            return run_ingest(inner_db, adapter, since)
+            return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch(
             "app.services.ingestion.ingest_daily.run_ingest",
