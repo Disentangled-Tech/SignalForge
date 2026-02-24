@@ -1,17 +1,18 @@
 """SQLAlchemy models."""
 
 from app.models.alert import Alert
-from app.models.bias_report import BiasReport
 from app.models.analysis_record import AnalysisRecord
 from app.models.app_settings import AppSettings
+from app.models.bias_report import BiasReport
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.company_alias import CompanyAlias
 from app.models.engagement_snapshot import EngagementSnapshot
+from app.models.job_run import JobRun
+from app.models.lead_feed import LeadFeed
+from app.models.operator_profile import OperatorProfile
 from app.models.outreach_history import OutreachHistory
 from app.models.outreach_recommendation import OutreachRecommendation
-from app.models.job_run import JobRun
-from app.models.operator_profile import OperatorProfile
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
@@ -33,6 +34,7 @@ __all__ = [
     "OutreachHistory",
     "OutreachRecommendation",
     "JobRun",
+    "LeadFeed",
     "OperatorProfile",
     "ReadinessSnapshot",
     "SignalEvent",

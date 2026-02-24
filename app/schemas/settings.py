@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, time
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,24 +10,24 @@ from pydantic import BaseModel, ConfigDict, Field
 class SettingsUpdate(BaseModel):
     """Schema for updating application settings (issue #29)."""
 
-    briefing_time: Optional[time] = Field(
+    briefing_time: time | None = Field(
         None, description="Time of day to generate briefings (HH:MM)"
     )
-    briefing_email: Optional[str] = Field(
+    briefing_email: str | None = Field(
         None,
         max_length=255,
         description="Email address for briefing delivery",
     )
-    briefing_email_enabled: Optional[bool] = Field(
+    briefing_email_enabled: bool | None = Field(
         None, description="Enable briefing email delivery"
     )
-    briefing_frequency: Optional[str] = Field(
+    briefing_frequency: str | None = Field(
         None, description="daily or weekly"
     )
-    briefing_day_of_week: Optional[int] = Field(
+    briefing_day_of_week: int | None = Field(
         None, ge=0, le=6, description="0=Monday .. 6=Sunday for weekly briefings"
     )
-    scoring_weights: Optional[dict[str, float]] = Field(
+    scoring_weights: dict[str, float] | None = Field(
         None, description="Custom scoring weights as key-value pairs"
     )
 
@@ -38,12 +37,12 @@ class SettingsRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    briefing_time: Optional[time] = None
-    briefing_email: Optional[str] = None
-    briefing_email_enabled: Optional[bool] = None
-    briefing_frequency: Optional[str] = None
-    briefing_day_of_week: Optional[int] = None
-    scoring_weights: Optional[dict[str, float]] = None
+    briefing_time: time | None = None
+    briefing_email: str | None = None
+    briefing_email_enabled: bool | None = None
+    briefing_frequency: str | None = None
+    briefing_day_of_week: int | None = None
+    scoring_weights: dict[str, float] | None = None
 
 
 class OperatorProfileUpdate(BaseModel):
@@ -61,6 +60,6 @@ class OperatorProfileRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    content: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    content: str | None = None
+    updated_at: datetime | None = None
 

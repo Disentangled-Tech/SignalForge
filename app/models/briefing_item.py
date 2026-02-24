@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,11 +29,11 @@ class BriefingItem(Base):
     outreach_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     briefing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
 
-    company: Mapped["Company"] = relationship("Company", back_populates="briefing_items")
-    analysis: Mapped["AnalysisRecord"] = relationship(
+    company: Mapped[Company] = relationship("Company", back_populates="briefing_items")
+    analysis: Mapped[AnalysisRecord] = relationship(
         "AnalysisRecord", back_populates="briefing_items"
     )
 

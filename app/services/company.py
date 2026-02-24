@@ -6,8 +6,6 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
-from app.services.company_resolver import resolve_or_create_company
-from app.services.scoring import get_display_scores_for_companies
 from app.schemas.company import (
     BulkImportResponse,
     BulkImportRow,
@@ -15,7 +13,8 @@ from app.schemas.company import (
     CompanyRead,
     CompanyUpdate,
 )
-
+from app.services.company_resolver import resolve_or_create_company
+from app.services.scoring import get_display_scores_for_companies
 
 # ── Field mapping helpers ────────────────────────────────────────────
 

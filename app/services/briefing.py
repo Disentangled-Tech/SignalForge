@@ -94,6 +94,7 @@ def get_emerging_companies(
     limit: int = 5,
     outreach_score_threshold: int = 30,
     pack_id=None,
+    workspace_id: str | None = None,
 ) -> list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]]:
     """Query top N companies by OutreachScore for a date (Issue #102, #103, #189).
 
@@ -101,14 +102,36 @@ def get_emerging_companies(
     Companies are ranked by OutreachScore descending; threshold filter applied.
     Pack-scoped: only returns data for the given pack (Issue #189).
 
+    Dual-path (Phase 4, Issue #225): Prefers lead_feed when populated for
+    workspace/pack/as_of; falls back to join query when feed empty.
+
     Note: Pack minimum_threshold (R >= min) is not yet enforced here.
     See docs/MINIMUM_THRESHOLD_ENFORCEMENT.md for enforcement plan.
     """
-    if pack_id is None:
-        pack_id = get_default_pack_id(db)
-    if pack_id is None:
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+    from app.services.lead_feed import get_emerging_companies_from_feed
+    from app.services.pack_resolver import get_pack_for_workspace
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    resolved_pack = pack_id or get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+    if resolved_pack is None:
         return []
 
+    # Phase 4: Prefer lead_feed when populated (Issue #225)
+    feed_result = get_emerging_companies_from_feed(
+        db,
+        as_of,
+        workspace_id=ws_id,
+        pack_id=resolved_pack,
+        limit=limit,
+        outreach_score_threshold=outreach_score_threshold,
+    )
+    if feed_result:
+        return feed_result
+
+    pack_id = resolved_pack
+
+    # Fallback: legacy join query
     # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
     pack_match = or_(
         ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,

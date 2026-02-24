@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -57,11 +56,11 @@ class AnalysisRecordRead(BaseModel):
 
     id: int
     company_id: int
-    stage: Optional[str] = None
-    stage_confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
-    pain_signals: Optional[PainSignals] = None
-    evidence_bullets: Optional[list[str]] = None
-    explanation: Optional[str] = None
+    stage: str | None = None
+    stage_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    pain_signals: PainSignals | None = None
+    evidence_bullets: list[str] | None = None
+    explanation: str | None = None
     created_at: datetime
 
 

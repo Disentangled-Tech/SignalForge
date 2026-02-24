@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -26,7 +25,7 @@ def create_user(db: Session, username: str, password: str) -> User:
     return user
 
 
-def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:
+def authenticate_user(db: Session, username: str, password: str) -> User | None:
     """Validate credentials and return user, or None if invalid."""
     user = db.query(User).filter(User.username == username).first()
     if user is None:
@@ -36,18 +35,18 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
     return user
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a signed JWT access token."""
     settings = get_settings()
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> Optional[dict]:
+def decode_access_token(token: str) -> dict | None:
     """Decode and validate a JWT token. Returns payload or None."""
     settings = get_settings()
     try:
@@ -57,12 +56,12 @@ def decode_access_token(token: str) -> Optional[dict]:
         return None
 
 
-def get_user_from_token(db: Session, token: str) -> Optional[User]:
+def get_user_from_token(db: Session, token: str) -> User | None:
     """Extract user from a JWT token. Returns None if token invalid or user not found."""
     payload = decode_access_token(token)
     if payload is None:
         return None
-    username: Optional[str] = payload.get("sub")
+    username: str | None = payload.get("sub")
     if username is None:
         return None
     return db.query(User).filter(User.username == username).first()

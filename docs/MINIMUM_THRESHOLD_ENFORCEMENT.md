@@ -23,6 +23,7 @@ The following surfaces **do not** currently enforce `minimum_threshold`:
 | **Briefing data** (HTML + JSON API) | `get_briefing_data()` in `app/api/briefing_views.py` | Calls `get_emerging_companies()` with `outreach_score_threshold` | ❌ Not enforced |
 | **Weekly review / Outreach API** | `get_weekly_review_companies()` in `app/services/outreach_review.py` | `outreach_score_threshold` | ❌ Not enforced |
 | **Briefing item generation** | `select_top_companies()` in `app/services/briefing.py` | `cto_need_score` (different metric) | ❌ Not enforced |
+| **Lead-feed projection** | `build_lead_feed_from_snapshots()`, `upsert_lead_feed_from_snapshots()` | Excludes entities with `rs.composite < min_thresh` when pack defines `minimum_threshold > 0` | ✅ Enforced |
 
 ## Where It SHOULD Be Enforced (Future)
 
@@ -33,8 +34,6 @@ When implementing enforcement:
 2. **`get_weekly_review_companies()`** (`app/services/outreach_review.py`): Same logic—exclude companies where `rs.composite < minimum_threshold` from pack explain when pack defines it.
 
 3. **`get_briefing_data()`** (`app/api/briefing_views.py`): No direct change needed if `get_emerging_companies()` enforces it; briefing data inherits the filter.
-
-4. **Lead-feed projection** (when implemented): Apply the same `R >= minimum_threshold` filter when building the lead feed.
 
 ## Relationship to outreach_score_threshold
 

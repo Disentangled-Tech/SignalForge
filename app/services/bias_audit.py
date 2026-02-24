@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -48,7 +48,7 @@ def compute_funding_concentration(
         return {"with_funding": 0, "pct": 0.0, "segment": "with_funding"}
 
     cutoff = as_of - timedelta(days=FUNDING_LOOKBACK_DAYS)
-    cutoff_dt = datetime.combine(cutoff, datetime.min.time()).replace(tzinfo=timezone.utc)
+    cutoff_dt = datetime.combine(cutoff, datetime.min.time()).replace(tzinfo=UTC)
 
     # Companies with at least one funding_raised event
     with_funding = (
@@ -202,7 +202,7 @@ def run_bias_audit(db: Session, report_month: date | None = None) -> dict:
             db.commit()
             db.refresh(report)
 
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "completed"
         job.companies_processed = surfaced_count
         db.commit()
@@ -224,7 +224,7 @@ def run_bias_audit(db: Session, report_month: date | None = None) -> dict:
 
     except Exception as exc:
         logger.exception("Bias audit failed")
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)
         db.commit()

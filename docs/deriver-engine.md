@@ -85,6 +85,7 @@ Each `SignalInstance` has a nullable `evidence_event_ids` JSONB column:
 - **Purpose**: Traceability from signal back to source events
 - **Population**: New runs populate; existing rows may have `NULL` (pre-migration)
 - **Aggregation**: Multiple events for same (entity, signal) append event IDs to the list
+- **Merge on upsert**: When a SignalInstance already exists (re-run), evidence_event_ids is merged (concatenated and deduplicated) rather than replaced, preserving traceability across derive runs
 
 ## Logging
 

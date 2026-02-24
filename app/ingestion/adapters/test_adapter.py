@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from app.schemas.signal import RawEvent
 from app.ingestion.base import SourceAdapter
+from app.schemas.signal import RawEvent
 
 
 class TestAdapter(SourceAdapter):
@@ -23,7 +23,7 @@ class TestAdapter(SourceAdapter):
                 domain="testa.example.com",
                 website_url="https://testa.example.com",
                 event_type_candidate="funding_raised",
-                event_time=datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc),
+                event_time=datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC),
                 title="Series A",
                 summary="Raised $5M",
                 url="https://example.com/funding/testa",
@@ -35,7 +35,7 @@ class TestAdapter(SourceAdapter):
                 domain="testb.example.com",
                 website_url="https://testb.example.com",
                 event_type_candidate="job_posted_engineering",
-                event_time=datetime(2026, 2, 18, 11, 0, 0, tzinfo=timezone.utc),
+                event_time=datetime(2026, 2, 18, 11, 0, 0, tzinfo=UTC),
                 title="Senior Engineer",
                 summary="Hiring for growth",
                 url="https://example.com/jobs/testb",
@@ -46,7 +46,7 @@ class TestAdapter(SourceAdapter):
                 company_name="Test Company C",
                 domain="testc.example.com",
                 event_type_candidate="cto_role_posted",
-                event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+                event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
                 title="CTO",
                 source_event_id="test-adapter-003",
             ),

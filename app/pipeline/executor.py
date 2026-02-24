@@ -22,6 +22,7 @@ def run_stage(
     workspace_id: str | UUID | None = None,
     pack_id: UUID | None = None,
     idempotency_key: str | None = None,
+    **stage_kwargs: object,
 ) -> dict:
     """Run a pipeline stage with idempotency and rate limit checks.
 
@@ -71,7 +72,7 @@ def run_stage(
     if not stage:
         raise ValueError(f"Unknown job_type: {job_type}")
 
-    return stage(db, workspace_id=ws_id, pack_id=pack_str, **{})
+    return stage(db, workspace_id=ws_id, pack_id=pack_str, **stage_kwargs)
 
 
 def _cached_result(job: JobRun, job_type: str) -> dict:
@@ -110,6 +111,12 @@ def _cached_result(job: JobRun, job_type: str) -> dict:
             "instances_upserted": job.companies_processed or 0,
             "events_processed": 0,
             "events_skipped": 0,
+            "error": job.error_message,
+        }
+    if job_type == "update_lead_feed":
+        return {
+            **base,
+            "rows_upserted": job.companies_processed or 0,
             "error": job.error_message,
         }
     return base

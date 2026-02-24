@@ -65,6 +65,6 @@ class EngagementSnapshot(Base):
         nullable=False,
     )
 
-    company: Mapped["Company"] = relationship(
+    company: Mapped[Company] = relationship(
         "Company", back_populates="engagement_snapshots"
     )

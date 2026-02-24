@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -55,11 +55,11 @@ def update_operator_profile(db: Session, content: str) -> OperatorProfile:
     """
     row = db.query(OperatorProfile).first()
     if row is None:
-        row = OperatorProfile(content=content, updated_at=datetime.now(timezone.utc))
+        row = OperatorProfile(content=content, updated_at=datetime.now(UTC))
         db.add(row)
     else:
         row.content = content
-        row.updated_at = datetime.now(timezone.utc)
+        row.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(row)
     return row

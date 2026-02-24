@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -27,7 +27,7 @@ class SignalRecord(Base):
     content_text: Mapped[str] = mapped_column(Text, nullable=False)
     raw_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
     pack_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -35,4 +35,4 @@ class SignalRecord(Base):
         nullable=True,
     )
 
-    company: Mapped["Company"] = relationship("Company", back_populates="signal_records")
+    company: Mapped[Company] = relationship("Company", back_populates="signal_records")

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -20,16 +18,16 @@ AUTH_COOKIE = "access_token"
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
-    authorization: Optional[str] = Header(None),
-    access_token: Optional[str] = Cookie(None),
-) -> Optional[User]:
+    authorization: str | None = Header(None),
+    access_token: str | None = Cookie(None),
+) -> User | None:
     """Return the authenticated user or None.
 
     Checks (in order):
     1. Authorization: Bearer <token> header
     2. access_token cookie
     """
-    token: Optional[str] = None
+    token: str | None = None
 
     # Check Authorization header
     if authorization and authorization.startswith("Bearer "):
@@ -47,7 +45,7 @@ def get_current_user(
 
 def require_auth(
     request: Request,
-    user: Optional[User] = Depends(get_current_user),
+    user: User | None = Depends(get_current_user),
 ) -> User:
     """Dependency that requires authentication.
 
@@ -64,7 +62,7 @@ def require_auth(
 
 def require_ui_auth(
     request: Request,
-    user: Optional[User] = Depends(get_current_user),
+    user: User | None = Depends(get_current_user),
 ) -> User:
     """Dependency that requires authentication for browser/UI routes.
 

@@ -40,18 +40,41 @@ def get_weekly_review_companies(
     limit: int = 5,
     outreach_score_threshold: int = 30,
     pack_id=None,
+    workspace_id: str | None = None,
 ) -> list[dict]:
     """Query top N companies by OutreachScore for weekly review (Issue #108, #189).
 
     Excludes companies in cooldown (60-day or 180-day declined per Issue #109).
     Pack-scoped (Issue #189).
 
+    Dual-path (Phase 4, Issue #225): Prefers lead_feed when populated for
+    workspace/pack/as_of; falls back to join query when feed empty.
+
     Note: Pack minimum_threshold (R >= min) is not yet enforced here.
     See docs/MINIMUM_THRESHOLD_ENFORCEMENT.md for enforcement plan.
     """
-    pack_id = pack_id or get_default_pack_id(db)
-    if pack_id is None:
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+    from app.services.lead_feed import get_weekly_review_companies_from_feed
+    from app.services.pack_resolver import get_pack_for_workspace
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    resolved_pack = pack_id or get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+    if resolved_pack is None:
         return []
+
+    # Phase 4: Prefer lead_feed when populated (Issue #225)
+    feed_result = get_weekly_review_companies_from_feed(
+        db,
+        as_of,
+        workspace_id=ws_id,
+        pack_id=resolved_pack,
+        limit=limit,
+        outreach_score_threshold=outreach_score_threshold,
+    )
+    if feed_result:
+        return feed_result
+
+    pack_id = resolved_pack
 
     as_of_dt = datetime.combine(as_of, datetime.min.time()).replace(tzinfo=UTC)
 

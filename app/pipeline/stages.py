@@ -70,9 +70,29 @@ def _derive_stage(
     )
 
 
+def _update_lead_feed_stage(
+    db: Session,
+    workspace_id: str,
+    pack_id: str | None,
+    **kwargs: Any,
+) -> StageResult:
+    """Update lead_feed stage: builds projection from snapshots (Phase 1, Issue #225)."""
+    from app.services.lead_feed.run_update import run_update_lead_feed
+
+    return StageResult(
+        run_update_lead_feed(
+            db,
+            workspace_id=workspace_id,
+            pack_id=pack_id,
+            as_of=kwargs.get("as_of"),
+        )
+    )
+
+
 # Registry: job_type -> callable (db, workspace_id, pack_id, **kwargs) -> dict
 STAGE_REGISTRY: dict[str, PipelineStage] = {
     "ingest": _ingest_stage,
     "derive": _derive_stage,
     "score": _score_stage,
+    "update_lead_feed": _update_lead_feed_stage,
 }

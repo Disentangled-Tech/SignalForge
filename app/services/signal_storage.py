@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -79,7 +79,7 @@ def store_signal(
         # AC #14: Last activity timestamp updates — even for duplicates
         company = db.query(Company).filter(Company.id == company_id).first()
         if company is not None:
-            company.last_scan_at = datetime.now(timezone.utc)
+            company.last_scan_at = datetime.now(UTC)
             db.commit()
         return None
 
@@ -96,7 +96,7 @@ def store_signal(
     # Update company.last_scan_at
     company = db.query(Company).filter(Company.id == company_id).first()
     if company is not None:
-        company.last_scan_at = datetime.now(timezone.utc)
+        company.last_scan_at = datetime.now(UTC)
 
     db.commit()
     db.refresh(record)

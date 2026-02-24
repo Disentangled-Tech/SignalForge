@@ -1,4 +1,9 @@
-"""Scoring engine — deterministic CTO-need score from analysis results."""
+"""Scoring engine — deterministic CTO-need score from analysis results.
+
+Phase 2 (CTO Pack Extraction): All weights and stage bonuses come from pack config.
+No hardcoded fallbacks. When pack is None, resolves default pack from db or
+loads fractional_cto_v1 from filesystem for backward compatibility.
+"""
 
 from __future__ import annotations
 
@@ -16,26 +21,6 @@ if TYPE_CHECKING:
     from app.packs.loader import Pack
 
 logger = logging.getLogger(__name__)
-
-# ── Default signal weights ──────────────────────────────────────────
-# Each key maps to a pain-signal boolean in the analysis output.
-# Value = points added when the signal is *true*.
-DEFAULT_SIGNAL_WEIGHTS: dict[str, int] = {
-    "hiring_engineers": 15,
-    "switching_from_agency": 10,
-    "adding_enterprise_features": 15,
-    "compliance_security_pressure": 25,
-    "product_delivery_issues": 20,
-    "architecture_scaling_risk": 15,
-    "founder_overload": 10,
-}
-
-# ── Stage bonuses ───────────────────────────────────────────────────
-STAGE_BONUSES: dict[str, int] = {
-    "scaling_team": 20,
-    "enterprise_transition": 30,
-    "struggling_execution": 30,
-}
 
 # Legacy keys from pre-schema-change analyses (Issue #64)
 # recent_funding = capital received (scaling needs); switching_from_agency = agency→in-house transition
@@ -58,16 +43,33 @@ def _get_signal_value(entry: dict) -> Any:
     return entry.get("detected")
 
 
+def _get_pack_or_default(db: Session | None = None) -> Pack | None:
+    """Resolve pack: from db if available, else load fractional_cto_v1 from filesystem.
+
+    Phase 2: No hardcoded fallbacks. Used when pack is None.
+    """
+    from app.services.pack_resolver import get_default_pack
+
+    return get_default_pack(db)
+
+
+def _get_weights_from_pack(pack: Pack) -> tuple[dict[str, int], dict[str, int]]:
+    """Extract pain_signal_weights and stage_bonuses from pack (Phase 2)."""
+    sc = pack.scoring if isinstance(pack.scoring, dict) else {}
+    weights = dict(sc.get("pain_signal_weights") or {})
+    stage_bonuses = dict(sc.get("stage_bonuses") or {})
+    return weights, stage_bonuses
+
+
 def _normalize_signals(
     signals: dict[str, Any],
-    known_keys: set[str] | None = None,
+    known_keys: set[str],
 ) -> dict[str, Any]:
     """Map legacy signal keys to canonical keys (Issue #64).
 
-    known_keys: set of valid signal keys (default: DEFAULT_SIGNAL_WEIGHTS).
-    Used when pack provides different weights (Issue #189, Plan Step 1.5).
+    known_keys: set of valid signal keys from pack pain_signal_weights (Phase 2).
     """
-    known = known_keys or set(DEFAULT_SIGNAL_WEIGHTS)
+    known = known_keys
     canonical: dict[str, Any] = {}
     for k, v in signals.items():
         canonical_key = _LEGACY_SIGNAL_KEY_MAP.get(k, k)
@@ -110,8 +112,13 @@ def calculate_score(
     stage: str,
     custom_weights: dict[str, int] | dict[str, float] | None = None,
     pack: Pack | None = None,
+    db: Session | None = None,
 ) -> int:
     """Return a 0-100 CTO-need score from pain signals and stage.
+
+    Phase 2: All weights come from pack. No hardcoded fallbacks. When pack is
+    None, resolves default pack from db or loads fractional_cto_v1 from
+    filesystem. Returns 0 when no pack available.
 
     Parameters
     ----------
@@ -122,22 +129,23 @@ def calculate_score(
     stage:
         Company lifecycle stage string (e.g. ``"scaling_team"``).
     custom_weights:
-        If provided, overrides defaults for matching keys only (Issue #64).
+        If provided, overrides pack weights for matching keys only (Issue #64).
     pack:
-        Optional Pack. When provided, uses pack.scoring pain_signal_weights and
-        stage_bonuses (Issue #189, Plan Step 1.5). When None, uses defaults.
+        Pack with pain_signal_weights and stage_bonuses. When None, resolved
+        from db or filesystem.
+    db:
+        Optional session for resolving default pack when pack is None.
     """
     if not isinstance(pain_signals, dict):
         return 0
 
-    # Base weights from pack or defaults (Issue #189, Plan Step 1.5)
-    if pack is not None and isinstance(pack.scoring, dict):
-        sc = pack.scoring
-        weights = dict(sc.get("pain_signal_weights") or DEFAULT_SIGNAL_WEIGHTS)
-        stage_bonuses = dict(sc.get("stage_bonuses") or STAGE_BONUSES)
-    else:
-        weights = dict(DEFAULT_SIGNAL_WEIGHTS)
-        stage_bonuses = dict(STAGE_BONUSES)
+    effective_pack = pack if pack is not None else _get_pack_or_default(db)
+    if effective_pack is None:
+        return 0
+
+    weights, stage_bonuses = _get_weights_from_pack(effective_pack)
+    if not weights:
+        return 0
 
     # Merge custom weights with base so we always use canonical keys (Issue #64)
     if custom_weights is not None:
@@ -175,12 +183,33 @@ def calculate_score(
     return int(round(result))
 
 
+def get_known_pain_signal_keys(db: Session | None = None) -> set[str]:
+    """Return known pain signal keys from default pack (Phase 2).
+
+    Used by scan_orchestrator for change detection and by get_custom_weights
+    for validation. When no pack available, returns empty set.
+    """
+    pack = _get_pack_or_default(db)
+    if pack is None:
+        return set()
+    weights, _ = _get_weights_from_pack(pack)
+    return set(weights)
+
+
 def get_custom_weights(db: Session) -> dict[str, int] | None:
     """Load custom scoring weights from AppSettings.
 
-    Returns ``None`` when the ``scoring_weights`` key is absent or the stored
-    value is not valid JSON. Legacy keys are mapped to canonical keys (Issue #64).
+    Returns ``None`` when the ``scoring_weights`` key is absent, the stored
+    value is not valid JSON, or no pack is available for validation.
+    Legacy keys are mapped to canonical keys (Issue #64).
+    Phase 2: Validates keys against pack pain_signal_weights only.
     """
+    pack = _get_pack_or_default(db)
+    if pack is None:
+        return None
+    weights_dict = (pack.scoring or {}).get("pain_signal_weights") or {}
+    known_keys = set(weights_dict)
+
     row = db.query(AppSettings).filter(AppSettings.key == "scoring_weights").first()
     if row is None or row.value is None:
         return None
@@ -190,7 +219,7 @@ def get_custom_weights(db: Session) -> dict[str, int] | None:
             canonical: dict[str, int] = {}
             for k, v in parsed.items():
                 ck = _LEGACY_SIGNAL_KEY_MAP.get(k, k)
-                if ck in DEFAULT_SIGNAL_WEIGHTS:
+                if ck in known_keys:
                     canonical[ck] = int(round(float(v))) if isinstance(v, (int, float)) else 0
             return canonical if canonical else None
         return None
@@ -235,6 +264,7 @@ def get_display_scores_for_companies(db: Session, company_ids: list[int]) -> dic
             stage=analysis.stage or "",
             custom_weights=custom_weights,
             pack=pack,
+            db=db,
         )
         result[cid] = score
     return result
@@ -262,6 +292,7 @@ def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int
         stage=analysis.stage or "",
         custom_weights=custom_weights,
         pack=pack,
+        db=db,
     )
 
     company = db.query(Company).filter(Company.id == company_id).first()

@@ -8,19 +8,19 @@ title/summary) to produce entity-level signal instances. Idempotent: upsert by
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
-
 import re
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.job_run import JobRun
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
+from app.packs.schemas import ALLOWED_PATTERN_SOURCE_FIELDS
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 if TYPE_CHECKING:
@@ -83,8 +83,9 @@ def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
         elif not isinstance(source_fields, list):
             source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
         else:
+            # Filter by schema-validated whitelist (title, summary, url, source)
             source_fields = [
-                f for f in source_fields if f in _DEFAULT_PATTERN_SOURCE_FIELDS
+                f for f in source_fields if f in ALLOWED_PATTERN_SOURCE_FIELDS
             ]
             if not source_fields:
                 source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
@@ -306,6 +307,14 @@ def _run_deriver_core(
 
     if values:
         stmt = insert(SignalInstance).values(values)
+        # Merge evidence_event_ids and deduplicate (avoids unbounded growth on re-runs)
+        merged_evidence = text(
+            "(SELECT coalesce(jsonb_agg(elem), '[]'::jsonb) FROM ("
+            "SELECT DISTINCT jsonb_array_elements("
+            "COALESCE(signal_instances.evidence_event_ids, '[]'::jsonb) || "
+            "COALESCE(excluded.evidence_event_ids, '[]'::jsonb)"
+            ") AS elem) sub)"
+        )
         stmt = stmt.on_conflict_do_update(
             index_elements=["entity_id", "signal_id", "pack_id"],
             set_={
@@ -322,7 +331,7 @@ def _run_deriver_core(
                     SignalInstance.confidence,
                 ),
                 "strength": 1.0,
-                "evidence_event_ids": stmt.excluded.evidence_event_ids,
+                "evidence_event_ids": merged_evidence,
             },
         )
         db.execute(stmt)

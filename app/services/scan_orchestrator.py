@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -15,10 +15,10 @@ from app.models.job_run import JobRun
 from app.services.analysis import analyze_company
 from app.services.page_discovery import discover_pages
 from app.services.scoring import (
-    DEFAULT_SIGNAL_WEIGHTS,
     _get_signal_value,
     _is_signal_true,
     _normalize_signals,
+    get_known_pain_signal_keys,
     score_company,
 )
 from app.services.signal_storage import store_signal
@@ -100,34 +100,44 @@ async def run_scan_company(db: Session, company_id: int) -> int:
 # ── Change detection (issue #61) ──────────────────────────────────────
 
 
-def _extract_signal_values(pain_signals_json: dict[str, Any] | None) -> dict[str, bool]:
-    """Extract canonical signal name -> bool for comparison. Uses scoring normalization."""
+def _extract_signal_values(
+    pain_signals_json: dict[str, Any] | None,
+    known_keys: set[str],
+) -> dict[str, bool]:
+    """Extract canonical signal name -> bool for comparison. Uses scoring normalization.
+
+    Phase 2: known_keys from pack pain_signal_weights (get_known_pain_signal_keys).
+    """
     if not pain_signals_json:
         return {}
     signals = pain_signals_json.get("signals", pain_signals_json)
     if not isinstance(signals, dict):
         return {}
-    normalized = _normalize_signals(signals)
+    normalized = _normalize_signals(signals, known_keys)
     return {
         k: _is_signal_true(_get_signal_value(v))
         for k, v in normalized.items()
-        if k in DEFAULT_SIGNAL_WEIGHTS
+        if k in known_keys
     }
 
 
 def _analysis_changed(
-    prev: AnalysisRecord | None, new: AnalysisRecord
+    prev: AnalysisRecord | None,
+    new: AnalysisRecord,
+    db: Session,
 ) -> bool:
     """Return True if analysis output (stage or pain signals) changed from previous.
 
     Companies with no prior analysis are not counted as changed.
+    Phase 2: Uses pack pain_signal_weights for known keys.
     """
     if prev is None:
         return False
     if (prev.stage or "").strip().lower() != (new.stage or "").strip().lower():
         return True
-    prev_vals = _extract_signal_values(prev.pain_signals_json)
-    new_vals = _extract_signal_values(new.pain_signals_json)
+    known_keys = get_known_pain_signal_keys(db)
+    prev_vals = _extract_signal_values(prev.pain_signals_json, known_keys)
+    new_vals = _extract_signal_values(new.pain_signals_json, known_keys)
     all_keys = set(prev_vals) | set(new_vals)
     for k in all_keys:
         if prev_vals.get(k, False) != new_vals.get(k, False):
@@ -161,7 +171,9 @@ async def run_scan_company_full(
     analysis = analyze_company(db, company_id)
     if analysis is not None:
         score_company(db, company_id, analysis)
-    changed = _analysis_changed(prev_analysis, analysis) if analysis else False
+    changed = (
+        _analysis_changed(prev_analysis, analysis, db) if analysis else False
+    )
     return new_count, analysis, changed
 
 
@@ -210,7 +222,7 @@ async def run_scan_company_with_job(
         await run_scan_company(db, company_id)
     except Exception as exc:
         logger.error("Scan failed for company %s: %s", company_id, exc)
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)
         db.commit()
@@ -223,14 +235,14 @@ async def run_scan_company_with_job(
             score_company(db, company_id, analysis)
     except Exception as exc:
         logger.error("Analysis/scoring failed for company %s: %s", company_id, exc)
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)
         db.commit()
         db.refresh(job)
         return job
 
-    job.finished_at = datetime.now(timezone.utc)
+    job.finished_at = datetime.now(UTC)
     job.status = "completed"
     job.error_message = None
     db.commit()
@@ -277,7 +289,7 @@ async def run_scan_all(db: Session) -> JobRun:
             errors.append(msg)
 
     # Finalise JobRun
-    job.finished_at = datetime.now(timezone.utc)
+    job.finished_at = datetime.now(UTC)
     job.companies_processed = processed
     job.companies_analysis_changed = changed_count
 

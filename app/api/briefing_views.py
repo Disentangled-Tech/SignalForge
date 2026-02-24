@@ -26,7 +26,7 @@ from app.services.esl.esl_gate_filter import (
     get_effective_engagement_type,
     is_suppressed_from_engagement,
 )
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, resolve_pack
 from app.services.readiness.human_labels import event_type_to_label
 from app.services.scoring import get_display_scores_for_companies
 
@@ -213,6 +213,7 @@ def get_briefing_data(
         display_scores = get_display_scores_for_companies(db, company_ids)
 
     settings = get_settings()
+    pack = resolve_pack(db, pack_id) if pack_id else None
     emerging_triples = get_emerging_companies(
         db,
         briefing_date,
@@ -223,7 +224,7 @@ def get_briefing_data(
     for readiness_snap, engagement_snap, company in emerging_triples:
         top_events = (readiness_snap.explain or {}).get("top_events") or []
         top_signals = [
-            event_type_to_label(ev.get("event_type", ""))
+            event_type_to_label(ev.get("event_type", ""), pack=pack)
             for ev in top_events[:3]
         ]
         outreach_score = compute_outreach_score(

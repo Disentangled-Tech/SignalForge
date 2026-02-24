@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON
@@ -28,11 +28,11 @@ class AnalysisRecord(Base):
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_llm_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
 
-    company: Mapped["Company"] = relationship("Company", back_populates="analysis_records")
-    briefing_items: Mapped[list["BriefingItem"]] = relationship(
+    company: Mapped[Company] = relationship("Company", back_populates="analysis_records")
+    briefing_items: Mapped[list[BriefingItem]] = relationship(
         "BriefingItem", back_populates="analysis", cascade="all, delete-orphan"
     )
 

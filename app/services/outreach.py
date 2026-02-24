@@ -157,9 +157,21 @@ def generate_outreach(
             "context (evidence, stage, notes). operator_claims_used must be []."
         )
 
+    # Phase 2: offer_type from pack manifest for domain language
+    offer_type = "fractional CTO"
+    try:
+        from app.services.pack_resolver import get_default_pack
+
+        pack = get_default_pack(db)
+        if pack is not None and isinstance(pack.manifest, dict):
+            offer_type = pack.manifest.get("offer_type", offer_type)
+    except Exception:
+        pass
+
     try:
         prompt = render_prompt(
             "outreach_v1",
+            OFFER_TYPE=offer_type,
             OPERATOR_PROFILE_MARKDOWN=operator_md,
             COMPANY_NAME=company.name or "",
             FOUNDER_NAME=company.founder_name or "",

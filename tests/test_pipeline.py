@@ -118,6 +118,26 @@ class TestRunStage:
         assert call_kwargs["workspace_id"] == DEFAULT_WORKSPACE_ID
         assert call_kwargs["pack_id"] is not None
 
+    @patch("app.services.lead_feed.run_update.run_update_lead_feed")
+    def test_run_stage_update_lead_feed_calls_run_update(
+        self, mock_run_update, db: Session
+    ) -> None:
+        """run_stage('update_lead_feed') calls run_update_lead_feed."""
+        mock_run_update.return_value = {
+            "status": "completed",
+            "job_run_id": 4,
+            "rows_upserted": 10,
+            "error": None,
+        }
+        result = run_stage(db, job_type="update_lead_feed")
+        assert result["status"] == "completed"
+        assert result["job_run_id"] == 4
+        assert result["rows_upserted"] == 10
+        mock_run_update.assert_called_once()
+        call_kwargs = mock_run_update.call_args[1]
+        assert call_kwargs["workspace_id"] == DEFAULT_WORKSPACE_ID
+        assert call_kwargs["pack_id"] is not None
+
 
 class TestIdempotency:
     """Tests for idempotency_key behavior."""
@@ -202,6 +222,35 @@ class TestIdempotency:
         assert result_b["inserted"] == 20
         assert result_default["job_run_id"] == job_ws_a.id
         assert result_default["inserted"] == 10
+
+    def test_idempotency_update_lead_feed_returns_cached_when_completed_exists(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """When idempotency_key matches completed update_lead_feed run, return cached result."""
+        job = JobRun(
+            job_type="update_lead_feed",
+            status="completed",
+            idempotency_key="lead-feed-key-001",
+            companies_processed=3,
+            workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+            pack_id=fractional_cto_pack_id,
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        with patch(
+            "app.services.lead_feed.run_update.run_update_lead_feed"
+        ) as mock_update:
+            result = run_stage(
+                db,
+                job_type="update_lead_feed",
+                idempotency_key="lead-feed-key-001",
+            )
+            mock_update.assert_not_called()
+            assert result["status"] == "completed"
+            assert result["job_run_id"] == job.id
+            assert result["rows_upserted"] == 3
 
 
 class TestRateLimit:
