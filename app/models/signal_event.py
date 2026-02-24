@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -29,7 +29,7 @@ class SignalEvent(Base):
     event_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     ingested_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -43,6 +43,6 @@ class SignalEvent(Base):
         nullable=True,
     )
 
-    company: Mapped["Company | None"] = relationship(
+    company: Mapped[Company | None] = relationship(
         "Company", back_populates="signal_events"
     )

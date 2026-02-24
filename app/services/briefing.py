@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import or_
@@ -34,18 +35,24 @@ _ACTIVITY_WINDOW_DAYS = 14
 _DEDUP_WINDOW_DAYS = 7
 
 
-def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
+def select_top_companies(
+    db: Session,
+    limit: int = 5,
+    workspace_id: str | None = None,
+) -> list[Company]:
     """Select the top N companies for today's briefing.
 
     Criteria:
     1. Activity within 14 days (last_scan_at OR signal created_at).
     2. At least one AnalysisRecord (required for briefing generation).
     3. Sorted by cto_need_score descending (nulls last).
-    4. Exclude companies with a BriefingItem in the last 7 days.
+    4. Exclude companies with a BriefingItem in the last 7 days (workspace-scoped when workspace_id provided).
 
     Returns up to ``limit`` companies (default 5). Fewer may be returned if
     fewer qualify. No padding.
     """
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
     now = datetime.now(UTC)
     activity_cutoff = now - timedelta(days=_ACTIVITY_WINDOW_DAYS)
     dedup_cutoff = now - timedelta(days=_DEDUP_WINDOW_DAYS)
@@ -64,12 +71,20 @@ def select_top_companies(db: Session, limit: int = 5) -> list[Company]:
     )
 
     # Sub-query: company IDs already briefed in the dedup window.
-    recently_briefed_ids = (
+    recently_briefed_q = (
         db.query(BriefingItem.company_id)
         .filter(BriefingItem.created_at >= dedup_cutoff)
-        .distinct()
-        .subquery()
     )
+    if workspace_id is not None:
+        recently_briefed_q = recently_briefed_q.filter(
+            BriefingItem.workspace_id == workspace_id
+        )
+    else:
+        recently_briefed_q = recently_briefed_q.filter(
+            (BriefingItem.workspace_id == DEFAULT_WORKSPACE_ID)
+            | (BriefingItem.workspace_id.is_(None))
+        )
+    recently_briefed_ids = recently_briefed_q.distinct().subquery()
 
     companies = (
         db.query(Company)
@@ -182,6 +197,7 @@ def get_emerging_companies(
     limit: int = 5,
     outreach_score_threshold: int = 30,
     pack_id=None,
+    workspace_id: str | None = None,
 ) -> list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]]:
     """Query top N companies by OutreachScore for a date (Issue #102, #103, #189).
 
@@ -189,14 +205,36 @@ def get_emerging_companies(
     Companies are ranked by OutreachScore descending; threshold filter applied.
     Pack-scoped: only returns data for the given pack (Issue #189).
 
+    Dual-path (Phase 4, Issue #225): Prefers lead_feed when populated for
+    workspace/pack/as_of; falls back to join query when feed empty.
+
     Note: Pack minimum_threshold (R >= min) is not yet enforced here.
     See docs/MINIMUM_THRESHOLD_ENFORCEMENT.md for enforcement plan.
     """
-    if pack_id is None:
-        pack_id = get_default_pack_id(db)
-    if pack_id is None:
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+    from app.services.lead_feed import get_emerging_companies_from_feed
+    from app.services.pack_resolver import get_pack_for_workspace
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    resolved_pack = pack_id or get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+    if resolved_pack is None:
         return []
 
+    # Phase 4: Prefer lead_feed when populated (Issue #225)
+    feed_result = get_emerging_companies_from_feed(
+        db,
+        as_of,
+        workspace_id=ws_id,
+        pack_id=resolved_pack,
+        limit=limit,
+        outreach_score_threshold=outreach_score_threshold,
+    )
+    if feed_result:
+        return feed_result
+
+    pack_id = resolved_pack
+
+    # Fallback: legacy join query
     # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
     pack_match = or_(
         ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
@@ -269,7 +307,10 @@ def _parse_json_safe(text: str) -> dict | None:
         return None
 
 
-def generate_briefing(db: Session) -> list[BriefingItem]:
+def generate_briefing(
+    db: Session,
+    workspace_id: str | None = None,
+) -> list[BriefingItem]:
     """Generate today's briefing for the top companies.
 
     For each selected company:
@@ -282,7 +323,13 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
 
     Creates a JobRun record (issue #27) to track start, finish, and errors.
     Sends briefing email when enabled (issue #29).
+
+    When workspace_id is provided, BriefingItems are scoped to that workspace.
+    When None, uses default workspace (single-tenant mode).
     """
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
     job = JobRun(job_type="briefing", status="running")
     db.add(job)
     db.commit()
@@ -307,13 +354,13 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
                 db.commit()
                 return []
 
-        companies = select_top_companies(db)
+        companies = select_top_companies(db, workspace_id=ws_id)
         items: list[BriefingItem] = []
         errors: list[str] = []
 
         for company in companies:
             try:
-                item = _generate_for_company(db, company)
+                item = _generate_for_company(db, company, workspace_id=ws_id)
                 if item is not None:
                     items.append(item)
             except Exception as exc:
@@ -376,17 +423,23 @@ def generate_briefing(db: Session) -> list[BriefingItem]:
         raise
 
 
-def _generate_for_company(db: Session, company: Company) -> BriefingItem | None:
+def _generate_for_company(
+    db: Session,
+    company: Company,
+    workspace_id: str | None = None,
+) -> BriefingItem | None:
     """Build a single BriefingItem for *company*.  Returns ``None`` when skipped."""
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
     today = date.today()
-    existing = (
-        db.query(BriefingItem)
-        .filter(
-            BriefingItem.company_id == company.id,
-            BriefingItem.briefing_date == today,
-        )
-        .first()
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    existing_q = db.query(BriefingItem).filter(
+        BriefingItem.company_id == company.id,
+        BriefingItem.briefing_date == today,
     )
+    if ws_id is not None:
+        existing_q = existing_q.filter(BriefingItem.workspace_id == ws_id)
+    existing = existing_q.first()
     if existing:
         logger.info(
             "BriefingItem already exists for %s (id=%s) on %s — skipping",
@@ -437,9 +490,11 @@ def _generate_for_company(db: Session, company: Company) -> BriefingItem | None:
     # Outreach draft.
     outreach = generate_outreach(db, company, analysis)
 
+    ws_uuid = uuid.UUID(ws_id) if isinstance(ws_id, str) else ws_id
     item = BriefingItem(
         company_id=company.id,
         analysis_id=analysis.id,
+        workspace_id=ws_uuid,
         why_now=why_now,
         risk_summary=risk_summary,
         suggested_angle=suggested_angle,

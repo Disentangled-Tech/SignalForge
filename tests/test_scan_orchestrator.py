@@ -82,35 +82,47 @@ def _analysis(stage: str, pain_signals: dict | None = None) -> MagicMock:
     return r
 
 
+def _mock_db_for_analysis_changed():
+    """Mock db for _analysis_changed: get_default_pack_id returns None, so we load pack from filesystem."""
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    return db
+
+
 class TestAnalysisChanged:
     def test_prev_none_returns_false(self):
         """No prior analysis → not changed."""
+        db = _mock_db_for_analysis_changed()
         new = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
-        assert _analysis_changed(None, new) is False
+        assert _analysis_changed(None, new, db) is False
 
     def test_stage_differs_returns_true(self):
         """Stage change → changed."""
+        db = _mock_db_for_analysis_changed()
         prev = _analysis("early_customers")
         new = _analysis("scaling_team")
-        assert _analysis_changed(prev, new) is True
+        assert _analysis_changed(prev, new, db) is True
 
     def test_stage_case_insensitive_no_change(self):
         """Stage same (case diff) → not changed."""
+        db = _mock_db_for_analysis_changed()
         prev = _analysis("Early_Customers")
         new = _analysis("early_customers")
-        assert _analysis_changed(prev, new) is False
+        assert _analysis_changed(prev, new, db) is False
 
     def test_pain_signal_differs_returns_true(self):
         """Pain signal value change → changed."""
+        db = _mock_db_for_analysis_changed()
         prev = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": False}}})
         new = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
-        assert _analysis_changed(prev, new) is True
+        assert _analysis_changed(prev, new, db) is True
 
     def test_identical_returns_false(self):
         """Same stage and signals → not changed."""
+        db = _mock_db_for_analysis_changed()
         prev = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
         new = _analysis("early_customers", {"signals": {"hiring_engineers": {"value": True}}})
-        assert _analysis_changed(prev, new) is False
+        assert _analysis_changed(prev, new, db) is False
 
 
 # ── run_scan_company_full tests ───────────────────────────────────────

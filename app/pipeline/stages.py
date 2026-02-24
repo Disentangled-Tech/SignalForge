@@ -78,6 +78,17 @@ def _update_lead_feed_stage(
     pack_id: str | None,
     **kwargs: Any,
 ) -> StageResult:
+    """Update lead_feed stage: builds projection from snapshots (Phase 1, Issue #225)."""
+    from app.services.lead_feed.run_update import run_update_lead_feed
+
+    return StageResult(
+        run_update_lead_feed(
+            db,
+            workspace_id=workspace_id,
+            pack_id=pack_id,
+            as_of=kwargs.get("as_of"),
+        )
+    )
     """Update lead_feed stage: upsert from ReadinessSnapshot + EngagementSnapshot (Phase 3)."""
     from app.models.job_run import JobRun
     from app.pipeline.lead_feed_writer import upsert_lead_feed

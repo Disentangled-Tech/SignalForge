@@ -49,6 +49,24 @@ def get_default_pack_id(db: Session) -> UUID | None:
     return row[0] if row else None
 
 
+def get_default_pack(db: Session | None = None) -> Pack | None:
+    """Return default pack: from db when available, else load from filesystem.
+
+    Phase 2: Used when pack is None. Resolves from db first; if no pack in db,
+    loads fractional_cto_v1 from filesystem for backward compatibility.
+    """
+    if db is not None:
+        pack_id = get_default_pack_id(db)
+        if pack_id is not None:
+            return resolve_pack(db, pack_id)
+    try:
+        from app.packs.loader import load_pack
+
+        return load_pack("fractional_cto_v1", "1")
+    except (FileNotFoundError, ValueError, KeyError):
+        return None
+
+
 def get_pack_for_workspace(db: Session, workspace_id: str | UUID) -> UUID | None:
     """Return the active pack for the workspace, or default pack if workspace has none.
 

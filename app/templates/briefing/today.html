@@ -84,7 +84,7 @@
         </div>
     </div>
     <div>
-        <form method="post" action="/briefing/generate" style="display:inline;">
+        <form method="post" action="{{ generate_action|default('/briefing/generate') }}" style="display:inline;">
             <button type="submit" class="btn btn-primary">Generate Now</button>
         </form>
     </div>
@@ -215,7 +215,7 @@
 <div class="empty-state">
     <h2>No briefing for {{ briefing_date.strftime('%B %d, %Y') }}</h2>
     <p>No briefing items have been generated for this date yet.</p>
-    <form method="post" action="/briefing/generate">
+    <form method="post" action="{{ generate_action|default('/briefing/generate') }}">
         <button type="submit" class="btn btn-primary">Generate Now</button>
     </form>
     {% if briefing_date != today %}

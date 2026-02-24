@@ -7,13 +7,23 @@ import csv
 import io
 import json
 import logging
-from datetime import datetime, timezone
+import re
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
-import re
-
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -23,13 +33,12 @@ from app.api.deps import AUTH_COOKIE, get_current_user, get_db
 from app.db.session import SessionLocal
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
-from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanySource, CompanyUpdate
-from app.services.auth import authenticate_user, create_access_token
 from app.services.analysis import ALLOWED_STAGES
+from app.services.auth import authenticate_user, create_access_token
 from app.services.company import (
     bulk_import_companies,
     create_company,
@@ -337,7 +346,7 @@ def companies_import_submit(
         try:
             content = csv_file.file.read().decode("utf-8")
             reader = csv.DictReader(io.StringIO(content))
-            for idx, row in enumerate(reader, start=1):
+            for _idx, row in enumerate(reader, start=1):
                 name = (row.get("company_name") or "").strip()
                 if not name:
                     continue
@@ -458,6 +467,7 @@ def company_detail(
             stage=analysis.stage or "",
             custom_weights=custom_weights,
             pack=pack,
+            db=db,
         )
         # Repair: if stored score differs from recomputed, persist the correct value
         if company.cto_need_score != recomputed_score:
@@ -471,7 +481,7 @@ def company_detail(
     # Outreach form validation error
     outreach_error = request.query_params.get("outreach_error")
     # Default for datetime-local input (current time in local format)
-    now_for_datetime_local = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+    now_for_datetime_local = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M")
 
     return templates.TemplateResponse(
         request,
@@ -543,7 +553,7 @@ def company_outreach_add(
     try:
         sent_dt = datetime.fromisoformat(sent_at.strip().replace("Z", "+00:00"))
         if sent_dt.tzinfo is None:
-            sent_dt = sent_dt.replace(tzinfo=timezone.utc)
+            sent_dt = sent_dt.replace(tzinfo=UTC)
     except ValueError:
         return RedirectResponse(
             url=f"/companies/{company_id}?outreach_error=Invalid+date+time+format",

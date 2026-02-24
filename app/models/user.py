@@ -1,6 +1,6 @@
 """User model."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import bcrypt as _bcrypt
 from sqlalchemy import DateTime, Integer, String
@@ -18,7 +18,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
 
     def set_password(self, password: str) -> None:

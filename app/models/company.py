@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -30,47 +30,47 @@ class Company(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     cto_need_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime, default=lambda: datetime.now(UTC), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
     last_scan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    signal_records: Mapped[list["SignalRecord"]] = relationship(
+    signal_records: Mapped[list[SignalRecord]] = relationship(
         "SignalRecord", back_populates="company", cascade="all, delete-orphan"
     )
-    analysis_records: Mapped[list["AnalysisRecord"]] = relationship(
+    analysis_records: Mapped[list[AnalysisRecord]] = relationship(
         "AnalysisRecord", back_populates="company", cascade="all, delete-orphan"
     )
-    briefing_items: Mapped[list["BriefingItem"]] = relationship(
+    briefing_items: Mapped[list[BriefingItem]] = relationship(
         "BriefingItem", back_populates="company", cascade="all, delete-orphan"
     )
-    signal_events: Mapped[list["SignalEvent"]] = relationship(
+    signal_events: Mapped[list[SignalEvent]] = relationship(
         "SignalEvent", back_populates="company", passive_deletes=True
     )
-    readiness_snapshots: Mapped[list["ReadinessSnapshot"]] = relationship(
+    readiness_snapshots: Mapped[list[ReadinessSnapshot]] = relationship(
         "ReadinessSnapshot", back_populates="company", cascade="all, delete-orphan"
     )
-    engagement_snapshots: Mapped[list["EngagementSnapshot"]] = relationship(
+    engagement_snapshots: Mapped[list[EngagementSnapshot]] = relationship(
         "EngagementSnapshot", back_populates="company", cascade="all, delete-orphan"
     )
-    watchlist_entries: Mapped[list["Watchlist"]] = relationship(
+    watchlist_entries: Mapped[list[Watchlist]] = relationship(
         "Watchlist", back_populates="company", cascade="all, delete-orphan"
     )
-    alerts: Mapped[list["Alert"]] = relationship(
+    alerts: Mapped[list[Alert]] = relationship(
         "Alert", back_populates="company", cascade="all, delete-orphan"
     )
-    outreach_history: Mapped[list["OutreachHistory"]] = relationship(
+    outreach_history: Mapped[list[OutreachHistory]] = relationship(
         "OutreachHistory", back_populates="company", cascade="all, delete-orphan"
     )
-    outreach_recommendations: Mapped[list["OutreachRecommendation"]] = relationship(
+    outreach_recommendations: Mapped[list[OutreachRecommendation]] = relationship(
         "OutreachRecommendation", back_populates="company", cascade="all, delete-orphan"
     )
-    aliases: Mapped[list["CompanyAlias"]] = relationship(
+    aliases: Mapped[list[CompanyAlias]] = relationship(
         "CompanyAlias", back_populates="company", cascade="all, delete-orphan"
     )
     lead_feed: Mapped[list["LeadFeed"]] = relationship(

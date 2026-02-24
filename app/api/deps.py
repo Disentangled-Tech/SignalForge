@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -11,7 +9,32 @@ from app.db.session import get_db  # re-export
 from app.models.user import User
 from app.services.auth import get_user_from_token
 
-__all__ = ["get_db", "get_current_user", "require_auth", "require_ui_auth"]
+__all__ = [
+    "get_db",
+    "get_current_user",
+    "require_auth",
+    "require_ui_auth",
+    "validate_uuid_param_or_422",
+]
+
+
+def validate_uuid_param_or_422(value: str | None, param_name: str) -> None:
+    """Validate value is a valid UUID; raise HTTPException 422 if not.
+
+    Use when workspace_id or pack_id is provided and must be a valid UUID.
+    Empty/None values pass (caller handles omission).
+    """
+    if not value or not value.strip():
+        return
+    try:
+        from uuid import UUID
+
+        UUID(value.strip())
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {param_name}: must be a valid UUID",
+        ) from None
 
 # Cookie name for browser sessions
 AUTH_COOKIE = "access_token"
@@ -20,16 +43,16 @@ AUTH_COOKIE = "access_token"
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
-    authorization: Optional[str] = Header(None),
-    access_token: Optional[str] = Cookie(None),
-) -> Optional[User]:
+    authorization: str | None = Header(None),
+    access_token: str | None = Cookie(None),
+) -> User | None:
     """Return the authenticated user or None.
 
     Checks (in order):
     1. Authorization: Bearer <token> header
     2. access_token cookie
     """
-    token: Optional[str] = None
+    token: str | None = None
 
     # Check Authorization header
     if authorization and authorization.startswith("Bearer "):
@@ -47,7 +70,7 @@ def get_current_user(
 
 def require_auth(
     request: Request,
-    user: Optional[User] = Depends(get_current_user),
+    user: User | None = Depends(get_current_user),
 ) -> User:
     """Dependency that requires authentication.
 
@@ -64,7 +87,7 @@ def require_auth(
 
 def require_ui_auth(
     request: Request,
-    user: Optional[User] = Depends(get_current_user),
+    user: User | None = Depends(get_current_user),
 ) -> User:
     """Dependency that requires authentication for browser/UI routes.
 

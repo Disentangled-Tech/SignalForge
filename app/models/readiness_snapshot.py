@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -40,8 +40,8 @@ class ReadinessSnapshot(Base):
     )
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
-    company: Mapped["Company"] = relationship("Company", back_populates="readiness_snapshots")
+    company: Mapped[Company] = relationship("Company", back_populates="readiness_snapshots")

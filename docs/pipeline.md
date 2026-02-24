@@ -23,3 +23,20 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 
 - **Requires a pack**: The derive stage requires a pack to be available (default pack or explicit `pack_id`). If no pack is installed or resolvable, the endpoint returns **400 Bad Request** with detail `"Derive stage requires a pack; no pack available"`.
 - **Cron/script impact**: Callers that previously received 200 with `status: "skipped"` when no pack existed will now receive 400. Ensure migrations have run and the fractional_cto_v1 pack is installed before invoking derive.
+
+### POST /internal/run_update_lead_feed
+
+- **Optional query params** (Phase 1, Issue #225):
+  - `workspace_id` (UUID): Workspace to project for. When omitted, uses default workspace.
+  - `pack_id` (UUID): Pack to use. When omitted, uses workspace's `active_pack_id`; falls back to default pack.
+  - `as_of` (date, YYYY-MM-DD): Snapshot date. Default: today.
+- **Validation**: Invalid UUIDs for `workspace_id` or `pack_id` return **422 Unprocessable Entity**.
+- **Pack resolution**: Same as run_score/run_derive. Writes only to `(workspace_id, pack_id, entity_id)`; no cross-tenant leakage.
+
+## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
+
+When `lead_feed` has rows for workspace/pack/as_of, the briefing page and weekly review
+prefer reading from the projection instead of joining ReadinessSnapshot + EngagementSnapshot.
+This reduces query load and supports the <200ms acceptance criteria for lead list loads.
+When the feed is empty (e.g. before first run_update_lead_feed), both flows fall back to
+the legacy join query. No behavior change for fractional CTO use case.

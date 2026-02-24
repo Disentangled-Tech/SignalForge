@@ -94,3 +94,43 @@ def test_briefing_json_date_param(mock_get_data):
     mock_get_data.assert_called_once()
     call_args = mock_get_data.call_args[0]
     assert call_args[1] == date(2026, 1, 15)
+
+
+@patch("app.api.briefing.get_settings")
+@patch("app.api.briefing.get_briefing_data")
+def test_briefing_json_invalid_workspace_id_returns_422(mock_get_data, mock_settings):
+    """When multi_workspace_enabled and workspace_id invalid, return 422."""
+    mock_settings.return_value = MagicMock(multi_workspace_enabled=True)
+    mock_get_data.return_value = {
+        "items": [],
+        "emerging_companies": [],
+        "display_scores": {},
+        "esl_by_company": {},
+    }
+    app = _create_app(MagicMock(), _make_user())
+    client = TestClient(app)
+    resp = client.get("/daily?workspace_id=not-a-uuid")
+    assert resp.status_code == 422
+    assert "workspace_id" in resp.json().get("detail", "").lower()
+    mock_get_data.assert_not_called()
+
+
+@patch("app.api.briefing.get_settings")
+@patch("app.api.briefing.get_briefing_data")
+def test_briefing_json_multi_workspace_scopes_by_workspace_id(mock_get_data, mock_settings):
+    """When multi_workspace_enabled and valid workspace_id, get_briefing_data called with it."""
+    mock_settings.return_value = MagicMock(multi_workspace_enabled=True)
+    mock_get_data.return_value = {
+        "items": [],
+        "emerging_companies": [],
+        "display_scores": {},
+        "esl_by_company": {},
+    }
+    app = _create_app(MagicMock(), _make_user())
+    client = TestClient(app)
+    ws_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    resp = client.get(f"/daily?workspace_id={ws_uuid}")
+    assert resp.status_code == 200
+    mock_get_data.assert_called_once()
+    call_kwargs = mock_get_data.call_args[1]
+    assert call_kwargs["workspace_id"] == ws_uuid

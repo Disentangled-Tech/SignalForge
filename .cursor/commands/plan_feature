@@ -1,0 +1,57 @@
+Review the following:
+	•	The entire current codebase
+	•	v2-spec.md
+	•	CURSOR_PRD.md
+    * TDD_rules.md
+	•	@docs/ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md
+    * Specified GitHub Issue 
+    
+Your task is to create a step-by-step implementation plan to Implement Lead Feed Projection + Incremental Updates.
+
+Assume this is a live SaaS system with production users.
+Prioritize backward compatibility and safe migrations over elegance.
+
+The plan must:
+	1.	Preserve all existing functionality (fractional CTO use case must continue to work exactly as before).
+	2.	Extract all domain-specific logic into pack_fractional_cto_v1.
+	3.	Introduce pack-scoped signals, scoring, ESL, and outreach.
+	4.	Avoid breaking database migrations or requiring destructive schema changes.
+	5.	Minimize large refactors in a single step — prefer staged refactors.
+
+Structure your response as follows:
+
+1. Current State Assessment
+	•	Where domain logic currently lives
+	•	Tight coupling areas
+	•	High-risk refactor zones
+
+2. Proposed Refactor Strategy
+	•	Safe order of changes
+	•	What to abstract first
+	•	What to delay
+	•	Temporary compatibility layers if needed
+
+3. File-Level Change Plan
+
+For each step:
+	•	Files to modify
+	•	New modules to create
+	•	Interfaces to introduce
+	•	Data migrations required
+
+4. Regression Risk Analysis
+	•	What could break
+	•	How to detect breakage
+	•	Tests required
+
+5. Incremental Milestones
+	•	Phase 1: Engine abstraction
+	•	Phase 2: CTO pack extraction
+	•	Phase 3: Pack activation runtime
+	•	Phase 4: Cleanup
+
+Do not write code yet.
+Produce a clear implementation roadmap suitable for staged PRs.
+
+Do not redesign unrelated systems.
+Only modify what is necessary to support the Pack Architecture.

@@ -27,6 +27,8 @@ _DERIVER_TEST_DOMAINS = (
     "pattern.example.com",
     "log.example.com",
     "evidence.example.com",
+    "merge.example.com",
+    "merge_null.example.com",
     "singleev.example.com",
     "crosspack.example.com",
 )
@@ -165,6 +167,39 @@ class TestBuildPatternDerivers:
         assert result[0]["source_fields"] == ["title", "summary"]
         assert result[0]["min_confidence"] is None
 
+    def test_pattern_source_fields_url_and_source_preserved(self) -> None:
+        """Pack source_fields url/source pass runtime filter (ALLOWED_PATTERN_SOURCE_FIELDS).
+
+        Schema validates url and source; deriver must not silently fall back to
+        title/summary when pack specifies valid url or source.
+        """
+        pack = SimpleNamespace(
+            derivers={
+                "derivers": {
+                    "pattern": [
+                        {
+                            "pattern": r"compliance",
+                            "signal_id": "compliance_mentioned",
+                            "source_fields": ["url"],
+                        },
+                        {
+                            "pattern": r"crunchbase",
+                            "signal_id": "funding_raised",
+                            "source_fields": ["title", "summary", "url", "source"],
+                        },
+                    ],
+                }
+            }
+        )
+        result = _build_pattern_derivers(pack)
+        assert len(result) == 2
+        assert result[0]["source_fields"] == ["url"], (
+            "url must be preserved; was silently filtered by _DEFAULT_PATTERN_SOURCE_FIELDS"
+        )
+        assert result[1]["source_fields"] == ["title", "summary", "url", "source"], (
+            "url and source must be preserved with title/summary"
+        )
+
 
 class TestEvaluateEventDerivers:
     """Tests for _evaluate_event_derivers (Phase 1, Issue #173)."""
@@ -257,6 +292,28 @@ class TestEvaluateEventDerivers:
                 "compiled": re.compile(r"(?i)soc2"),
                 "source_fields": ["title", "summary"],
                 "min_confidence": 0.6,
+            },
+        ]
+        result = _evaluate_event_derivers(ev, passthrough, pattern)
+        assert result == [("compliance_mentioned", "pattern")]
+
+    def test_pattern_matches_on_url_when_source_fields_includes_url(self) -> None:
+        """Pattern deriver matches when pattern is in url and source_fields includes url."""
+        ev = SimpleNamespace(
+            event_type="other",
+            title="Generic news",
+            summary=None,
+            url="https://example.com/compliance-report",
+            source="news",
+            confidence=0.8,
+        )
+        passthrough = {}
+        pattern = [
+            {
+                "signal_id": "compliance_mentioned",
+                "compiled": re.compile(r"compliance"),
+                "source_fields": ["url"],
+                "min_confidence": None,
             },
         ]
         result = _evaluate_event_derivers(ev, passthrough, pattern)
@@ -577,6 +634,153 @@ class TestRunDeriver:
         )
         assert inst is not None
         assert inst.evidence_event_ids == [ev.id]
+
+    def test_deriver_evidence_merge_on_rerun(self, db: Session, fractional_cto_pack_id) -> None:
+        """Re-run merges evidence_event_ids instead of replacing (idempotency, traceability)."""
+        company = Company(
+            name="MergeCo",
+            domain="merge.example.com",
+            website_url="https://merge.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        ev1 = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        ev2 = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        assert set(inst.evidence_event_ids) == {ev1.id, ev2.id}
+
+        # Add third event and re-run; evidence must merge, not replace
+        ev3 = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+
+        db.expire_all()  # Force reload from DB after run_deriver commit
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        assert inst.evidence_event_ids is not None
+        assert set(inst.evidence_event_ids) == {ev1.id, ev2.id, ev3.id}, (
+            f"Expected merge of [ev1, ev2, ev3], got {inst.evidence_event_ids}"
+        )
+
+    def test_deriver_evidence_merge_handles_null_and_empty_existing(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """Merge works when existing evidence_event_ids is NULL or [] (idempotency)."""
+        company = Company(
+            name="MergeNullCo",
+            domain="merge_null.example.com",
+            website_url="https://merge_null.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        ev = _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        # First run creates instance with evidence
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        assert inst.evidence_event_ids == [ev.id]
+
+        # Simulate empty array [] (e.g. manual reset)
+        from sqlalchemy import text
+
+        db.execute(
+            text(
+                "UPDATE signal_instances SET evidence_event_ids = '[]'::jsonb "
+                "WHERE entity_id = :eid AND signal_id = :sid AND pack_id = CAST(:pid AS uuid)"
+            ),
+            {"eid": company.id, "sid": "funding_raised", "pid": str(fractional_cto_pack_id)},
+        )
+        db.commit()
+
+        # Re-run: merge from [] must produce [ev.id]
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+
+        db.expire_all()
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        assert inst.evidence_event_ids == [ev.id], (
+            f"Merge from [] failed: got {inst.evidence_event_ids}"
+        )
+
+        # Simulate NULL (pre-migration row); merge must preserve ev.id
+        from sqlalchemy import update
+
+        stmt = (
+            update(SignalInstance)
+            .where(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .values(evidence_event_ids=None)
+        )
+        db.execute(stmt)
+        db.commit()
+
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+
+        db.expire_all()
+        inst = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.signal_id == "funding_raised",
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .first()
+        )
+        assert inst is not None
+        # Merge from NULL: ev.id must be present (COALESCE treats NULL as [])
+        ids = [x for x in (inst.evidence_event_ids or []) if x is not None]
+        assert ev.id in ids, f"Merge from NULL failed: ev.id not in {inst.evidence_event_ids}"
 
     def test_deriver_logs_triggered(self, db: Session, fractional_cto_pack_id, caplog) -> None:
         """Deriver logs deriver_triggered at INFO for each signal produced (Phase 3)."""

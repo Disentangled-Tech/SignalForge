@@ -710,6 +710,49 @@ class TestEmergingCompaniesSection:
         assert "Congrats on the raise" in resp.text
 
 
+@patch("app.api.briefing_views.get_settings")
+@patch("app.api.briefing_views.get_briefing_data")
+class TestMultiWorkspaceBriefing:
+    """Tests for multi-workspace briefing (workspace_id scoping, validation)."""
+
+    def test_invalid_workspace_id_returns_422(
+        self, mock_get_data, mock_settings, mock_db, mock_user
+    ):
+        """When multi_workspace_enabled and workspace_id invalid, return 422."""
+        mock_settings.return_value = MagicMock(multi_workspace_enabled=True)
+        mock_get_data.return_value = {
+            "items": [],
+            "emerging_companies": [],
+            "display_scores": {},
+            "esl_by_company": {},
+        }
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing?workspace_id=not-a-uuid")
+        assert resp.status_code == 422
+        mock_get_data.assert_not_called()
+
+    def test_valid_workspace_id_scopes_briefing(
+        self, mock_get_data, mock_settings, mock_db, mock_user
+    ):
+        """When multi_workspace_enabled and valid workspace_id, get_briefing_data called with it."""
+        mock_settings.return_value = MagicMock(multi_workspace_enabled=True)
+        mock_get_data.return_value = {
+            "items": [],
+            "emerging_companies": [],
+            "display_scores": {},
+            "esl_by_company": {},
+        }
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        ws_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        resp = client.get(f"/briefing?workspace_id={ws_uuid}")
+        assert resp.status_code == 200
+        mock_get_data.assert_called_once()
+        call_kwargs = mock_get_data.call_args[1]
+        assert call_kwargs["workspace_id"] == ws_uuid
+
+
 class TestAuthRequired:
     """Tests that routes require authentication."""
 

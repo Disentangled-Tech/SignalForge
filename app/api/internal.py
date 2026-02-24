@@ -13,6 +13,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api.deps import validate_uuid_param_or_422
 from app.config import get_settings
 from app.db.session import get_db
 
@@ -81,21 +82,6 @@ async def run_briefing(
         return {"status": "failed", "error": str(exc)}
 
 
-def _parse_uuid_or_422(value: str | None, param_name: str) -> None:
-    """Validate value is a valid UUID; raise HTTPException 422 if not."""
-    if not value or not value.strip():
-        return
-    try:
-        from uuid import UUID
-
-        UUID(value.strip())
-    except (ValueError, TypeError):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid {param_name}: must be a valid UUID",
-        ) from None
-
-
 @router.post("/run_score")
 async def run_score(
     db: Session = Depends(get_db),
@@ -122,8 +108,8 @@ async def run_score(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
@@ -195,8 +181,8 @@ async def run_derive_endpoint(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
@@ -248,8 +234,8 @@ async def run_ingest_endpoint(
 
     from app.pipeline.executor import run_stage
 
-    _parse_uuid_or_422(workspace_id, "workspace_id")
-    _parse_uuid_or_422(pack_id, "pack_id")
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
 
     try:
         pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
@@ -282,6 +268,42 @@ async def run_update_lead_feed_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
     x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+    workspace_id: str | None = Query(None, description="Workspace ID; uses default if omitted"),
+    pack_id: str | None = Query(
+        None, description="Pack UUID; uses workspace active pack if omitted"
+    ),
+    as_of: date | None = Query(
+        None,
+        description="Snapshot date (YYYY-MM-DD). Default: today.",
+    ),
+):
+    """Trigger lead_feed projection update (Phase 1, Issue #225, ADR-004).
+
+    Builds projection from ReadinessSnapshot + EngagementSnapshot for as_of.
+    Run after score. Idempotent. Pack resolution: when pack_id omitted,
+    uses workspace active_pack_id.
+    """
+    from uuid import UUID
+
+    from app.pipeline.executor import run_stage
+
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
+
+    try:
+        pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
+        ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
+        result = run_stage(
+            db,
+            job_type="update_lead_feed",
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
+            idempotency_key=x_idempotency_key,
+            as_of=as_of,
+        )
+        return {
+            "status": result["status"],
+            "job_run_id": result.get("job_run_id"),
 ):
     """Trigger update_lead_feed stage: populate lead_feed from snapshots (Phase 3).
 
@@ -306,6 +328,35 @@ async def run_update_lead_feed_endpoint(
         raise
     except Exception as exc:
         logger.exception("Internal update_lead_feed job failed")
+        return {"status": "failed", "error": str(exc)}
+
+
+@router.post("/run_backfill_lead_feed")
+async def run_backfill_lead_feed_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    as_of: date | None = Query(
+        None,
+        description="Snapshot date (YYYY-MM-DD). Default: today.",
+    ),
+):
+    """Backfill lead_feed for all workspaces (Phase 3, Issue #225).
+
+    Runs build_lead_feed_from_snapshots for each workspace with a resolved pack.
+    Idempotent: safe to re-run.
+    """
+    from app.services.lead_feed.run_update import run_backfill_lead_feed
+
+    try:
+        result = run_backfill_lead_feed(db, as_of=as_of)
+        return {
+            "status": result["status"],
+            "workspaces_processed": result["workspaces_processed"],
+            "total_rows_upserted": result["total_rows_upserted"],
+            "errors": result.get("errors"),
+        }
+    except Exception as exc:
+        logger.exception("Internal backfill_lead_feed job failed")
         return {"status": "failed", "error": str(exc)}
 
 

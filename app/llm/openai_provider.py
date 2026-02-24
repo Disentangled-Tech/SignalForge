@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Any
 
-from openai import APIError, APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLimitError
 
 from app.llm.provider import LLMProvider
 

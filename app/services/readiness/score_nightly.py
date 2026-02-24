@@ -2,6 +2,7 @@
 
 Scores all companies with SignalEvents in last 365 days OR on watchlist.
 Writes readiness snapshots with explain payload and delta_1d.
+Incrementally updates lead_feed projection after each company (Phase 3, Issue #225).
 """
 
 from __future__ import annotations
@@ -14,7 +15,9 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import JobRun, SignalEvent, Watchlist
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
+from app.services.lead_feed.projection_builder import upsert_lead_feed_from_snapshots
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
 from app.services.readiness.snapshot_writer import write_readiness_snapshot
 
@@ -100,6 +103,7 @@ def run_score_nightly(
 
         companies_engagement = 0
         companies_esl_suppressed = 0
+        ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
         for company_id in company_ids:
             try:
                 snapshot = write_readiness_snapshot(db, company_id, as_of, pack_id=resolved_pack_id)
@@ -113,6 +117,15 @@ def run_score_nightly(
                         companies_engagement += 1
                         if eng_snap.esl_decision == "suppress":
                             companies_esl_suppressed += 1
+                        # Incremental lead_feed update (Phase 3, Issue #225)
+                        upsert_lead_feed_from_snapshots(
+                            db,
+                            workspace_id=ws_id,
+                            pack_id=resolved_pack_id,
+                            as_of=as_of,
+                            readiness_snapshot=snapshot,
+                            engagement_snapshot=eng_snap,
+                        )
                 else:
                     companies_skipped += 1
             except Exception as exc:

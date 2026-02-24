@@ -244,6 +244,133 @@ class TestRunScore:
         assert "uuid" in data.get("detail", "").lower()
 
 
+# ── /internal/run_update_lead_feed ────────────────────────────────────
+
+
+class TestRunUpdateLeadFeed:
+    """Tests for POST /internal/run_update_lead_feed."""
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_valid_token_calls_run_stage(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_update_lead_feed with valid token triggers stage."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 42,
+            "rows_upserted": 5,
+            "error": None,
+        }
+
+        response = client.post(
+            "/internal/run_update_lead_feed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["job_run_id"] == 42
+        assert data["rows_upserted"] == 5
+        mock_run_stage.assert_called_once()
+        assert mock_run_stage.call_args[1]["job_type"] == "update_lead_feed"
+
+    def test_run_update_lead_feed_missing_token_returns_422(
+        self, client: TestClient
+    ):
+        """POST /internal/run_update_lead_feed without token returns 422."""
+        response = client.post("/internal/run_update_lead_feed")
+        assert response.status_code == 422
+
+    def test_run_update_lead_feed_wrong_token_returns_403(
+        self, client: TestClient
+    ):
+        """POST /internal/run_update_lead_feed with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_update_lead_feed",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
+    def test_run_update_lead_feed_invalid_workspace_id_returns_422(
+        self, client: TestClient
+    ):
+        """POST /internal/run_update_lead_feed with invalid workspace_id returns 422."""
+        response = client.post(
+            "/internal/run_update_lead_feed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": "not-a-uuid"},
+        )
+        assert response.status_code == 422
+        data = response.json()
+        detail = str(data.get("detail", "")).lower()
+        assert "workspace_id" in detail
+        assert "uuid" in detail
+
+    def test_run_update_lead_feed_invalid_pack_id_returns_422(
+        self, client: TestClient
+    ):
+        """POST /internal/run_update_lead_feed with invalid pack_id returns 422."""
+        response = client.post(
+            "/internal/run_update_lead_feed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"pack_id": "not-a-uuid"},
+        )
+        assert response.status_code == 422
+        data = response.json()
+        detail = str(data.get("detail", "")).lower()
+        assert "pack_id" in detail
+        assert "uuid" in detail
+
+
+# ── /internal/run_backfill_lead_feed (Phase 3) ─────────────────────────
+
+
+class TestRunBackfillLeadFeed:
+    """Tests for POST /internal/run_backfill_lead_feed."""
+
+    @patch("app.services.lead_feed.run_update.run_backfill_lead_feed")
+    def test_valid_token_calls_run_backfill(
+        self, mock_backfill, client: TestClient
+    ):
+        """POST /internal/run_backfill_lead_feed with valid token triggers backfill."""
+        mock_backfill.return_value = {
+            "status": "completed",
+            "workspaces_processed": 2,
+            "total_rows_upserted": 15,
+            "errors": None,
+        }
+
+        response = client.post(
+            "/internal/run_backfill_lead_feed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["workspaces_processed"] == 2
+        assert data["total_rows_upserted"] == 15
+        mock_backfill.assert_called_once()
+
+    def test_run_backfill_lead_feed_missing_token_returns_422(
+        self, client: TestClient
+    ):
+        """POST /internal/run_backfill_lead_feed without token returns 422."""
+        response = client.post("/internal/run_backfill_lead_feed")
+        assert response.status_code == 422
+
+    def test_run_backfill_lead_feed_wrong_token_returns_403(
+        self, client: TestClient
+    ):
+        """POST /internal/run_backfill_lead_feed with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_backfill_lead_feed",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
+
 # ── /internal/run_alert_scan ──────────────────────────────────────────
 
 

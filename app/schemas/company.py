@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CompanySource(str, Enum):
@@ -21,27 +20,27 @@ class CompanyCreate(BaseModel):
     """Schema for creating a new company."""
 
     company_name: str = Field(..., min_length=1, max_length=255)
-    website_url: Optional[str] = Field(None, max_length=2048)
-    founder_name: Optional[str] = Field(None, max_length=255)
-    founder_linkedin_url: Optional[str] = Field(None, max_length=2048)
-    company_linkedin_url: Optional[str] = Field(None, max_length=2048)
-    notes: Optional[str] = None
+    website_url: str | None = Field(None, max_length=2048)
+    founder_name: str | None = Field(None, max_length=255)
+    founder_linkedin_url: str | None = Field(None, max_length=2048)
+    company_linkedin_url: str | None = Field(None, max_length=2048)
+    notes: str | None = None
     source: CompanySource = CompanySource.manual
-    target_profile_match: Optional[str] = None
+    target_profile_match: str | None = None
 
 
 class CompanyUpdate(BaseModel):
     """Schema for updating a company. All fields optional (issue #50)."""
 
-    company_name: Optional[str] = Field(None, min_length=1, max_length=255)
-    website_url: Optional[str] = Field(None, max_length=2048)
-    founder_name: Optional[str] = Field(None, max_length=255)
-    founder_linkedin_url: Optional[str] = Field(None, max_length=2048)
-    company_linkedin_url: Optional[str] = Field(None, max_length=2048)
-    notes: Optional[str] = None
-    source: Optional[CompanySource] = None
-    target_profile_match: Optional[str] = None
-    current_stage: Optional[str] = Field(None, max_length=64)
+    company_name: str | None = Field(None, min_length=1, max_length=255)
+    website_url: str | None = Field(None, max_length=2048)
+    founder_name: str | None = Field(None, max_length=255)
+    founder_linkedin_url: str | None = Field(None, max_length=2048)
+    company_linkedin_url: str | None = Field(None, max_length=2048)
+    notes: str | None = None
+    source: CompanySource | None = None
+    target_profile_match: str | None = None
+    current_stage: str | None = Field(None, max_length=64)
 
 
 class CompanyRead(BaseModel):
@@ -51,19 +50,19 @@ class CompanyRead(BaseModel):
 
     id: int
     company_name: str
-    domain: Optional[str] = None
-    website_url: Optional[str] = None
-    founder_name: Optional[str] = None
-    founder_linkedin_url: Optional[str] = None
-    company_linkedin_url: Optional[str] = None
-    notes: Optional[str] = None
-    source: Optional[CompanySource] = None
-    target_profile_match: Optional[str] = None
-    cto_need_score: Optional[int] = None
-    current_stage: Optional[str] = None
+    domain: str | None = None
+    website_url: str | None = None
+    founder_name: str | None = None
+    founder_linkedin_url: str | None = None
+    company_linkedin_url: str | None = None
+    notes: str | None = None
+    source: CompanySource | None = None
+    target_profile_match: str | None = None
+    cto_need_score: int | None = None
+    current_stage: str | None = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
-    last_scan_at: Optional[datetime] = None
+    updated_at: datetime | None = None
+    last_scan_at: datetime | None = None
 
 
 class CompanyList(BaseModel):
@@ -81,7 +80,7 @@ class BulkImportRow(BaseModel):
     row: int
     company_name: str
     status: str  # "created", "duplicate", "error"
-    detail: Optional[str] = None
+    detail: str | None = None
 
 
 class BulkImportResponse(BaseModel):

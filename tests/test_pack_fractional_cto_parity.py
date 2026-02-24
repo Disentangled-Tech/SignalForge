@@ -125,20 +125,22 @@ class TestEslPackParity:
 
 
 class TestScoringPackParity:
-    """calculate_score(..., pack=cto_pack) == calculate_score(...) (Issue #189, Plan Step 1.5)."""
+    """calculate_score(..., pack=cto_pack) == calculate_score(...) (Issue #189, Plan Step 1.5).
+
+    Phase 2: pack=None now resolves default pack from filesystem, so both paths
+    use the same pack and produce identical scores.
+    """
 
     def test_pain_signal_weights_parity(self) -> None:
         """Pain-signal weights from pack produce same score as defaults."""
-        from app.services.scoring import DEFAULT_SIGNAL_WEIGHTS, calculate_score
-
-        def _signals(true_keys: list[str]) -> dict:
-            return {
-                "signals": {
-                    k: {"value": k in true_keys, "why": "test"} for k in DEFAULT_SIGNAL_WEIGHTS
-                }
-            }
+        from app.services.scoring import calculate_score
 
         cto_pack = _get_cto_pack_or_skip()
+        keys = list((cto_pack.scoring or {}).get("pain_signal_weights") or {})
+
+        def _signals(true_keys: list[str]) -> dict:
+            return {"signals": {k: {"value": k in true_keys, "why": "test"} for k in keys}}
+
         # hiring_engineers(15) + founder_overload(10) = 25
         signals = _signals(["hiring_engineers", "founder_overload"])
         score_no_pack = calculate_score(signals, "")
@@ -147,16 +149,14 @@ class TestScoringPackParity:
 
     def test_stage_bonuses_parity(self) -> None:
         """Stage bonuses from pack produce same score as defaults."""
-        from app.services.scoring import DEFAULT_SIGNAL_WEIGHTS, calculate_score
-
-        def _signals(true_keys: list[str]) -> dict:
-            return {
-                "signals": {
-                    k: {"value": k in true_keys, "why": "test"} for k in DEFAULT_SIGNAL_WEIGHTS
-                }
-            }
+        from app.services.scoring import calculate_score
 
         cto_pack = _get_cto_pack_or_skip()
+        keys = list((cto_pack.scoring or {}).get("pain_signal_weights") or {})
+
+        def _signals(true_keys: list[str]) -> dict:
+            return {"signals": {k: {"value": k in true_keys, "why": "test"} for k in keys}}
+
         # No signals, scaling_team bonus = 20
         signals = _signals([])
         score_no_pack = calculate_score(signals, "scaling_team")
@@ -165,16 +165,14 @@ class TestScoringPackParity:
 
     def test_combined_signals_and_stage_parity(self) -> None:
         """Signals + stage bonus from pack match defaults (Issue #189, Plan Step 1.5)."""
-        from app.services.scoring import DEFAULT_SIGNAL_WEIGHTS, calculate_score
-
-        def _signals(true_keys: list[str]) -> dict:
-            return {
-                "signals": {
-                    k: {"value": k in true_keys, "why": "test"} for k in DEFAULT_SIGNAL_WEIGHTS
-                }
-            }
+        from app.services.scoring import calculate_score
 
         cto_pack = _get_cto_pack_or_skip()
+        keys = list((cto_pack.scoring or {}).get("pain_signal_weights") or {})
+
+        def _signals(true_keys: list[str]) -> dict:
+            return {"signals": {k: {"value": k in true_keys, "why": "test"} for k in keys}}
+
         # compliance(25) + product_delivery(20) + struggling_execution(30) = 75
         signals = _signals(["compliance_security_pressure", "product_delivery_issues"])
         score_no_pack = calculate_score(signals, "struggling_execution")

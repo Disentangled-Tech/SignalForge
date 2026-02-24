@@ -1,7 +1,7 @@
 """Add evidence_event_ids to signal_instances (Phase 2, Issue #173).
 
 Revision ID: 20260224_evidence_event_ids
-Revises: 20260224_lead_feed_idx
+Revises: 20260224_signal_events_pack_idx
 Create Date: 2026-02-24
 
 Add nullable JSONB column for SignalEvent IDs that contributed to each

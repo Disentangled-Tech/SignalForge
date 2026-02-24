@@ -28,6 +28,7 @@ TEMPLATE_PLACEHOLDERS = {
         "SIGNALS_TEXT",
     },
     "outreach_v1": {
+        "OFFER_TYPE",
         "OPERATOR_PROFILE_MARKDOWN",
         "COMPANY_NAME",
         "FOUNDER_NAME",

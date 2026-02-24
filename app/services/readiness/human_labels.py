@@ -1,32 +1,28 @@
-"""Human-readable labels for event types (v2-spec §16, Issue #93)."""
+"""Human-readable labels for event types (v2-spec §16, Issue #93).
+
+Phase 2 (CTO Pack Extraction): Labels loaded from pack taxonomy.labels.
+No hardcoded fallback; when pack is None, uses formatted event_type.
+"""
 
 from __future__ import annotations
 
-# Map event_type to display string for UI (Emerging Companies section)
-EVENT_TYPE_TO_LABEL: dict[str, str] = {
-    "funding_raised": "New funding",
-    "job_posted_engineering": "Engineering hiring",
-    "job_posted_infra": "Infra/DevOps hiring",
-    "headcount_growth": "Headcount growth",
-    "launch_major": "Major launch",
-    "api_launched": "API launch",
-    "ai_feature_launched": "AI feature launch",
-    "enterprise_feature": "Enterprise feature",
-    "compliance_mentioned": "Compliance pressure",
-    "enterprise_customer": "Enterprise customer",
-    "regulatory_deadline": "Regulatory deadline",
-    "founder_urgency_language": "Founder urgency",
-    "revenue_milestone": "Revenue milestone",
-    "cto_role_posted": "CTO search",
-    "fractional_request": "Fractional help requested",
-    "advisor_request": "Advisor help requested",
-    "no_cto_detected": "No CTO detected",
-    "cto_hired": "CTO hired",
-}
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
 
 
-def event_type_to_label(event_type: str) -> str:
-    """Return human-readable label for event_type. Falls back to formatted type if unknown."""
+def event_type_to_label(event_type: str, pack: Pack | None = None) -> str:
+    """Return human-readable label for event_type.
+
+    Phase 2: When pack is provided, uses pack.taxonomy.labels. When pack is
+    None or label not found, falls back to formatted type (e.g. "cto_role_posted"
+    -> "Cto Role Posted").
+    """
     if not event_type:
         return "Signal"
-    return EVENT_TYPE_TO_LABEL.get(event_type, event_type.replace("_", " ").title())
+    if pack is not None and isinstance(pack.taxonomy, dict):
+        labels = pack.taxonomy.get("labels") or {}
+        if isinstance(labels, dict) and event_type in labels:
+            return str(labels[event_type])
+    return event_type.replace("_", " ").title()

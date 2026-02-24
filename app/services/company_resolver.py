@@ -11,7 +11,6 @@ from app.models.company import Company
 from app.models.company_alias import CompanyAlias
 from app.schemas.company import CompanyCreate
 
-
 # Suffixes to strip when normalizing company names (case-insensitive)
 _NAME_SUFFIXES = ("inc", "llc", "ltd", "corp", "corporation", "co", "company")
 

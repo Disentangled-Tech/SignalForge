@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ def get_scan_change_rate_30d(
         (percentage, total_changed, total_processed).
         percentage is None if total_processed == 0.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
     rows = (
         db.query(
             func.coalesce(func.sum(JobRun.companies_analysis_changed), 0).label(

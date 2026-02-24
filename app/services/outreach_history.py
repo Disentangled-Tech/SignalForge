@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -47,7 +47,7 @@ def check_outreach_cooldown(
         CooldownResult with allowed=False if blocked, reason explaining why.
     """
     if as_of.tzinfo is None:
-        as_of = as_of.replace(tzinfo=timezone.utc)
+        as_of = as_of.replace(tzinfo=UTC)
 
     # 1. Check last outreach (60-day cooldown)
     last_outreach = (
@@ -59,7 +59,7 @@ def check_outreach_cooldown(
     )
     if last_outreach is not None:
         if last_outreach.tzinfo is None:
-            last_outreach = last_outreach.replace(tzinfo=timezone.utc)
+            last_outreach = last_outreach.replace(tzinfo=UTC)
         cutoff = as_of - timedelta(days=CADENCE_COOLDOWN_DAYS)
         if last_outreach > cutoff:
             days_ago = (as_of - last_outreach).days
@@ -97,15 +97,28 @@ def create_outreach_record(
     message: str | None = None,
     notes: str | None = None,
     outcome: str | None = None,
+    workspace_id: str | None = None,
 ) -> OutreachHistory:
     """Insert an outreach record for a company.
 
     Enforces 60-day cooldown and 180-day declined rules (Issue #109).
     Raises OutreachCooldownBlockedError if blocked.
+    When workspace_id is provided, associates outreach with that workspace for
+    multi-tenant scoping. When None, uses default workspace (backward compat).
     """
+    from uuid import UUID
+
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
     result = check_outreach_cooldown(db, company_id, sent_at)
     if not result.allowed:
         raise OutreachCooldownBlockedError(result.reason or "Outreach blocked.")
+
+    ws_uuid = (
+        UUID(str(workspace_id))
+        if workspace_id is not None
+        else UUID(DEFAULT_WORKSPACE_ID)
+    )
 
     record = OutreachHistory(
         company_id=company_id,
@@ -114,10 +127,16 @@ def create_outreach_record(
         message=message or None,
         notes=notes or None,
         outcome=outcome or None,
+        workspace_id=ws_uuid,
     )
     db.add(record)
     db.commit()
     db.refresh(record)
+    # Refresh lead_feed outreach_status_summary (Phase 3, Issue #225)
+    from app.services.lead_feed import refresh_outreach_summary_for_entity
+
+    refresh_outreach_summary_for_entity(db, company_id, workspace_id=ws_uuid)
+    db.commit()
     return record
 
 
@@ -167,6 +186,13 @@ def update_outreach_outcome(
     record.outcome = outcome if outcome else None
     db.commit()
     db.refresh(record)
+    # Refresh lead_feed outreach_status_summary (Phase 3, Issue #225)
+    from app.services.lead_feed import refresh_outreach_summary_for_entity
+
+    refresh_outreach_summary_for_entity(
+        db, company_id, workspace_id=record.workspace_id
+    )
+    db.commit()
     return record
 
 
@@ -184,6 +210,12 @@ def delete_outreach_record(
     )
     if record is None:
         return False
+    ws_id = record.workspace_id
     db.delete(record)
+    db.commit()
+    # Refresh lead_feed outreach_status_summary (Phase 3, Issue #225)
+    from app.services.lead_feed import refresh_outreach_summary_for_entity
+
+    refresh_outreach_summary_for_entity(db, company_id, workspace_id=ws_id)
     db.commit()
     return True
