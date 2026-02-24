@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -39,6 +41,33 @@ def _validate_pack_id(pack_id: str, version: str) -> None:
         raise ValueError(f"version must match [a-zA-Z0-9_-]+ (got {version!r})")
 
 
+def compute_pack_config_checksum(
+    manifest: dict[str, Any],
+    taxonomy: dict[str, Any],
+    scoring: dict[str, Any],
+    esl_policy: dict[str, Any],
+    derivers: dict[str, Any],
+    playbooks: dict[str, Any],
+) -> str:
+    """Compute SHA-256 hash of normalized pack config (Issue #190, Phase 3).
+
+    Returns deterministic hex digest for config drift detection.
+    """
+    canonical = json.dumps(
+        {
+            "manifest": manifest,
+            "taxonomy": taxonomy,
+            "scoring": scoring,
+            "esl_policy": esl_policy,
+            "derivers": derivers,
+            "playbooks": playbooks,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 @dataclass
 class Pack:
     """Loaded pack config with taxonomy, scoring, esl_policy, playbooks, derivers (Issue #172)."""
@@ -49,6 +78,7 @@ class Pack:
     esl_policy: dict
     playbooks: dict
     derivers: dict
+    config_checksum: str
 
 
 def _packs_root() -> Path:
@@ -132,6 +162,15 @@ def load_pack(pack_id: str, version: str) -> Pack:
         logger.warning("Pack %s v%s validation failed: %s", pack_id, version, e)
         raise
 
+    config_checksum = compute_pack_config_checksum(
+        manifest=manifest,
+        taxonomy=taxonomy,
+        scoring=scoring,
+        esl_policy=esl_policy,
+        derivers=derivers,
+        playbooks=playbooks_dict,
+    )
+
     return Pack(
         manifest=manifest,
         taxonomy=taxonomy,
@@ -139,4 +178,5 @@ def load_pack(pack_id: str, version: str) -> Pack:
         esl_policy=esl_policy,
         playbooks=playbooks_dict,
         derivers=derivers,
+        config_checksum=config_checksum,
     )
