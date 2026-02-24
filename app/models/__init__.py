@@ -18,6 +18,7 @@ from app.models.signal_pack import SignalPack
 from app.models.signal_record import SignalRecord
 from app.models.user import User
 from app.models.watchlist import Watchlist
+from app.models.workspace import Workspace
 
 __all__ = [
     "Alert",
@@ -38,4 +39,5 @@ __all__ = [
     "SignalRecord",
     "User",
     "Watchlist",
+    "Workspace",
 ]

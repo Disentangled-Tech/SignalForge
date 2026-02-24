@@ -32,9 +32,10 @@ from app.models import (  # noqa: F401
     OperatorProfile,
     ReadinessSnapshot,
     SignalEvent,
-    Watchlist,
     SignalRecord,
     User,
+    Watchlist,
+    Workspace,
 )
 
 target_metadata = Base.metadata

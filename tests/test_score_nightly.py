@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, JobRun, ReadinessSnapshot, SignalEvent, SignalPack, Watchlist
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    JobRun,
+    ReadinessSnapshot,
+    SignalEvent,
+    SignalPack,
+    Watchlist,
+)
 from app.services.readiness.score_nightly import run_score_nightly
 from app.services.readiness.snapshot_writer import write_readiness_snapshot as real_write
 
 
 def _days_ago(days: int) -> datetime:
-    return datetime.now(timezone.utc) - timedelta(days=days)
+    return datetime.now(UTC) - timedelta(days=days)
 
 
 class TestRunScoreNightly:
@@ -77,6 +85,65 @@ class TestRunScoreNightly:
         db.commit()
 
         result = run_score_nightly(db)
+
+        assert result["status"] == "completed"
+        assert result["companies_scored"] >= 1
+
+        rs = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert rs is not None
+        assert rs.pack_id == pack.id
+
+        es = (
+            db.query(EngagementSnapshot)
+            .filter(
+                EngagementSnapshot.company_id == company.id,
+                EngagementSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert es is not None
+        assert es.pack_id == pack.id
+
+    @pytest.mark.integration
+    def test_run_score_nightly_with_explicit_pack_id_uses_pack(
+        self, db: Session
+    ) -> None:
+        """run_score_nightly(pack_id=X) creates snapshots with pack_id=X."""
+        pack = (
+            db.query(SignalPack)
+            .filter(SignalPack.pack_id == "fractional_cto_v1")
+            .first()
+        )
+        if pack is None:
+            pytest.skip("fractional_cto_v1 pack not found")
+
+        company = Company(
+            name="ExplicitPackCo",
+            website_url="https://explicit-pack.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        result = run_score_nightly(db, pack_id=pack.id)
 
         assert result["status"] == "completed"
         assert result["companies_scored"] >= 1
@@ -184,12 +251,12 @@ class TestRunScoreNightly:
 
         call_count = 0
 
-        def mock_write(inner_db, company_id, as_of, company_status=None):
+        def mock_write(inner_db, company_id, as_of, company_status=None, pack_id=None, **kwargs):
             nonlocal call_count
             call_count += 1
             if company_id == c2.id:
                 raise RuntimeError("Simulated failure")
-            return real_write(inner_db, company_id, as_of, company_status)
+            return real_write(inner_db, company_id, as_of, company_status, pack_id)
 
         with patch(
             "app.services.readiness.score_nightly.write_readiness_snapshot",

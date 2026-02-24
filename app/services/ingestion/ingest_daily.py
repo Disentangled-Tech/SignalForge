@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -30,7 +31,11 @@ def _get_adapters() -> list:
     return []
 
 
-def run_ingest_daily(db: Session) -> dict:
+def run_ingest_daily(
+    db: Session,
+    workspace_id: str | UUID | None = None,
+    pack_id: str | UUID | None = None,
+) -> dict:
     """Run daily ingestion across all adapters (v2-spec §12, Issue #90).
 
     Creates JobRun record. Computes since from last completed ingest
@@ -41,6 +46,10 @@ def run_ingest_daily(db: Session) -> dict:
         skipped_invalid, errors_count, error
     """
     job = JobRun(job_type="ingest", status="running")
+    if workspace_id is not None:
+        job.workspace_id = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+    if pack_id is not None:
+        job.pack_id = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -60,7 +69,7 @@ def run_ingest_daily(db: Session) -> dict:
         if last_job and last_job.finished_at:
             since = last_job.finished_at
         else:
-            since = datetime.now(timezone.utc) - timedelta(hours=24)
+            since = datetime.now(UTC) - timedelta(hours=24)
 
         adapters = _get_adapters()
         total_inserted = 0
@@ -80,7 +89,7 @@ def run_ingest_daily(db: Session) -> dict:
                 logger.exception("Ingest failed for adapter %s", adapter.source_name)
                 all_errors.append(msg)
 
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "completed"
         job.companies_processed = total_inserted
         job.error_message = "; ".join(all_errors[:10]) if all_errors else None
@@ -98,7 +107,7 @@ def run_ingest_daily(db: Session) -> dict:
 
     except Exception as exc:
         logger.exception("Daily ingest job failed")
-        job.finished_at = datetime.now(timezone.utc)
+        job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)
         db.commit()

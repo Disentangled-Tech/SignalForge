@@ -77,6 +77,7 @@ def generate_ore_recommendation(
         cooldown_active=cooldown,
         stability_modifier=sm,
         alignment_high=align,
+        pack=pack,
     )
 
     draft_variants: list[dict] = []

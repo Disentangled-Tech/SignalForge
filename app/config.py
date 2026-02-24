@@ -44,6 +44,9 @@ class Settings:
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
+    # Pipeline (Phase 1, Issue #192) — per-workspace rate limit; 0 = disabled
+    workspace_job_rate_limit_per_hour: int = 0
+
     # Alerts (Issue #92, v2-spec §13)
     alert_delta_threshold: int = 15  # readiness_jump when |delta| >= this
 
@@ -111,6 +114,12 @@ class Settings:
         self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
         self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))
 
+        self.workspace_job_rate_limit_per_hour = int(
+            os.getenv(
+                "WORKSPACE_JOB_RATE_LIMIT_PER_HOUR",
+                str(self.workspace_job_rate_limit_per_hour),
+            )
+        )
         self.alert_delta_threshold = int(
             os.getenv("ALERT_DELTA_THRESHOLD", str(self.alert_delta_threshold))
         )

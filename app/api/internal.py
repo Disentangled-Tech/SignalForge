@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import secrets
-
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -86,16 +85,25 @@ async def run_briefing(
 async def run_score(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
 ):
     """Trigger nightly TRS scoring (Issue #104).
 
     Scores all companies with SignalEvents in last 365 days or on watchlist.
     Returns job summary with companies_scored, companies_skipped.
+
+    Idempotency: Pass X-Idempotency-Key to skip duplicate runs. Use
+    workspace-scoped keys (e.g. ``{workspace_id}:{timestamp}``) to avoid
+    collisions across workspaces.
     """
-    from app.services.readiness.score_nightly import run_score_nightly
+    from app.pipeline.executor import run_stage
 
     try:
-        result = run_score_nightly(db)
+        result = run_stage(
+            db,
+            job_type="score",
+            idempotency_key=x_idempotency_key,
+        )
         return {
             "status": result["status"],
             "job_run_id": result["job_run_id"],
@@ -104,6 +112,8 @@ async def run_score(
             "companies_skipped": result["companies_skipped"],
             "error": result.get("error"),
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Internal score job failed")
         return {"status": "failed", "error": str(exc)}
@@ -137,16 +147,25 @@ async def run_alert_scan(
 async def run_ingest_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
 ):
     """Trigger daily ingestion (Issue #90).
 
     Fetches events since last run (or 24h ago), persists with deduplication.
     Returns job summary with inserted, skipped_duplicate, skipped_invalid.
+
+    Idempotency: Pass X-Idempotency-Key to skip duplicate runs. Use
+    workspace-scoped keys (e.g. ``{workspace_id}:{timestamp}``) to avoid
+    collisions across workspaces.
     """
-    from app.services.ingestion.ingest_daily import run_ingest_daily
+    from app.pipeline.executor import run_stage
 
     try:
-        result = run_ingest_daily(db)
+        result = run_stage(
+            db,
+            job_type="ingest",
+            idempotency_key=x_idempotency_key,
+        )
         return {
             "status": result["status"],
             "job_run_id": result["job_run_id"],
@@ -156,6 +175,8 @@ async def run_ingest_endpoint(
             "errors_count": result["errors_count"],
             "error": result.get("error"),
         }
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Internal ingest job failed")
         return {"status": "failed", "error": str(exc)}

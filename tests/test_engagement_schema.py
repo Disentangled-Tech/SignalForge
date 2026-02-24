@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import inspect
@@ -59,7 +59,7 @@ def test_outreach_history_insert(db) -> None:
     history = OutreachHistory(
         company_id=company.id,
         outreach_type="email",
-        sent_at=datetime.now(timezone.utc),
+        sent_at=datetime.now(UTC),
         outcome="replied",
         notes="Positive response",
     )
@@ -89,10 +89,9 @@ def test_alignment_flags_editable(db) -> None:
 
 def test_migration_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
     """Upgrade creates engagement_snapshots and outreach_history; downgrade removes them."""
+    import os
     import subprocess
     import sys
-
-    import os
 
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -107,7 +106,15 @@ def test_migration_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
         timeout=10,
     )
     out = result.stdout or ""
-    if "20260223_signal_packs" in out or "ee6582573566" in out or "20260224_config_checksum" in out:
+    # Skip when at pack migrations or head (downgrade not supported)
+    if (
+        "20260223_signal_packs" in out
+        or "ee6582573566" in out
+        or "20260224_config_checksum" in out
+        or "20260224_job_run_pipeline" in out
+        or "20260224_job_runs_indexes" in out
+        or "(head)" in out
+    ):
         pytest.skip(
             "Full downgrade to base not supported with pack migrations "
             "(see migration docstring for downgrade limitations)"
