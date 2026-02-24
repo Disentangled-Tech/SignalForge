@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, OutreachHistory, ReadinessSnapshot, SignalEvent
+from app.models import Company, OutreachHistory, ReadinessSnapshot, SignalEvent
 from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
 
 
@@ -59,6 +59,13 @@ def test_engagement_snapshot_writer_persists(db: Session) -> None:
     assert "esl_composite" in result.explain
     assert "recommendation_type" in result.explain
     assert "stability_cap_triggered" in result.explain
+    # Issue #175 Phase 2: ESL decision in explain (fractional CTO → allow)
+    assert "esl_decision" in result.explain
+    assert result.explain["esl_decision"] == "allow"
+    assert "esl_reason_code" in result.explain
+    # Phase 4: dedicated columns populated
+    assert result.esl_decision == "allow"
+    assert result.esl_reason_code is not None
     # Issue #103: outreach_score = round(TRS × ESL)
     assert result.outreach_score is not None
     assert result.outreach_score == round(82 * result.esl_score)
@@ -116,7 +123,7 @@ def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session) 
     history = OutreachHistory(
         company_id=company.id,
         outreach_type="email",
-        sent_at=datetime(2026, 2, 8, tzinfo=timezone.utc),
+        sent_at=datetime(2026, 2, 8, tzinfo=UTC),
     )
     db.add(history)
     db.commit()
@@ -155,8 +162,8 @@ def test_stability_cap_under_pressure_spike(db: Session) -> None:
             company_id=company.id,
             source="test",
             event_type=etype,
-            event_time=datetime(2026, 2, 10 + i, tzinfo=timezone.utc),
-            ingested_at=datetime(2026, 2, 10, tzinfo=timezone.utc),
+            event_time=datetime(2026, 2, 10 + i, tzinfo=UTC),
+            ingested_at=datetime(2026, 2, 10, tzinfo=UTC),
             confidence=0.9,
         )
         db.add(ev)

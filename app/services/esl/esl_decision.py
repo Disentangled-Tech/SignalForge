@@ -18,6 +18,7 @@ ESLDecision = Literal["allow", "allow_with_constraints", "suppress"]
 
 # Signal IDs that always trigger suppress (core ethical bans). Cannot be overridden by pack.
 # Empty for now; extend when domain-specific core-ban signals are defined (e.g. distress).
+# See docs/CORE_BAN_SIGNAL_IDS.md for extension guidance.
 CORE_BAN_SIGNAL_IDS: frozenset[str] = frozenset()
 
 
