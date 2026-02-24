@@ -28,6 +28,11 @@ async def lifespan(app: FastAPI):
         try:
             check_db_connection()
             logger.info("Database connection verified")
+            if "signalforge_test" in get_settings().database_url:
+                logger.warning(
+                    "App is connected to signalforge_test. "
+                    "Use a fresh shell or set DATABASE_URL to signalforge_dev for development."
+                )
         except Exception as e:
             logger.critical("Database unreachable: %s", e)
             raise
