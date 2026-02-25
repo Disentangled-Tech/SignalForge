@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.ingestion.adapters.crunchbase_adapter import CrunchbaseAdapter
+from app.ingestion.adapters.newsapi_adapter import NewsAPIAdapter
 from app.ingestion.adapters.producthunt_adapter import ProductHuntAdapter
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.base import SourceAdapter
@@ -346,6 +347,59 @@ class TestGetAdaptersUnit:
 
         assert len(adapters) == 0
 
+    def test_newsapi_included_when_enabled_and_key_set(self) -> None:
+        """INGEST_NEWSAPI_ENABLED=1 and NEWSAPI_API_KEY set → NewsAPIAdapter."""
+        from app.services.ingestion.ingest_daily import _get_adapters
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "",
+                "INGEST_NEWSAPI_ENABLED": "1",
+                "NEWSAPI_API_KEY": "my-key",
+            },
+            clear=False,
+        ):
+            adapters = _get_adapters()
+
+        assert len(adapters) == 1
+        assert isinstance(adapters[0], NewsAPIAdapter)
+        assert adapters[0].source_name == "newsapi"
+
+    def test_newsapi_excluded_when_enabled_but_no_key(self) -> None:
+        """INGEST_NEWSAPI_ENABLED=1 but NEWSAPI_API_KEY unset → no NewsAPI."""
+        from app.services.ingestion.ingest_daily import _get_adapters
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "",
+                "INGEST_NEWSAPI_ENABLED": "1",
+                "NEWSAPI_API_KEY": "",
+            },
+            clear=False,
+        ):
+            adapters = _get_adapters()
+
+        assert len(adapters) == 0
+
+    def test_newsapi_excluded_when_disabled(self) -> None:
+        """INGEST_NEWSAPI_ENABLED=0 or unset → no NewsAPI."""
+        from app.services.ingestion.ingest_daily import _get_adapters
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "",
+                "INGEST_NEWSAPI_ENABLED": "0",
+                "NEWSAPI_API_KEY": "key",
+            },
+            clear=False,
+        ):
+            adapters = _get_adapters()
+
+        assert len(adapters) == 0
+
 
 class TestGetAdaptersCrunchbaseWiring:
     """Phase 2: run_ingest_daily uses Crunchbase when env configured (Issue #134)."""
@@ -441,6 +495,51 @@ class TestGetAdaptersCrunchbaseWiring:
 
         assert len(captured_adapters) == 1
         assert isinstance(captured_adapters[0], ProductHuntAdapter)
+
+    @patch("app.ingestion.adapters.newsapi_adapter.httpx")
+    def test_run_ingest_daily_uses_newsapi_when_configured(
+        self, mock_httpx, db: Session
+    ) -> None:
+        """With NewsAPI env set, run_ingest_daily invokes NewsAPIAdapter."""
+        from app.services.ingestion.ingest_daily import run_ingest_daily
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "totalResults": 0,
+            "articles": [],
+        }
+        mock_client = MagicMock()
+        mock_client.get.return_value = mock_response
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_httpx.Client.return_value = mock_client
+
+        captured_adapters: list = []
+
+        def capture_adapters(inner_db, adapter, since, pack_id=None):
+            captured_adapters.append(adapter)
+            from app.ingestion.ingest import run_ingest
+            return run_ingest(inner_db, adapter, since, pack_id=pack_id)
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "",
+                "INGEST_NEWSAPI_ENABLED": "1",
+                "NEWSAPI_API_KEY": "test-key",
+            },
+            clear=False,
+        ):
+            with patch(
+                "app.services.ingestion.ingest_daily.run_ingest",
+                side_effect=capture_adapters,
+            ):
+                run_ingest_daily(db)
+
+        assert len(captured_adapters) == 1
+        assert isinstance(captured_adapters[0], NewsAPIAdapter)
 
     def test_run_ingest_daily_test_adapter_takes_precedence(
         self, db: Session
