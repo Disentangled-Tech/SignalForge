@@ -162,6 +162,30 @@ class TestRunScanCompanyFull:
         mock_analyze.assert_called_once_with(db, 1, pack=mock_pack, pack_id=pack_uuid)
         mock_score.assert_called_once_with(db, 1, analysis, pack=mock_pack)
 
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_run_scan_company_full_uses_provided_pack_id_not_default(
+        self, mock_scan, mock_analyze, mock_score
+    ):
+        """When pack and pack_id are provided, analyze_company receives that pack_id."""
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        workspace_pack_uuid = uuid4()
+        mock_pack = MagicMock()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        mock_scan.return_value = 2
+        analysis = MagicMock()
+        mock_analyze.return_value = analysis
+
+        await run_scan_company_full(db, 1, pack=mock_pack, pack_id=workspace_pack_uuid)
+
+        mock_analyze.assert_called_once_with(
+            db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
+        )
+
 
 # ── run_scan_company tests ───────────────────────────────────────────
 
@@ -349,6 +373,35 @@ class TestRunScanAll:
         assert job.pack_id == pack_uuid
         assert job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
         mock_get_pack_id.assert_called_once_with(db)
+
+    @pytest.mark.asyncio
+    @patch("app.services.pack_resolver.get_pack_for_workspace")
+    @patch("app.services.scan_orchestrator.resolve_pack")
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_with_workspace_passes_workspace_pack_id(
+        self, mock_scan_full, mock_resolve_pack, mock_get_pack_for_workspace
+    ):
+        """Phase 3: run_scan_company_full receives workspace pack_id, not default."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        workspace_pack_uuid = uuid4()
+        default_pack_uuid = uuid4()
+        mock_get_pack_for_workspace.return_value = workspace_pack_uuid
+        mock_pack = MagicMock()
+        mock_resolve_pack.return_value = mock_pack
+
+        workspace_id = str(uuid4())
+        c1 = _company(1, "WithURL", website_url="https://example.com")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1]
+        mock_scan_full.return_value = (2, MagicMock(), False)
+
+        job = await run_scan_all(db, workspace_id=workspace_id)
+
+        assert job.pack_id == workspace_pack_uuid
+        mock_scan_full.assert_awaited_once_with(
+            db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
+        )
 
 
 # ── run_scan_company_with_job tests ───────────────────────────────────

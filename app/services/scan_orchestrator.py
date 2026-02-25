@@ -158,12 +158,15 @@ async def run_scan_company_full(
     db: Session,
     company_id: int,
     pack: Pack | None = None,
+    pack_id: UUID | None = None,
 ) -> tuple[int, AnalysisRecord | None, bool]:
     """Run scan + analysis + scoring for a single company (no JobRun).
 
     Used by run_scan_all for bulk scans. Updates company.cto_need_score
     when analysis succeeds. Phase 2: Resolves pack and passes to analysis/scoring.
     When pack is provided (e.g. from run_scan_all), avoids per-company resolution.
+    When pack_id is provided with pack, uses it for AnalysisRecord attribution
+    (Phase 3: workspace-specific scans must attribute to workspace's pack, not default).
     """
     prev_analysis = (
         db.query(AnalysisRecord)
@@ -172,7 +175,11 @@ async def run_scan_company_full(
         .first()
     )
     effective_pack = pack if pack is not None else get_default_pack(db)
-    effective_pack_id = get_default_pack_id(db) if effective_pack is not None else None
+    effective_pack_id = (
+        pack_id
+        if pack_id is not None
+        else (get_default_pack_id(db) if effective_pack is not None else None)
+    )
     new_count = await run_scan_company(db, company_id)
     analysis = analyze_company(db, company_id, pack=effective_pack, pack_id=effective_pack_id)
     if analysis is not None:
@@ -315,7 +322,9 @@ async def run_scan_all(
     if companies_with_url:
         for company in companies_with_url:
             try:
-                _, _, changed = await run_scan_company_full(db, company.id, pack=pack)
+                _, _, changed = await run_scan_company_full(
+                    db, company.id, pack=pack, pack_id=pack_id
+                )
                 processed += 1
                 if changed:
                     changed_count += 1
