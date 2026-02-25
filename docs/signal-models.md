@@ -135,6 +135,13 @@ Each workspace has an `active_pack_id`. Pack resolution: `get_pack_for_workspace
 - `pack_id IS NULL` treated as default pack until backfill completes.
 - **Backfill**: When `pack_id` column is added to AnalysisRecord (Phase 2), existing rows can be backfilled with default pack UUID. Backfill is optional and can be lazy (on next analysis) or via data migration.
 
+### Companies Are Global; Scores and Analyses Are Pack-Scoped (Phase 3)
+
+- **Companies** are a shared resource: `list_companies` returns all companies; there is no workspace or pack filter on the company table.
+- **Scores** (ReadinessSnapshot, EngagementSnapshot) and **analyses** (AnalysisRecord) are pack-scoped. When `workspace_id` is provided, pack is resolved from the workspace's `active_pack_id`; display scores and analyses are filtered by that pack.
+- **Outreach** (OutreachHistory, BriefingItem) is workspace-scoped. Each record has `workspace_id`; queries filter by workspace (or include legacy `workspace_id IS NULL` for default workspace).
+- This design allows multiple workspaces to share the same company catalog while maintaining isolated scores, analyses, and outreach per workspace/pack.
+
 ---
 
 ## 4. Data Flow

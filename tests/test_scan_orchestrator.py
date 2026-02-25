@@ -186,6 +186,35 @@ class TestRunScanCompanyFull:
             db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
         )
 
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_run_scan_company_full_derives_pack_id_from_pack_when_pack_id_none(
+        self, mock_scan, mock_analyze, mock_score
+    ):
+        """When pack is provided but pack_id is None, derive pack_id from pack manifest."""
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        workspace_pack_uuid = uuid4()
+        mock_pack = MagicMock()
+        mock_pack.manifest = {"id": "bookkeeping_v1", "version": "1"}
+        mock_scan.return_value = 0
+        mock_analyze.return_value = MagicMock()
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        # SignalPack lookup for pack_id derivation
+        db.query.return_value.filter.return_value.first.return_value = (workspace_pack_uuid,)
+
+        await run_scan_company_full(db, 1, pack=mock_pack, pack_id=None)
+
+        # Should derive pack_id from pack manifest and pass to analyze_company
+        mock_analyze.assert_called_once()
+        call_kwargs = mock_analyze.call_args[1]
+        assert call_kwargs["pack_id"] == workspace_pack_uuid
+        assert call_kwargs["pack"] == mock_pack
+
 
 # ── run_scan_company tests ───────────────────────────────────────────
 
@@ -402,6 +431,70 @@ class TestRunScanAll:
         mock_scan_full.assert_awaited_once_with(
             db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
         )
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.scan_orchestrator.store_signal")
+    @patch("app.services.scan_orchestrator.discover_pages", new_callable=AsyncMock)
+    async def test_run_scan_all_workspace_attribution_analysis_record_pack_id(
+        self, mock_discover, mock_store, mock_get_llm, db
+    ):
+        """Phase 3: run_scan_company_full with pack_id creates AnalysisRecord with that pack."""
+        import json
+
+        from app.models import Company, SignalRecord, SignalPack
+        from app.services.pack_resolver import get_default_pack, resolve_pack
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        fractional_cto = db.query(SignalPack).filter(
+            SignalPack.pack_id == "fractional_cto_v1", SignalPack.version == "1"
+        ).first()
+        if fractional_cto is None:
+            pytest.skip("fractional_cto_v1 pack not found")
+
+        company = Company(
+            name="Scan Attribution Co",
+            website_url="https://scan-attribution.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        sig = SignalRecord(
+            company_id=company.id,
+            source_url="https://scan-attribution.example.com/jobs",
+            source_type="jobs",
+            content_hash="attr789",
+            content_text="We are hiring senior engineers.",
+        )
+        db.add(sig)
+        db.commit()
+
+        mock_discover.return_value = [
+            ("https://scan-attribution.example.com/", "Home", "<html>home</html>"),
+        ]
+        mock_store.return_value = MagicMock()
+
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        stage_resp = json.dumps({
+            "stage": "early_customers",
+            "confidence": 70,
+            "evidence_bullets": [],
+            "assumptions": [],
+        })
+        pain_resp = json.dumps({"signals": {}})
+        mock_llm.complete.side_effect = [stage_resp, pain_resp, "Explanation."]
+
+        pack = resolve_pack(db, fractional_cto.id) or get_default_pack(db)
+
+        _, analysis, _ = await run_scan_company_full(
+            db, company.id, pack=pack, pack_id=fractional_cto.id
+        )
+
+        assert analysis is not None
+        assert analysis.pack_id == fractional_cto.id
 
 
 # ── run_scan_company_with_job tests ───────────────────────────────────

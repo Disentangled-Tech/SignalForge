@@ -211,3 +211,31 @@ class TestMeEndpoint:
         )
         assert resp.status_code == 401
 
+
+# ---------------------------------------------------------------------------
+# Integration: create_user adds to default workspace (Phase 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_create_user_adds_to_default_workspace(db):
+    """Phase 3: create_user adds new user to default workspace."""
+    from uuid import UUID
+
+    from app.models.user_workspace import UserWorkspace
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+    from app.services.auth import create_user
+
+    user = create_user(db, "workspace_test_user", "testpass123")
+    assert user.id is not None
+
+    uw = (
+        db.query(UserWorkspace)
+        .filter(
+            UserWorkspace.user_id == user.id,
+            UserWorkspace.workspace_id == UUID(DEFAULT_WORKSPACE_ID),
+        )
+        .first()
+    )
+    assert uw is not None
+

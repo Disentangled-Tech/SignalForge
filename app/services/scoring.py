@@ -184,16 +184,21 @@ def calculate_score(
     return int(round(result))
 
 
-def get_known_pain_signal_keys(db: Session | None = None) -> set[str]:
-    """Return known pain signal keys from default pack (Phase 2).
+def get_known_pain_signal_keys(
+    db: Session | None = None,
+    pack: Pack | None = None,
+) -> set[str]:
+    """Return known pain signal keys from pack (Phase 2).
 
     Used by scan_orchestrator for change detection and by get_custom_weights
-    for validation. When no pack available, returns empty set.
+    for validation. When pack provided (Phase 3), uses it for pack-aware
+    change detection. When pack is None, uses default pack.
+    Returns empty set when no pack available.
     """
-    pack = _get_pack_or_default(db)
-    if pack is None:
+    effective_pack = pack if pack is not None else _get_pack_or_default(db)
+    if effective_pack is None:
         return set()
-    pack_interface = adapt_pack_for_scoring(pack)
+    pack_interface = adapt_pack_for_scoring(effective_pack)
     weights, _ = _get_weights_from_pack(pack_interface)
     return set(weights)
 
