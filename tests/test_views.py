@@ -36,12 +36,20 @@ def _make_mock_company(**overrides):
 
     now = datetime.now(timezone.utc)
     defaults = dict(
-        id=1, name="Acme Corp", website_url="https://acme.example.com",
-        founder_name="Jane Doe", founder_linkedin_url=None,
-        company_linkedin_url=None, source="manual",
-        target_profile_match=False, current_stage="scaling_team",
-        notes=None, cto_need_score=75,
-        created_at=now, updated_at=now, last_scan_at=now,
+        id=1,
+        name="Acme Corp",
+        website_url="https://acme.example.com",
+        founder_name="Jane Doe",
+        founder_linkedin_url=None,
+        company_linkedin_url=None,
+        source="manual",
+        target_profile_match=False,
+        current_stage="scaling_team",
+        notes=None,
+        cto_need_score=75,
+        created_at=now,
+        updated_at=now,
+        last_scan_at=now,
     )
     defaults.update(overrides)
     mock = MagicMock(spec=Company)
@@ -56,12 +64,20 @@ def _make_company_read(**overrides):
 
     now = datetime.now(timezone.utc)
     defaults = dict(
-        id=1, company_name="Acme Corp", website_url="https://acme.example.com",
-        founder_name="Jane Doe", founder_linkedin_url=None,
-        company_linkedin_url=None, source="manual",
-        target_profile_match=None, current_stage="scaling_team",
-        notes=None, cto_need_score=75,
-        created_at=now, updated_at=now, last_scan_at=now,
+        id=1,
+        company_name="Acme Corp",
+        website_url="https://acme.example.com",
+        founder_name="Jane Doe",
+        founder_linkedin_url=None,
+        company_linkedin_url=None,
+        source="manual",
+        target_profile_match=None,
+        current_stage="scaling_team",
+        notes=None,
+        cto_need_score=75,
+        created_at=now,
+        updated_at=now,
+        last_scan_at=now,
     )
     defaults.update(overrides)
     return CompanyRead(**defaults)
@@ -136,7 +152,8 @@ class TestLoginPage:
         """POST /login with bad credentials shows error."""
         mock_db_session.query.return_value.filter.return_value.first.return_value = None
         resp = noauth_client.post(
-            "/login", data={"username": "bad", "password": "bad"},
+            "/login",
+            data={"username": "bad", "password": "bad"},
             follow_redirects=False,
         )
         assert resp.status_code == 401
@@ -146,7 +163,8 @@ class TestLoginPage:
         """POST /login with valid credentials sets cookie and redirects."""
         mock_db_session.query.return_value.filter.return_value.first.return_value = test_user
         resp = noauth_client.post(
-            "/login", data={"username": "admin", "password": TEST_PASSWORD},
+            "/login",
+            data={"username": "admin", "password": TEST_PASSWORD},
             follow_redirects=False,
         )
         assert resp.status_code == 302
@@ -267,9 +285,7 @@ class TestCompaniesList:
         assert "name" in resp.text.lower() or "Name" in resp.text
 
     @patch("app.api.views.list_companies")
-    def test_companies_list_pagination_controls_when_multiple_pages(
-        self, mock_list, views_client
-    ):
+    def test_companies_list_pagination_controls_when_multiple_pages(self, mock_list, views_client):
         """Pagination controls shown when total exceeds page_size."""
         companies = [_make_company_read(id=i, company_name=f"Co{i}") for i in range(1, 26)]
         mock_list.return_value = (companies, 30)  # 30 total, 25 per page
@@ -418,7 +434,10 @@ class TestImportCompanies:
         from app.schemas.company import BulkImportResponse, BulkImportRow
 
         mock_import.return_value = BulkImportResponse(
-            total=2, created=2, duplicates=0, errors=0,
+            total=2,
+            created=2,
+            duplicates=0,
+            errors=0,
             rows=[
                 BulkImportRow(row=1, company_name="Acme Corp", status="created"),
                 BulkImportRow(row=2, company_name="Beta Inc", status="created"),
@@ -441,7 +460,10 @@ class TestImportCompanies:
         from app.schemas.company import BulkImportResponse, BulkImportRow
 
         mock_import.return_value = BulkImportResponse(
-            total=1, created=1, duplicates=0, errors=0,
+            total=1,
+            created=1,
+            duplicates=0,
+            errors=0,
             rows=[
                 BulkImportRow(row=1, company_name="Gamma LLC", status="created"),
             ],
@@ -569,9 +591,7 @@ class TestCompanyDetail:
         mock_analysis.pain_signals_json = {}
         mock_analysis.evidence_bullets = []
         mock_analysis.explanation = None
-        self._setup_query_mock(
-            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
-        )
+        self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
 
         resp = views_client.get("/companies/1")
         assert resp.status_code == 200
@@ -580,9 +600,7 @@ class TestCompanyDetail:
         assert "daily briefing" in resp.text
 
     @patch("app.api.views.get_company")
-    def test_detail_all_data_present(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_detail_all_data_present(self, mock_get, views_client, mock_db_session):
         """Company with signals, analysis, briefing — all sections render with content."""
         company = _make_company_read(
             company_name="FullData Co",
@@ -602,9 +620,7 @@ class TestCompanyDetail:
         mock_analysis = MagicMock()
         mock_analysis.stage = "scaling_team"
         mock_analysis.stage_confidence = 85
-        mock_analysis.pain_signals_json = {
-            "signals": {"hiring_engineers": {"value": True}}
-        }
+        mock_analysis.pain_signals_json = {"signals": {"hiring_engineers": {"value": True}}}
         mock_analysis.evidence_bullets = ["Evidence 1"]
         mock_analysis.explanation = "Scaling rapidly"
 
@@ -651,18 +667,14 @@ class TestCompanyDetail:
         mock_analysis.pain_signals_json = "invalid-string"
         mock_analysis.evidence_bullets = []
         mock_analysis.explanation = None
-        self._setup_query_mock(
-            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
-        )
+        self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
 
         resp = views_client.get("/companies/1")
         assert resp.status_code == 200
         assert "Acme Corp" in resp.text
 
     @patch("app.api.views.get_company")
-    def test_detail_malformed_pain_signals_json_list(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_detail_malformed_pain_signals_json_list(self, mock_get, views_client, mock_db_session):
         """pain_signals_json as list — page does not crash."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -672,9 +684,7 @@ class TestCompanyDetail:
         mock_analysis.pain_signals_json = ["item1", "item2"]
         mock_analysis.evidence_bullets = []
         mock_analysis.explanation = None
-        self._setup_query_mock(
-            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
-        )
+        self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
 
         resp = views_client.get("/companies/1")
         assert resp.status_code == 200
@@ -706,9 +716,7 @@ class TestCompanyDetail:
         }
         mock_analysis.evidence_bullets = ["Hiring 5 engineers", "Series A funding"]
         mock_analysis.explanation = "This company is scaling rapidly."
-        self._setup_query_mock(
-            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
-        )
+        self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
 
         resp = views_client.get("/companies/1")
         assert resp.status_code == 200
@@ -741,12 +749,8 @@ class TestCompanyDetail:
 
         mock_analysis = MagicMock()
         mock_analysis.stage = "scaling_team"
-        mock_analysis.pain_signals_json = {
-            "signals": {"hiring_engineers": {"value": True}}
-        }
-        self._setup_query_mock(
-            mock_db_session, signals=[], analysis=mock_analysis, briefing=None
-        )
+        mock_analysis.pain_signals_json = {"signals": {"hiring_engineers": {"value": True}}}
+        self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
 
         pack = load_pack("fractional_cto_v1", "1")
         mock_get_pack_id.return_value = uuid4()
@@ -819,9 +823,7 @@ class TestCompanyDetail:
 
 class TestCompanyRescan:
     @patch("app.api.views.get_company")
-    def test_rescan_creates_job_run_and_redirects(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_rescan_creates_job_run_and_redirects(self, mock_get, views_client, mock_db_session):
         """POST rescan returns 302, JobRun created with status running."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -844,6 +846,38 @@ class TestCompanyRescan:
         assert "rescan=queued" in resp.headers.get("location", "")
         mock_db_session.add.assert_called()
         mock_db_session.commit.assert_called()
+
+    @patch("app.api.views.get_default_pack_id")
+    @patch("app.api.views.get_company")
+    def test_rescan_creates_job_run_with_pack_id_and_workspace_id(
+        self, mock_get, mock_get_pack_id, views_client, mock_db_session
+    ):
+        """Company rescan creates JobRun with pack_id and workspace_id for audit."""
+        from uuid import UUID
+
+        from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+        company = _make_company_read()
+        mock_get.return_value = company
+        mock_get_pack_id.return_value = uuid4()
+
+        mock_first = MagicMock(return_value=None)
+        mock_order = MagicMock()
+        mock_order.first = mock_first
+        mock_filter = MagicMock()
+        mock_filter.order_by.return_value = mock_order
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post(
+            f"/companies/{company.id}/rescan",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 302
+        mock_db_session.add.assert_called_once()
+        added_job = mock_db_session.add.call_args[0][0]
+        assert added_job.pack_id == mock_get_pack_id.return_value
+        assert added_job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
 
     @patch("app.api.views.get_company")
     def test_rescan_already_running_redirects_without_new_job(
@@ -940,9 +974,7 @@ class TestCompaniesScanAll:
 
 class TestCompanyDetailScanStatus:
     @patch("app.api.views.get_company")
-    def test_detail_shows_scan_status_running(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_detail_shows_scan_status_running(self, mock_get, views_client, mock_db_session):
         """GET detail with running JobRun shows 'Scan in progress' and disabled button."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -963,9 +995,7 @@ class TestCompanyDetailScanStatus:
         assert "Scanning…" in resp.text or "disabled" in resp.text
 
     @patch("app.api.views.get_company")
-    def test_detail_shows_scan_status_failed(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_detail_shows_scan_status_failed(self, mock_get, views_client, mock_db_session):
         """GET detail with failed JobRun shows error message."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -985,9 +1015,7 @@ class TestCompanyDetailScanStatus:
         assert "Network timeout" in resp.text
 
     @patch("app.api.views.get_company")
-    def test_detail_shows_rescan_queued_param(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_detail_shows_rescan_queued_param(self, mock_get, views_client, mock_db_session):
         """GET detail with ?rescan=queued shows queued message."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -998,9 +1026,7 @@ class TestCompanyDetailScanStatus:
         assert "Scan queued" in resp.text or "queued" in resp.text.lower()
 
     @patch("app.api.views.get_company")
-    def test_detail_shows_rescan_running_param(
-        self, mock_get, views_client, mock_db_session
-    ):
+    def test_detail_shows_rescan_running_param(self, mock_get, views_client, mock_db_session):
         """GET detail with ?rescan=running shows already in progress message."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -1128,9 +1154,7 @@ class TestCompanyDelete:
 class TestCompanyOutreach:
     @patch("app.api.views.create_outreach_record")
     @patch("app.api.views.get_company")
-    def test_post_outreach_redirects_on_success(
-        self, mock_get, mock_create, views_client
-    ):
+    def test_post_outreach_redirects_on_success(self, mock_get, mock_create, views_client):
         """POST /companies/1/outreach with valid data redirects with success."""
         mock_get.return_value = _make_company_read()
         mock_create.return_value = MagicMock(id=1)
@@ -1150,9 +1174,7 @@ class TestCompanyOutreach:
         mock_create.assert_called_once()
 
     @patch("app.api.views.get_company")
-    def test_post_outreach_missing_sent_at_redirects_with_error(
-        self, mock_get, views_client
-    ):
+    def test_post_outreach_missing_sent_at_redirects_with_error(self, mock_get, views_client):
         """POST /companies/1/outreach with empty sent_at redirects with error."""
         mock_get.return_value = _make_company_read()
         resp = views_client.post(
@@ -1185,9 +1207,7 @@ class TestCompanyOutreach:
 
     @patch("app.api.views.delete_outreach_record")
     @patch("app.api.views.get_company")
-    def test_post_outreach_delete_redirects(
-        self, mock_get, mock_delete, views_client
-    ):
+    def test_post_outreach_delete_redirects(self, mock_get, mock_delete, views_client):
         """POST /companies/1/outreach/5/delete redirects with success."""
         mock_get.return_value = _make_company_read()
         mock_delete.return_value = True
@@ -1268,4 +1288,3 @@ class TestRootRedirect:
         resp = views_client.get("/", follow_redirects=False)
         assert resp.status_code == 302
         assert "/companies" in resp.headers.get("location", "")
-

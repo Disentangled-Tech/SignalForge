@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.job_run import JobRun
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.scan_orchestrator import _analysis_changed, infer_source_type
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -337,6 +338,7 @@ class TestRunScanAll:
         job = await run_scan_all(db)
 
         assert job.pack_id == pack_uuid
+        assert job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
         mock_get_pack_id.assert_called_once_with(db)
 
 
@@ -438,4 +440,5 @@ class TestRunScanCompanyWithJob:
         db.add.assert_called_once()
         added_job = db.add.call_args[0][0]
         assert added_job.pack_id == pack_uuid
+        assert added_job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
         mock_get_pack_id.assert_called_once_with(db)

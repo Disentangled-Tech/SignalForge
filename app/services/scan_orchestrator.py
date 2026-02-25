@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+from uuid import UUID
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.job_run import JobRun
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.analysis import analyze_company
 from app.services.pack_resolver import get_default_pack, get_default_pack_id
 from app.services.page_discovery import discover_pages
@@ -216,6 +218,7 @@ async def run_scan_company_with_job(
             company_id=company_id,
             status="running",
             pack_id=pack_id,
+            workspace_id=UUID(DEFAULT_WORKSPACE_ID),
         )
         db.add(job)
         db.commit()
@@ -270,7 +273,12 @@ async def run_scan_all(db: Session) -> JobRun:
         The completed (or failed) job-run record.
     """
     pack_id = get_default_pack_id(db)
-    job = JobRun(job_type="scan", status="running", pack_id=pack_id)
+    job = JobRun(
+        job_type="scan",
+        status="running",
+        pack_id=pack_id,
+        workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+    )
     db.add(job)
     db.commit()
     db.refresh(job)
