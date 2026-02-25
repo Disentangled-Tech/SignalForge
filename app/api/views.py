@@ -31,7 +31,8 @@ from pydantic import ValidationError
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.api.deps import AUTH_COOKIE, get_current_user, get_db
+from app.api.deps import AUTH_COOKIE, get_current_user, get_db, validate_uuid_param_or_422
+from app.config import get_settings
 from app.db.session import SessionLocal
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
@@ -84,6 +85,22 @@ def _require_ui_auth(
             headers={"Location": "/login"},
         )
     return user
+
+
+def _resolve_workspace_id(request: Request) -> str | None:
+    """Resolve workspace_id from request when multi_workspace_enabled.
+
+    Returns workspace_id from query_params or request.state, or None when
+    multi_workspace is disabled or no workspace in request (use default).
+    """
+    if not get_settings().multi_workspace_enabled:
+        return None
+    ws = request.query_params.get("workspace_id") or getattr(
+        request.state, "workspace_id", None
+    )
+    if ws is not None:
+        validate_uuid_param_or_422(ws, "workspace_id")
+    return ws
 
 
 # ── Public routes ────────────────────────────────────────────────────
@@ -425,6 +442,9 @@ def company_detail(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    # Resolve workspace when multi_workspace_enabled (Phase 3)
+    workspace_id = _resolve_workspace_id(request) or DEFAULT_WORKSPACE_ID
+
     # Latest company scan job (for status display)
     scan_job = (
         db.query(JobRun)
@@ -461,12 +481,15 @@ def company_detail(
         .first()
     )
 
-    # Outreach history and draft for pre-fill
-    outreach_history = list_outreach_for_company(db, company_id)
-    draft_message = get_draft_for_company(db, company_id)
+    # Outreach history and draft for pre-fill (Phase 3: scope by workspace)
+    outreach_history = list_outreach_for_company(
+        db, company_id, workspace_id=workspace_id
+    )
+    draft_message = get_draft_for_company(
+        db, company_id, workspace_id=workspace_id
+    )
 
-    # Recompute score from analysis; use for display and repair if stored score is wrong
-    recomputed_score: int | None = None
+    # Repair: if analysis exists and stored score differs from recomputed, persist correct value
     if analysis is not None:
         from app.services.pack_resolver import get_default_pack_id, resolve_pack
         from app.services.scoring import calculate_score, get_custom_weights, score_company
@@ -484,10 +507,14 @@ def company_detail(
             pack=pack,
             db=db,
         )
-        # Repair: if stored score differs from recomputed, persist the correct value
         if company.cto_need_score != recomputed_score:
             score_company(db, company_id, analysis, pack=pack)
             company = get_company(db, company_id) or company
+
+    # Display score: pack-scoped (ReadinessSnapshot > cto_need_score)
+    from app.services.score_resolver import get_company_score
+
+    recomputed_score = get_company_score(db, company_id, workspace_id=workspace_id)
 
     # Query param for one-time flash: ?rescan=queued | ?rescan=running
     rescan_param = request.query_params.get("rescan")
@@ -517,6 +544,7 @@ def company_detail(
             "flash_type": "success" if success else None,
             "outreach_error": outreach_error,
             "now_for_datetime_local": now_for_datetime_local,
+            "workspace_id": workspace_id if get_settings().multi_workspace_enabled else None,
         },
     )
 
@@ -527,8 +555,18 @@ _OUTREACH_TYPES = frozenset({"email", "linkedin_dm", "warm_intro", "other"})
 _OUTREACH_OUTCOMES = frozenset({"replied", "declined", "no_response", "other"})
 
 
+def _company_redirect_url(company_id: int, params: dict[str, str] | None = None) -> str:
+    """Build redirect URL for company detail, optionally with query params."""
+    base = f"/companies/{company_id}"
+    if not params:
+        return base
+    qs = "&".join(f"{k}={quote(v)}" for k, v in params.items() if v)
+    return f"{base}?{qs}" if qs else base
+
+
 @router.post("/companies/{company_id}/outreach")
 def company_outreach_add(
+    request: Request,
     company_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(_require_ui_auth),
@@ -543,6 +581,8 @@ def company_outreach_add(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    workspace_id = _resolve_workspace_id(request) if get_settings().multi_workspace_enabled else None
+
     errors: list[str] = []
     if not sent_at.strip():
         errors.append("Sent date/time is required.")
@@ -555,8 +595,11 @@ def company_outreach_add(
         errors.append(f"Outcome must be one of: {', '.join(sorted(_OUTREACH_OUTCOMES))}")
 
     if errors:
+        params = {"outreach_error": errors[0]}
+        if workspace_id:
+            params["workspace_id"] = workspace_id
         return RedirectResponse(
-            url=f"/companies/{company_id}?outreach_error={quote(errors[0])}",
+            url=_company_redirect_url(company_id, params),
             status_code=303,
         )
 
@@ -566,8 +609,11 @@ def company_outreach_add(
         if sent_dt.tzinfo is None:
             sent_dt = sent_dt.replace(tzinfo=UTC)
     except ValueError:
+        params = {"outreach_error": "Invalid date time format"}
+        if workspace_id:
+            params["workspace_id"] = workspace_id
         return RedirectResponse(
-            url=f"/companies/{company_id}?outreach_error=Invalid+date+time+format",
+            url=_company_redirect_url(company_id, params),
             status_code=303,
         )
 
@@ -580,20 +626,28 @@ def company_outreach_add(
             message=message.strip() or None,
             notes=notes.strip() or None,
             outcome=outcome_val,
+            workspace_id=workspace_id,
         )
     except OutreachCooldownBlockedError as e:
+        params = {"outreach_error": e.reason}
+        if workspace_id:
+            params["workspace_id"] = workspace_id
         return RedirectResponse(
-            url=f"/companies/{company_id}?outreach_error={quote(e.reason)}",
+            url=_company_redirect_url(company_id, params),
             status_code=303,
         )
+    params = {"success": "Outreach recorded"}
+    if workspace_id:
+        params["workspace_id"] = workspace_id
     return RedirectResponse(
-        url=f"/companies/{company_id}?success=Outreach+recorded",
+        url=_company_redirect_url(company_id, params),
         status_code=303,
     )
 
 
 @router.post("/companies/{company_id}/outreach/{outreach_id}/edit")
 def company_outreach_edit(
+    request: Request,
     company_id: int,
     outreach_id: int,
     db: Session = Depends(get_db),
@@ -601,25 +655,38 @@ def company_outreach_edit(
     outcome: str = Form(""),
 ):
     """Update the outcome of an outreach record."""
+    workspace_id = _resolve_workspace_id(request) if get_settings().multi_workspace_enabled else None
+
     outcome_val = outcome.strip() or None
     if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
+        params = {"outreach_error": "Invalid outcome"}
+        if workspace_id:
+            params["workspace_id"] = workspace_id
         return RedirectResponse(
-            url=f"/companies/{company_id}?outreach_error=Invalid+outcome",
+            url=_company_redirect_url(company_id, params),
             status_code=303,
         )
     updated = update_outreach_outcome(
-        db, company_id=company_id, outreach_id=outreach_id, outcome=outcome_val
+        db,
+        company_id=company_id,
+        outreach_id=outreach_id,
+        outcome=outcome_val,
+        workspace_id=workspace_id,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Outreach record not found")
+    params = {"success": "Outcome updated"}
+    if workspace_id:
+        params["workspace_id"] = workspace_id
     return RedirectResponse(
-        url=f"/companies/{company_id}?success=Outcome+updated",
+        url=_company_redirect_url(company_id, params),
         status_code=303,
     )
 
 
 @router.post("/companies/{company_id}/outreach/{outreach_id}/delete")
 def company_outreach_delete(
+    request: Request,
     company_id: int,
     outreach_id: int,
     db: Session = Depends(get_db),
@@ -630,12 +697,19 @@ def company_outreach_delete(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    deleted = delete_outreach_record(db, company_id, outreach_id)
+    workspace_id = _resolve_workspace_id(request) if get_settings().multi_workspace_enabled else None
+
+    deleted = delete_outreach_record(
+        db, company_id, outreach_id, workspace_id=workspace_id
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Outreach record not found")
 
+    params = {"success": "Outreach deleted"}
+    if workspace_id:
+        params["workspace_id"] = workspace_id
     return RedirectResponse(
-        url=f"/companies/{company_id}?success=Outreach+deleted",
+        url=_company_redirect_url(company_id, params),
         status_code=303,
     )
 

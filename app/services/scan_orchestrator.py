@@ -172,8 +172,9 @@ async def run_scan_company_full(
         .first()
     )
     effective_pack = pack if pack is not None else get_default_pack(db)
+    effective_pack_id = get_default_pack_id(db) if effective_pack is not None else None
     new_count = await run_scan_company(db, company_id)
-    analysis = analyze_company(db, company_id, pack=effective_pack)
+    analysis = analyze_company(db, company_id, pack=effective_pack, pack_id=effective_pack_id)
     if analysis is not None:
         score_company(db, company_id, analysis, pack=effective_pack)
     changed = _analysis_changed(prev_analysis, analysis, db) if analysis else False
@@ -236,8 +237,9 @@ async def run_scan_company_with_job(
         return job
 
     pack = get_default_pack(db)
+    pack_id = job.pack_id if job.pack_id is not None else get_default_pack_id(db)
     try:
-        analysis = analyze_company(db, company_id, pack=pack)
+        analysis = analyze_company(db, company_id, pack=pack, pack_id=pack_id)
         if analysis is not None:
             score_company(db, company_id, analysis, pack=pack)
     except Exception as exc:

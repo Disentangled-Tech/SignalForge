@@ -12,9 +12,12 @@ from fastapi.testclient import TestClient
 
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
+from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.outreach_history import OutreachHistory
+from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_record import SignalRecord
+from app.models.signal_pack import SignalPack
 from app.services.outreach_history import OutreachCooldownBlockedError
 from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_INTEGRATION
 from app.models.user import User
@@ -86,10 +89,36 @@ def _make_company_read(**overrides):
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
+def _default_query_side_effect(model, default_chain):
+    """Default query side_effect for mock_db_session (Phase 2: score_resolver, pack_resolver)."""
+    mock_q = MagicMock()
+    mock_f = MagicMock()
+    mock_o = MagicMock()
+    mock_q.filter.return_value = mock_f
+    mock_f.order_by.return_value = mock_o
+    mock_o.filter.return_value = mock_o
+    if model is ReadinessSnapshot:
+        mock_o.first.return_value = None
+    elif model is Company:
+        mock_f.first.return_value = _make_mock_company()
+    elif model is SignalPack:
+        mock_f.first.return_value = None
+    elif hasattr(model, "parent") and getattr(model.parent, "class_", None) is SignalPack:
+        mock_f.first.return_value = (uuid4(),)
+    else:
+        return default_chain
+    return mock_q
+
+
 @pytest.fixture
 def mock_db_session():
-    """A reusable mock DB session."""
-    return MagicMock()
+    """A reusable mock DB session with default query handling for score_resolver (Phase 2)."""
+    session = MagicMock()
+    default_chain = MagicMock()
+    default_chain.filter.return_value.first.return_value = None
+    session.query.side_effect = lambda m: _default_query_side_effect(m, default_chain)
+    session.query.return_value = default_chain
+    return session
 
 
 @pytest.fixture
@@ -181,8 +210,9 @@ class TestCompaniesList:
         assert resp.status_code == 303
         assert resp.headers.get("location") == "/login"
 
+    @patch("app.api.views.get_display_scores_for_companies", return_value={1: 85})
     @patch("app.api.views.list_companies")
-    def test_companies_list_renders(self, mock_list, views_client):
+    def test_companies_list_renders(self, mock_list, mock_scores, views_client):
         """GET /companies renders a table with company data."""
         company = _make_company_read(company_name="TestCo", cto_need_score=85)
         mock_list.return_value = ([company], 1)
@@ -284,11 +314,15 @@ class TestCompaniesList:
         assert "score" in resp.text.lower() or "Score" in resp.text
         assert "name" in resp.text.lower() or "Name" in resp.text
 
+    @patch("app.api.views.get_display_scores_for_companies")
     @patch("app.api.views.list_companies")
-    def test_companies_list_pagination_controls_when_multiple_pages(self, mock_list, views_client):
+    def test_companies_list_pagination_controls_when_multiple_pages(
+        self, mock_list, mock_scores, views_client
+    ):
         """Pagination controls shown when total exceeds page_size."""
         companies = [_make_company_read(id=i, company_name=f"Co{i}") for i in range(1, 26)]
         mock_list.return_value = (companies, 30)  # 30 total, 25 per page
+        mock_scores.return_value = {i: 50 for i in range(1, 26)}
         resp = views_client.get("/companies")
         assert resp.status_code == 200
         assert "Next" in resp.text or "next" in resp.text.lower()
@@ -500,8 +534,9 @@ class TestImportCompanies:
 
 
 class TestCompanyDetail:
+    @patch("app.api.views.get_company_score", return_value=75)
     @patch("app.api.views.get_company")
-    def test_detail_renders(self, mock_get, views_client, mock_db_session):
+    def test_detail_renders(self, mock_get, mock_get_score, views_client, mock_db_session):
         """GET /companies/1 renders company info."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -512,6 +547,8 @@ class TestCompanyDetail:
         mock_order = MagicMock()
         mock_order.limit.return_value.all.return_value = []
         mock_order.first.return_value = None
+        mock_order.filter.return_value = mock_order  # Phase 3: workspace filter chain
+        mock_order.all.return_value = []
         mock_filter.order_by.return_value = mock_order
         mock_query.filter.return_value = mock_filter
         mock_db_session.query.return_value = mock_query
@@ -547,6 +584,8 @@ class TestCompanyDetail:
             mock_o = MagicMock()
             mock_q.filter.return_value = mock_f
             mock_f.order_by.return_value = mock_o
+            # Phase 3: list_outreach/get_draft add .filter(workspace) before .all()/.first()
+            mock_o.filter.return_value = mock_o
             if model is JobRun:
                 mock_o.first.return_value = scan_job
             elif model is SignalRecord:
@@ -557,6 +596,15 @@ class TestCompanyDetail:
                 mock_o.first.return_value = briefing
             elif model is OutreachHistory:
                 mock_o.all.return_value = outreach_history
+            elif model is ReadinessSnapshot:
+                mock_o.first.return_value = None
+            elif model is Company:
+                mock_o.first.return_value = _make_mock_company()
+            elif model is SignalPack or (
+                hasattr(model, "parent")
+                and getattr(model.parent, "class_", None) is SignalPack
+            ):
+                mock_o.first.return_value = (uuid4(),) if model is not SignalPack else None
             return mock_q
 
         mock_db_session.query.side_effect = query_side_effect
@@ -788,8 +836,11 @@ class TestCompanyDetail:
         assert "Hi {{founder}}, I noticed your hiring..." in resp.text
         assert "Record Outreach" in resp.text
 
+    @patch("app.api.views.list_outreach_for_company")
     @patch("app.api.views.get_company")
-    def test_outreach_history_section_renders(self, mock_get, views_client, mock_db_session):
+    def test_outreach_history_section_renders(
+        self, mock_get, mock_list_outreach, views_client, mock_db_session
+    ):
         """Company detail renders Outreach History section with past records."""
         company = _make_company_read()
         mock_get.return_value = company
@@ -800,13 +851,15 @@ class TestCompanyDetail:
         mock_outreach.outreach_type = "email"
         mock_outreach.message = "Follow-up message sent"
         mock_outreach.notes = "Will follow up next week"
+        mock_outreach.outcome = None
+
+        mock_list_outreach.return_value = [mock_outreach]
 
         self._setup_query_mock(
             mock_db_session,
             signals=[],
             analysis=None,
             briefing=None,
-            outreach_history=[mock_outreach],
         )
 
         resp = views_client.get("/companies/1")

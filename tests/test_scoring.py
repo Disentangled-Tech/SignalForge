@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -277,68 +277,35 @@ class TestGetDisplayScoresForCompanies:
         result = get_display_scores_for_companies(db, [])
         assert result == {}
 
-    def test_returns_scores_from_latest_analysis_per_company(self) -> None:
+    @patch("app.services.score_resolver.get_company_scores_batch")
+    def test_returns_scores_from_latest_analysis_per_company(self, mock_batch) -> None:
+        """Phase 2: get_display_scores_for_companies uses batched get_company_scores_batch."""
+        mock_batch.return_value = {1: 35, 2: 30}
+
         db = MagicMock()
-        a1 = MagicMock(spec=AnalysisRecord)
-        a1.company_id = 1
-        a1.pain_signals_json = _signals(["hiring_engineers"])
-        a1.stage = "scaling_team"
-        a2 = MagicMock(spec=AnalysisRecord)
-        a2.company_id = 2
-        a2.pain_signals_json = _signals([])
-        a2.stage = "enterprise_transition"
-        # Phase 2: get_custom_weights (2 first), get_default_pack_id (1), then 2x calculate_score (2 first each)
-        db.query.return_value.filter.return_value.first.side_effect = [None] * 10
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            a1,
-            a2,
-        ]
         result = get_display_scores_for_companies(db, [1, 2])
-        assert result == {1: 35, 2: 30}  # 15+20 and 30 stage bonus
+        assert result == {1: 35, 2: 30}
+        mock_batch.assert_called_once_with(db, [1, 2])
 
-    def test_uses_latest_analysis_when_multiple_exist(self) -> None:
-        """When a company has multiple analyses, use the most recent (first in desc order)."""
-        db = MagicMock()
-        old_analysis = MagicMock(spec=AnalysisRecord)
-        old_analysis.company_id = 1
-        old_analysis.pain_signals_json = _signals([])
-        old_analysis.stage = ""
-        new_analysis = MagicMock(spec=AnalysisRecord)
-        new_analysis.company_id = 1
-        new_analysis.pain_signals_json = _signals(["hiring_engineers"])
-        new_analysis.stage = "scaling_team"
-        db.query.return_value.filter.return_value.first.side_effect = [None] * 10
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            new_analysis,
-            old_analysis,
-        ]
-        result = get_display_scores_for_companies(db, [1])
-        assert result == {1: 35}  # From new_analysis, not old (which would be 0)
-
-    def test_uses_custom_weights_when_set(self) -> None:
-        """Display scores use custom weights from AppSettings when present."""
-        settings_row = MagicMock(spec=AppSettings)
-        settings_row.value = '{"hiring_engineers": 99}'
-
-        analysis = MagicMock(spec=AnalysisRecord)
-        analysis.company_id = 1
-        analysis.pain_signals_json = _signals(["hiring_engineers"])
-        analysis.stage = ""
+    @patch("app.services.score_resolver.get_company_scores_batch")
+    def test_uses_latest_analysis_when_multiple_exist(self, mock_batch) -> None:
+        """Phase 2: get_company_scores_batch returns cto_need_score when no ReadinessSnapshot."""
+        mock_batch.return_value = {1: 35}
 
         db = MagicMock()
-        # Phase 2: get_custom_weights (pack_id=None, settings_row); get_default_pack_id (None); calculate_score (1)
-        db.query.return_value.filter.return_value.first.side_effect = [
-            None,
-            settings_row,
-            None,
-            None,
-        ]
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            analysis
-        ]
-
         result = get_display_scores_for_companies(db, [1])
-        assert result == {1: 99}  # Custom weight 99, not default 15
+        assert result == {1: 35}
+        mock_batch.assert_called_once_with(db, [1])
+
+    @patch("app.services.score_resolver.get_company_scores_batch")
+    def test_uses_custom_weights_when_set(self, mock_batch) -> None:
+        """Phase 2: get_company_scores_batch returns cto_need_score (which may reflect custom weights)."""
+        mock_batch.return_value = {1: 99}
+
+        db = MagicMock()
+        result = get_display_scores_for_companies(db, [1])
+        assert result == {1: 99}
+        mock_batch.assert_called_once_with(db, [1])
 
 
 # ── score_company ────────────────────────────────────────────────────

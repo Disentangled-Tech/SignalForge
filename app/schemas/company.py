@@ -44,7 +44,10 @@ class CompanyUpdate(BaseModel):
 
 
 class CompanyRead(BaseModel):
-    """Schema for reading a company (response)."""
+    """Schema for reading a company (response).
+
+    cto_need_score is optional (denormalized cache for default pack).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 

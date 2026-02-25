@@ -1,0 +1,121 @@
+"""Tests for canonical signal schemas (Phase 4, Plan Step 4)."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy.orm import Session
+
+from app.ingestion.event_storage import store_signal_event
+from app.ingestion.normalize import normalize_raw_event
+from app.models import Company
+from app.schemas.signal import RawEvent
+from app.schemas.signals import (
+    CompanySignalEventRead,
+    to_company_signal_event_read,
+)
+
+
+def test_signal_event_to_company_signal_event_read(db: Session) -> None:
+    """to_company_signal_event_read converts SignalEvent to CompanySignalEventRead."""
+    company = Company(name="Acme", website_url="https://acme.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    source_event_id = f"schema-test-{uuid.uuid4().hex[:12]}"
+    stored = store_signal_event(
+        db,
+        company_id=company.id,
+        source="crunchbase",
+        source_event_id=source_event_id,
+        event_type="funding_raised",
+        event_time=datetime(2026, 2, 20, 14, 0, 0, tzinfo=UTC),
+        title="Series A",
+        summary="Raised $10M",
+        url="https://example.com/funding",
+        confidence=0.85,
+    )
+    assert stored is not None
+
+    schema = to_company_signal_event_read(stored)
+    assert isinstance(schema, CompanySignalEventRead)
+    assert schema.id == stored.id
+    assert schema.company_id == company.id
+    assert schema.source == "crunchbase"
+    assert schema.source_event_id == source_event_id
+    assert schema.event_type == "funding_raised"
+    assert schema.title == "Series A"
+    assert schema.summary == "Raised $10M"
+    assert schema.url == "https://example.com/funding"
+    assert schema.confidence == 0.85
+    assert schema.pack_id is None
+
+
+def test_signal_event_to_company_signal_event_read_with_pack_id(
+    db: Session, fractional_cto_pack_id
+) -> None:
+    """to_company_signal_event_read preserves pack_id when set."""
+    company = Company(name="Beta", website_url="https://beta.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    source_event_id = f"schema-pack-{uuid.uuid4().hex[:12]}"
+    stored = store_signal_event(
+        db,
+        company_id=company.id,
+        source="test",
+        source_event_id=source_event_id,
+        event_type="launch_major",
+        event_time=datetime(2026, 2, 20, 15, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
+    )
+    assert stored is not None
+
+    schema = to_company_signal_event_read(stored)
+    assert schema.pack_id == fractional_cto_pack_id
+
+
+def test_normalize_validates_event_type_against_pack() -> None:
+    """normalize_raw_event validates event_type_candidate against pack taxonomy."""
+    # Mock pack with limited signal_ids
+    class MockPack:
+        taxonomy = {"signal_ids": ["funding_raised", "launch_major"]}
+
+    pack = MockPack()
+
+    raw_valid = RawEvent(
+        company_name="Acme",
+        domain="acme.com",
+        event_type_candidate="funding_raised",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result_valid = normalize_raw_event(raw_valid, "crunchbase", pack=pack)
+    assert result_valid is not None
+    event_data, _ = result_valid
+    assert event_data["event_type"] == "funding_raised"
+
+    raw_invalid = RawEvent(
+        company_name="Beta",
+        domain="beta.com",
+        event_type_candidate="unknown_signal_type",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result_invalid = normalize_raw_event(raw_invalid, "crunchbase", pack=pack)
+    assert result_invalid is None
+
+
+def test_normalize_without_pack_uses_legacy_event_types() -> None:
+    """normalize_raw_event without pack falls back to event_types.is_valid_event_type."""
+    raw = RawEvent(
+        company_name="Acme",
+        domain="acme.com",
+        event_type_candidate="cto_role_posted",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result = normalize_raw_event(raw, "manual", pack=None)
+    assert result is not None
+    event_data, _ = result
+    assert event_data["event_type"] == "cto_role_posted"

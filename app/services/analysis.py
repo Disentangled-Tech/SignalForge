@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
@@ -84,6 +85,7 @@ def analyze_company(
     db: Session,
     company_id: int,
     pack: Pack | None = None,
+    pack_id: uuid.UUID | None = None,
 ) -> AnalysisRecord | None:
     """Run the full analysis pipeline for a single company.
 
@@ -209,6 +211,13 @@ def analyze_company(
     # ── Persist AnalysisRecord ────────────────────────────────────────
     raw_llm_response = raw_stage + _RAW_RESPONSE_DELIMITER + raw_pain
 
+    # Phase 2: Set pack_id when pack provided (for audit)
+    resolved_pack_id: uuid.UUID | None = pack_id
+    if resolved_pack_id is None and pack is not None:
+        from app.services.pack_resolver import get_default_pack_id
+
+        resolved_pack_id = get_default_pack_id(db)
+
     record = AnalysisRecord(
         company_id=company_id,
         source_type="full_analysis",
@@ -218,6 +227,7 @@ def analyze_company(
         evidence_bullets=evidence_bullets,
         explanation=explanation,
         raw_llm_response=raw_llm_response,
+        pack_id=resolved_pack_id,
     )
     db.add(record)
     db.commit()

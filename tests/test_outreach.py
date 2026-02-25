@@ -173,6 +173,26 @@ class TestGenerateOutreachHappyPath:
         assert "hiring" in call_kwargs["TOP_RISKS"]
         assert call_kwargs["MOST_LIKELY_NEXT_PROBLEM"] == "Scaling the engineering team"
 
+    @patch("app.services.outreach.get_llm_provider")
+    @patch("app.services.outreach.render_prompt")
+    def test_generate_outreach_uses_pack_offer_type_when_provided(
+        self, mock_render, mock_get_llm
+    ):
+        """Phase 3: When pack provided, offer_type comes from pack manifest."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.return_value = "prompt"
+        mock_llm.complete.return_value = _VALID_OUTREACH_RESPONSE
+
+        pack = MagicMock()
+        pack.manifest = {"offer_type": "fractional CTO services"}
+
+        db = _make_mock_db(operator_profile=_make_operator_profile())
+        generate_outreach(db, _make_company(), _make_analysis(), pack=pack)
+
+        call_kwargs = mock_render.call_args[1]
+        assert call_kwargs["OFFER_TYPE"] == "fractional CTO services"
+
 
 # ---------------------------------------------------------------------------
 # Edge cases

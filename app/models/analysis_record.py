@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 
+if TYPE_CHECKING:
+    from app.models.briefing_item import BriefingItem
+    from app.models.company import Company
+
 
 class AnalysisRecord(Base):
-    """LLM analysis result for a company (stage classification + pain signals)."""
+    """LLM analysis result for a company (stage classification + pain signals).
+
+    pack_id attributes this analysis to a pack (Phase 2). NULL treated as default pack.
+    """
 
     __tablename__ = "analysis_records"
 
@@ -29,6 +38,11 @@ class AnalysisRecord(Base):
     raw_llm_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(UTC), nullable=False
+    )
+    pack_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("signal_packs.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     company: Mapped[Company] = relationship("Company", back_populates="analysis_records")

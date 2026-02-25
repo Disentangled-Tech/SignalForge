@@ -252,15 +252,16 @@ class TestSelectTopCompanies:
 # generate_briefing
 # ---------------------------------------------------------------------------
 
-
 class TestGenerateBriefing:
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_briefing_items(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         company = _make_company()
@@ -294,14 +295,21 @@ class TestGenerateBriefing:
         assert item.outreach_message == "Hi Jane, I noticed you are hiring."
         assert item.briefing_date == date.today()
         db.commit.assert_called()
+        # Phase 3: generate_outreach called with pack (None when pack resolution returns None)
+        mock_outreach.assert_called_once()
+        call_kwargs = mock_outreach.call_args[1]
+        assert "pack" in call_kwargs
+        assert call_kwargs["pack"] is None
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_generate_briefing_sets_workspace_id_on_items(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         """When workspace_id provided, BriefingItems are created with that workspace_id."""
         import uuid
@@ -332,13 +340,15 @@ class TestGenerateBriefing:
         assert item.workspace_id == uuid.UUID(ws_uuid)
         mock_select.assert_called_once_with(db, workspace_id=ws_uuid)
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_company_without_analysis(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         company = _make_company()
@@ -356,13 +366,15 @@ class TestGenerateBriefing:
         assert result == []
         mock_outreach.assert_not_called()
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_one_failure_does_not_stop_others(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         """If one company fails, the others should still produce items."""
@@ -406,13 +418,15 @@ class TestGenerateBriefing:
         assert "Bad Corp" in (job_runs[0].error_message or "")
         assert "LLM exploded" in (job_runs[0].error_message or "")
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_all_companies_fail_stores_errors_in_job_run(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         """When all companies fail, job stores error_message and companies_processed=0 (issue #32)."""
         mock_resolved.return_value = _default_resolved()
@@ -445,13 +459,15 @@ class TestGenerateBriefing:
         assert "Fail1" in job.error_message or "Fail2" in job.error_message
         assert "Analysis failed" in job.error_message
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_llm_called_with_correct_temperature(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         company = _make_company()
@@ -478,13 +494,15 @@ class TestGenerateBriefing:
             temperature=0.5,
         )
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_empty_companies_returns_empty_list(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         mock_select.return_value = []
@@ -495,13 +513,15 @@ class TestGenerateBriefing:
         assert result == []
         mock_get_llm.assert_not_called()
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_when_briefing_item_already_exists(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         """When BriefingItem already exists for company+date, skip creation."""
@@ -525,13 +545,15 @@ class TestGenerateBriefing:
         add_calls = db.add.call_args_list
         assert all(isinstance(c.args[0], JobRun) for c in add_calls)
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_job_run_on_success(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         """generate_briefing creates JobRun with status completed and companies_processed (issue #27)."""
@@ -571,13 +593,63 @@ class TestGenerateBriefing:
         assert job.finished_at is not None
         assert job.error_message is None
 
+    @patch("app.services.briefing.get_pack_for_workspace")
+    @patch("app.services.briefing.get_default_pack_id")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_generate_briefing_sets_workspace_id_and_pack_id_on_job_run(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved,
+        mock_get_default_pack_id, mock_get_pack_for_workspace, *_args
+    ):
+        """Phase 3: JobRun gets workspace_id and pack_id for audit trail."""
+        import uuid
+
+        mock_resolved.return_value = _default_resolved()
+        mock_get_pack_for_workspace.return_value = None
+        mock_get_default_pack_id.return_value = uuid.UUID(
+            "11111111-1111-1111-1111-111111111111"
+        )
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+
+        added = []
+        def capture_add(obj):
+            added.append(obj)
+        db.add.side_effect = capture_add
+
+        generate_briefing(db)
+
+        job_runs = [a for a in added if isinstance(a, JobRun)]
+        assert len(job_runs) == 1
+        job = job_runs[0]
+        assert job.workspace_id is not None
+        assert job.workspace_id == uuid.UUID("00000000-0000-0000-0000-000000000001")
+        assert job.pack_id == uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_job_run_on_exception(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
     ):
         mock_resolved.return_value = _default_resolved()
         """generate_briefing creates JobRun with status failed on exception (issue #27)."""
@@ -602,6 +674,8 @@ class TestGenerateBriefing:
         assert "DB connection lost" in (job.error_message or "")
         assert job.finished_at is not None
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.send_briefing_email")
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
@@ -609,7 +683,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_calls_send_briefing_email_when_enabled(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
     ):
         """generate_briefing calls send_briefing_email when enabled (issue #29)."""
         mock_resolved.return_value = ResolvedSettings(
@@ -661,6 +735,8 @@ class TestGenerateBriefing:
         assert call_args[0][1] == "ops@example.com"
         assert call_args[1].get("failure_summary") is None
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.send_briefing_email")
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
@@ -668,7 +744,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_email_includes_failure_summary_when_partial_failures(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
     ):
         """When some companies fail, email includes failure_summary (issue #32)."""
         mock_resolved.return_value = ResolvedSettings(
@@ -734,6 +810,8 @@ class TestGenerateBriefing:
         assert "Bad Corp" in (call_kwargs["failure_summary"] or "")
         assert "LLM failed" in (call_kwargs["failure_summary"] or "")
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.send_briefing_email")
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
@@ -741,7 +819,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_email_when_disabled(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
     ):
         """generate_briefing does not call send_briefing_email when disabled."""
         mock_resolved.return_value = _default_resolved()
@@ -766,6 +844,8 @@ class TestGenerateBriefing:
         assert len(result) == 1
         mock_send.assert_not_called()
 
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
     @patch("app.services.briefing.send_briefing_email")
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
@@ -773,7 +853,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.render_prompt")
     @patch("app.services.briefing.select_top_companies")
     def test_email_exception_does_not_fail_job(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
     ):
         """When send_briefing_email raises, job still completes (issue #29)."""
         mock_resolved.return_value = ResolvedSettings(
