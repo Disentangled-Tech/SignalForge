@@ -227,6 +227,9 @@ def refresh_outreach_summary_for_entity(
     Called after outreach event (create/update/delete). Returns count of rows updated.
     When workspace_id is provided, updates only lead_feed rows for that workspace
     using workspace-scoped outreach. When None (legacy), updates all rows for entity.
+
+    TODO(multi-workspace): When MULTI_WORKSPACE_ENABLED=true, require workspace_id
+    and add assertion; passing None would mix outreach data across tenants.
     """
     outreach_by = _batch_outreach_summary_for_entities(
         db, [entity_id], workspace_id=workspace_id

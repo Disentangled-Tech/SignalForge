@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "20260224_outreach_workspace"
-down_revision: str | None = "20260224_lead_feed_cols"
+down_revision: str | None = "20260224_lead_feed_idx"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

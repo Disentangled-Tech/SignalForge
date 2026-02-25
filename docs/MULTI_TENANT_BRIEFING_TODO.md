@@ -13,14 +13,20 @@
 
 - `MULTI_WORKSPACE_ENABLED` (env): When "true", briefing/review scope by workspace_id. Default: false.
 
-## Remaining (when multi-workspace fully enabled)
+## Implemented (Issue #225)
 
-- Briefing items may need workspace filter if stored per-workspace.
+- BriefingItem.workspace_id: nullable FK to workspaces; backfilled to default.
+- generate_briefing(db, workspace_id=...) sets workspace_id on created items.
+- select_top_companies(db, workspace_id=...) filters recently_briefed by workspace.
+- get_briefing_data filters BriefingItem by workspace_id when provided.
+- briefing_generate POST passes workspace_id when multi_workspace_enabled.
+
+## Remaining (when multi-workspace fully enabled)
 - Display scores and ESL data are pack-scoped; verify no cross-workspace leakage.
 
 ## Required Before Production (multi-workspace)
 
-- **Workspace access control**: Add user–workspace membership (e.g. `user_workspaces` table or `User.workspace_id`) and enforce it in briefing endpoints. Without this, any authenticated user can pass any `workspace_id` and access that workspace's data. Do not enable `MULTI_WORKSPACE_ENABLED=true` in production until this is implemented.
+- **TODO: Workspace access control**: Add user–workspace membership (e.g. `user_workspaces` table or `User.workspace_id`) and enforce it in briefing endpoints. Without this, any authenticated user can pass any `workspace_id` and access that workspace's data. Do not enable `MULTI_WORKSPACE_ENABLED=true` in production until this is implemented.
 
 ## Reference
 
