@@ -44,6 +44,11 @@ Implements the full Scan All validation and Pack Architecture migration roadmap 
 - **docs/pipeline.md**: New "Scan vs Ingest/Derive/Score" section
 - **Tests**: `test_detail_repair_path_calls_score_company_with_pack`
 
+### Ingest UX (Run Ingest surfaces 0 companies)
+- **settings_views.py**: When latest ingest completes with 0 processed, show "Why 0 new companies?" info box
+- **settings/index.html**: Prominent blue callout explaining no adapters configured or APIs returned empty
+- **Tests**: `test_run_ingest_daily_test_adapter_takes_precedence`
+
 ### Ingestion Adapters (Issues #134, #210)
 - **app/ingestion/adapters/**: `CrunchbaseAdapter`, `ProductHuntAdapter` (env-gated)
 - **ingest_daily.py**: `_get_adapters()` returns Crunchbase when `INGEST_CRUNCHBASE_ENABLED=1` and `CRUNCHBASE_API_KEY` set; Product Hunt when `INGEST_PRODUCTHUNT_ENABLED=1` and `PRODUCTHUNT_API_TOKEN` set
