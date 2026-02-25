@@ -98,5 +98,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # No-op: columns may be in use; full downgrade via 20260224_lead_feed
+    # TODO(migration): Intentionally no-op. Columns may be in use; full rollback
+    # requires downgrading to 20260224_lead_feed which drops the lead_feed table.
     pass

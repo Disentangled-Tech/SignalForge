@@ -122,6 +122,8 @@ class TestResolveOrCreateCompany:
         assert company_b.id == company_a.id
         assert company_b.name == "DomainTest Inc"
 
+    # TODO(flaky): Intermittent deadlock when run in parallel; consider isolating
+    # or fixing DELETE ordering to avoid ShareLock contention across processes.
     def test_inc_vs_llc_variants_resolve_to_one(
         self, clean_db: Session
     ) -> None:

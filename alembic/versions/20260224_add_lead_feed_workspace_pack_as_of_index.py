@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "20260224_lead_feed_idx"
-down_revision: str | None = "20260224_lead_feed"
+down_revision: str | None = "20260224_lead_feed_cols"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

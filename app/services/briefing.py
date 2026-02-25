@@ -134,7 +134,7 @@ def get_emerging_companies_from_lead_feed(
     limit: int = 5,
     outreach_score_threshold: int = 30,
     pack_id=None,
-) -> list[tuple[_ReadinessView, _EngagementView, Company]] | None:
+) -> list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]] | None:
     """Query emerging companies from lead_feed when populated (Phase 3).
 
     Returns None when lead_feed has no rows for this date (caller should fall back).
@@ -142,7 +142,8 @@ def get_emerging_companies_from_lead_feed(
     """
     from uuid import UUID
 
-    from app.models.lead_feed import LeadFeed
+    from app.services.lead_feed import get_emerging_companies_from_feed
+    from app.services.lead_feed.query_service import feed_has_data
 
     if pack_id is None:
         pack_id = get_default_pack_id(db)
@@ -152,42 +153,19 @@ def get_emerging_companies_from_lead_feed(
     ws_uuid = UUID(workspace_id) if isinstance(workspace_id, str) else workspace_id
     pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
 
-    rows = (
-        db.query(LeadFeed)
-        .options(joinedload(LeadFeed.company))
-        .filter(
-            LeadFeed.workspace_id == ws_uuid,
-            LeadFeed.pack_id == pack_uuid,
-            LeadFeed.as_of == as_of,
-        )
-        .order_by(LeadFeed.outreach_score.desc().nullslast())
-        .all()
-    )
-    if not rows:
+    if not feed_has_data(db, ws_uuid, pack_uuid, as_of):
         return None
 
-    results: list[tuple[_ReadinessView, _EngagementView, Company]] = []
-    for lf in rows:
-        if not lf.company:
-            continue
-        # Include cadence_blocked (Observe Only) even when outreach_score < threshold
-        os_val = lf.outreach_score or 0
-        if os_val < outreach_score_threshold and not lf.cadence_blocked:
-            continue
-        rs_view = _ReadinessView(lf.composite_score, lf.top_reasons)
-        es_view = _EngagementView(
-            lf.esl_score,
-            lf.engagement_type,
-            lf.cadence_blocked,
-            lf.stability_cap_triggered,
-        )
-        results.append((rs_view, es_view, lf.company))
-
-    results.sort(
-        key=lambda r: r[0].composite * r[1].esl_score,
-        reverse=True,
+    result = get_emerging_companies_from_feed(
+        db,
+        as_of,
+        workspace_id=ws_uuid,
+        pack_id=pack_uuid,
+        limit=limit,
+        outreach_score_threshold=outreach_score_threshold,
     )
-    return results[:limit]
+    # Return [] when feed has rows but all filtered out (distinct from None = feed empty)
+    return result
 
 
 def get_emerging_companies(
@@ -276,26 +254,16 @@ def get_emerging_companies_for_briefing(
     limit: int = 5,
     outreach_score_threshold: int = 30,
     pack_id=None,
+    workspace_id: str | None = None,
 ) -> list[tuple[ReadinessSnapshot | _ReadinessView, EngagementSnapshot | _EngagementView, Company]]:
     """Get emerging companies for briefing: read from lead_feed when populated, else fallback (Phase 3)."""
-    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
-
-    lead_result = get_emerging_companies_from_lead_feed(
-        db,
-        as_of,
-        workspace_id=DEFAULT_WORKSPACE_ID,
-        limit=limit,
-        outreach_score_threshold=outreach_score_threshold,
-        pack_id=pack_id,
-    )
-    if lead_result is not None and len(lead_result) > 0:
-        return lead_result
     return get_emerging_companies(
         db,
         as_of,
         limit=limit,
         outreach_score_threshold=outreach_score_threshold,
         pack_id=pack_id,
+        workspace_id=workspace_id,
     )
 
 

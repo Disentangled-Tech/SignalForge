@@ -88,6 +88,9 @@ def run_backfill_lead_feed(
     Iterates workspaces, runs build_lead_feed_from_snapshots for each.
     Idempotent: safe to re-run.
 
+    TODO(performance): Consider rate limiting or batching when many workspaces
+    exist to avoid long-running transactions and connection exhaustion.
+
     Rollback behavior: When one workspace fails, db.rollback() rolls back only
     the current transaction. Prior workspace commits (db.commit() after each
     successful workspace) are already persisted. This is intentional: per-

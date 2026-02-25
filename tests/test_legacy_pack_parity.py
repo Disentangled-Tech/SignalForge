@@ -603,3 +603,13 @@ class TestIngestDeriveScoreParity:
                     f"Fractional CTO pack must produce esl_decision=allow; "
                     f"got {es.explain.get('esl_decision')!r} for company {es.company_id}"
                 )
+                # Phase 4: dedicated columns must match explain (Issue #175)
+                assert es.esl_decision == "allow", (
+                    f"EngagementSnapshot.esl_decision must be 'allow' for fractional CTO; "
+                    f"got {es.esl_decision!r} for company {es.company_id}"
+                )
+                # sensitivity_level may be None for allow; when set, must be non-empty
+                if es.sensitivity_level is not None:
+                    assert len(es.sensitivity_level) > 0, (
+                        f"sensitivity_level must be non-empty when set; company {es.company_id}"
+                    )
