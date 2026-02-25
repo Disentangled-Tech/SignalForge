@@ -547,8 +547,9 @@ def company_detail(
         db, company_id, workspace_id=workspace_id
     )
 
-    # Repair: if analysis exists and stored score differs from recomputed, persist correct value
-    if analysis is not None:
+    # Repair: if analysis exists and stored score differs from recomputed, persist correct value.
+    # Only run when using the default pack: cto_need_score caches default-pack score only.
+    if analysis is not None and pack_id is not None and default_pack_id is not None and pack_id == default_pack_id:
         from app.services.scoring import calculate_score, get_custom_weights, score_company
 
         custom_weights = get_custom_weights(db)
@@ -564,7 +565,7 @@ def company_detail(
             db=db,
         )
         if company.cto_need_score != recomputed_score:
-            score_company(db, company_id, analysis, pack=pack)
+            score_company(db, company_id, analysis, pack=pack, pack_id=pack_id)
             company = get_company(db, company_id) or company
 
     # Display score: pack-scoped (ReadinessSnapshot > cto_need_score)

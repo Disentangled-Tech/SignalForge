@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -314,15 +315,20 @@ class TestGetDisplayScoresForCompanies:
 class TestScoreCompany:
     """Tests for score_company()."""
 
-    def test_updates_company_record(self) -> None:
+    @patch("app.services.pack_resolver.resolve_pack")
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    def test_updates_company_record(
+        self, mock_get_default_pack_id: MagicMock, mock_resolve_pack: MagicMock
+    ) -> None:
+        from app.packs.loader import load_pack
+
+        mock_get_default_pack_id.return_value = uuid4()
+        mock_resolve_pack.return_value = load_pack("fractional_cto_v1", "1")
         db = MagicMock()
         company = MagicMock(spec=Company)
         company.id = 1
-        # Phase 2: get_custom_weights (2); get_default_pack_id (1); calculate_score (1); Company lookup (1)
+        # Phase 2: get_custom_weights (1); Company lookup (1)
         db.query.return_value.filter.return_value.first.side_effect = [
-            None,
-            None,
-            None,
             None,
             company,
         ]
@@ -350,14 +356,19 @@ class TestScoreCompany:
         assert score == 15  # still computes score
         db.commit.assert_not_called()
 
-    def test_handles_none_pain_signals(self) -> None:
+    @patch("app.services.pack_resolver.resolve_pack")
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    def test_handles_none_pain_signals(
+        self, mock_get_default_pack_id: MagicMock, mock_resolve_pack: MagicMock
+    ) -> None:
+        from app.packs.loader import load_pack
+
+        mock_get_default_pack_id.return_value = uuid4()
+        mock_resolve_pack.return_value = load_pack("fractional_cto_v1", "1")
         db = MagicMock()
         company = MagicMock(spec=Company)
         company.id = 1
         db.query.return_value.filter.return_value.first.side_effect = [
-            None,
-            None,
-            None,
             None,
             company,
         ]
@@ -371,7 +382,15 @@ class TestScoreCompany:
         assert company.cto_need_score == 0
         db.commit.assert_called_once()
 
-    def test_uses_custom_weights_from_db(self) -> None:
+    @patch("app.services.pack_resolver.resolve_pack")
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    def test_uses_custom_weights_from_db(
+        self, mock_get_default_pack_id: MagicMock, mock_resolve_pack: MagicMock
+    ) -> None:
+        from app.packs.loader import load_pack
+
+        mock_get_default_pack_id.return_value = uuid4()
+        mock_resolve_pack.return_value = load_pack("fractional_cto_v1", "1")
         settings_row = MagicMock(spec=AppSettings)
         settings_row.value = '{"hiring_engineers": 99}'
 
@@ -380,10 +399,7 @@ class TestScoreCompany:
 
         db = MagicMock()
         db.query.return_value.filter.return_value.first.side_effect = [
-            None,
             settings_row,
-            None,
-            None,
             company,
         ]
 
@@ -394,6 +410,74 @@ class TestScoreCompany:
         score = score_company(db, 1, analysis)
         assert score == 99
         assert company.cto_need_score == 99
+
+    @patch("app.services.scoring.get_custom_weights")
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    def test_does_not_persist_cto_need_score_when_non_default_pack(
+        self, mock_get_default_pack_id: MagicMock, mock_get_custom_weights: MagicMock
+    ) -> None:
+        """When pack_id is non-default, score_company does not update cto_need_score or current_stage."""
+        default_uuid = uuid4()
+        non_default_uuid = uuid4()
+        mock_get_default_pack_id.return_value = default_uuid
+        mock_get_custom_weights.return_value = None
+
+        db = MagicMock()
+        company = MagicMock(spec=Company)
+        company.id = 1
+        company.cto_need_score = 50  # existing value
+        company.current_stage = "prior_stage"  # should remain unchanged
+        db.query.return_value.filter.return_value.first.return_value = company
+
+        analysis = MagicMock(spec=AnalysisRecord)
+        analysis.pain_signals_json = _signals(["hiring_engineers"])
+        analysis.stage = ""
+
+        pack = MagicMock()
+        pack.scoring = {
+            "pain_signal_weights": {"hiring_engineers": 15},
+            "stage_bonuses": {},
+        }
+
+        score = score_company(db, 1, analysis, pack=pack, pack_id=non_default_uuid)
+
+        assert score == 15
+        assert company.cto_need_score == 50  # unchanged
+        assert company.current_stage == "prior_stage"  # unchanged (not overwritten)
+        db.commit.assert_called_once()
+
+    @patch("app.services.scoring.get_custom_weights")
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    def test_persists_cto_need_score_when_default_pack(
+        self, mock_get_default_pack_id: MagicMock, mock_get_custom_weights: MagicMock
+    ) -> None:
+        """When pack_id is default, score_company updates cto_need_score."""
+        default_uuid = uuid4()
+        mock_get_default_pack_id.return_value = default_uuid
+        mock_get_custom_weights.return_value = None
+
+        db = MagicMock()
+        company = MagicMock(spec=Company)
+        company.id = 1
+        company.cto_need_score = 50
+        db.query.return_value.filter.return_value.first.return_value = company
+
+        analysis = MagicMock(spec=AnalysisRecord)
+        analysis.pain_signals_json = _signals(["hiring_engineers"])
+        analysis.stage = ""
+
+        pack = MagicMock()
+        pack.scoring = {
+            "pain_signal_weights": {"hiring_engineers": 15},
+            "stage_bonuses": {},
+        }
+
+        score = score_company(db, 1, analysis, pack=pack, pack_id=default_uuid)
+
+        assert score == 15
+        assert company.cto_need_score == 15
+        assert company.current_stage == ""  # updated when default pack
+        db.commit.assert_called_once()
 
 
 # ── Issue #64: All company scores zero ─────────────────────────────────────
