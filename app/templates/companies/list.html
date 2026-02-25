@@ -68,10 +68,14 @@
             <td><a href="/companies/{{ c.id }}{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}">{{ c.company_name }}</a></td>
             <td>
                 {% set display_score = company_scores[c.id] if c.id in company_scores else c.cto_need_score %}
+                {% set band = company_bands.get(c.id) if company_bands else none %}
                 {% if display_score is not none %}
                 <span class="badge {% if display_score > 70 %}badge-green{% elif display_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}">
                     {{ display_score }}
                 </span>
+                {% if band %}
+                <span class="badge {% if band == 'HIGH_PRIORITY' %}badge-green{% elif band == 'WATCH' %}badge-yellow{% else %}badge-gray{% endif %}" style="margin-left: 0.25rem;">{{ band }}</span>
+                {% endif %}
                 {% else %}
                 <span class="badge badge-gray">—</span>
                 {% endif %}

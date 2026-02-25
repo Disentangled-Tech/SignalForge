@@ -251,6 +251,23 @@ def get_display_scores_for_companies(
     return get_company_scores_batch(db, company_ids, workspace_id=workspace_id)
 
 
+def get_display_scores_with_bands(
+    db: Session,
+    company_ids: list[int],
+    workspace_id: str | None = None,
+) -> tuple[dict[int, int], dict[int, str | None]]:
+    """Resolve display scores and recommendation_bands for companies (Issue #242 Phase 3).
+
+    Same as get_display_scores_for_companies but also returns bands from
+    ReadinessSnapshot.explain when pack defines bands. Returns (scores, bands).
+    """
+    from app.services.score_resolver import get_company_scores_and_bands_batch
+
+    return get_company_scores_and_bands_batch(
+        db, company_ids, workspace_id=workspace_id
+    )
+
+
 def score_company(
     db: Session,
     company_id: int,

@@ -258,6 +258,11 @@ def get_briefing_data(
         sensitivity_level = engagement_snap.sensitivity_level or (
             engagement_snap.explain or {}
         ).get("sensitivity_level")
+        recommendation_band = None
+        if readiness_snap.explain:
+            band_val = readiness_snap.explain.get("recommendation_band")
+            if band_val in ("IGNORE", "WATCH", "HIGH_PRIORITY"):
+                recommendation_band = band_val
         emerging_companies.append({
             "company": company,
             "snapshot": readiness_snap,
@@ -272,6 +277,7 @@ def get_briefing_data(
             "esl_decision": esl_decision,
             "sensitivity_level": sensitivity_level,
             "top_signals": top_signals,
+            "recommendation_band": recommendation_band,
         })
 
     return {

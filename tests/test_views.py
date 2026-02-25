@@ -210,7 +210,7 @@ class TestCompaniesList:
         assert resp.status_code == 303
         assert resp.headers.get("location") == "/login"
 
-    @patch("app.api.views.get_display_scores_for_companies", return_value={1: 85})
+    @patch("app.api.views.get_display_scores_with_bands", return_value=({1: 85}, {}))
     @patch("app.api.views.list_companies")
     def test_companies_list_renders(self, mock_list, mock_scores, views_client):
         """GET /companies renders a table with company data."""
@@ -239,7 +239,7 @@ class TestCompaniesList:
         call_kwargs = mock_list.call_args
         assert call_kwargs[1].get("search") == "foo" or call_kwargs.kwargs.get("search") == "foo"
 
-    @patch("app.api.views.get_display_scores_for_companies")
+    @patch("app.api.views.get_display_scores_with_bands")
     @patch("app.api.views.list_companies")
     def test_companies_list_uses_display_score_when_stored_is_zero(
         self, mock_list, mock_scores, views_client
@@ -247,7 +247,7 @@ class TestCompaniesList:
         """Companies list shows recomputed score when stored score is zero."""
         company = _make_company_read(company_name="ZeroScoreCo", cto_need_score=0)
         mock_list.return_value = ([company], 1)
-        mock_scores.return_value = {1: 75}  # Recomputed from analysis
+        mock_scores.return_value = ({1: 75}, {})  # Recomputed from analysis
         resp = views_client.get("/companies")
         assert resp.status_code == 200
         assert "ZeroScoreCo" in resp.text
@@ -314,7 +314,7 @@ class TestCompaniesList:
         assert "score" in resp.text.lower() or "Score" in resp.text
         assert "name" in resp.text.lower() or "Name" in resp.text
 
-    @patch("app.api.views.get_display_scores_for_companies")
+    @patch("app.api.views.get_display_scores_with_bands")
     @patch("app.api.views.list_companies")
     def test_companies_list_pagination_controls_when_multiple_pages(
         self, mock_list, mock_scores, views_client
@@ -322,7 +322,7 @@ class TestCompaniesList:
         """Pagination controls shown when total exceeds page_size."""
         companies = [_make_company_read(id=i, company_name=f"Co{i}") for i in range(1, 26)]
         mock_list.return_value = (companies, 30)  # 30 total, 25 per page
-        mock_scores.return_value = {i: 50 for i in range(1, 26)}
+        mock_scores.return_value = ({i: 50 for i in range(1, 26)}, {})
         resp = views_client.get("/companies")
         assert resp.status_code == 200
         assert "Next" in resp.text or "next" in resp.text.lower()
@@ -368,6 +368,21 @@ class TestCompaniesList:
         assert "Visible Co Beta" in resp.text
         assert "80" in resp.text
         assert "65" in resp.text
+
+    @patch("app.api.views.get_display_scores_with_bands")
+    @patch("app.api.views.list_companies")
+    def test_companies_list_shows_band_badge_when_pack_defines(
+        self, mock_list, mock_scores, views_client
+    ):
+        """Companies list shows recommendation_band badge when pack defines bands (Issue #242 Phase 3)."""
+        company = _make_company_read(id=1, company_name="BandCo", cto_need_score=75)
+        mock_list.return_value = ([company], 1)
+        mock_scores.return_value = ({1: 75}, {1: "HIGH_PRIORITY"})
+        resp = views_client.get("/companies")
+        assert resp.status_code == 200
+        assert "BandCo" in resp.text
+        assert "75" in resp.text
+        assert "HIGH_PRIORITY" in resp.text
 
 
 # ── Add company tests ───────────────────────────────────────────────
@@ -534,7 +549,7 @@ class TestImportCompanies:
 
 
 class TestCompanyDetail:
-    @patch("app.api.views.get_company_score", return_value=75)
+    @patch("app.api.views.get_company_score_with_band", return_value=(75, None))
     @patch("app.api.views.get_company")
     def test_detail_renders(self, mock_get, mock_get_score, views_client, mock_db_session):
         """GET /companies/1 renders company info."""
@@ -557,6 +572,29 @@ class TestCompanyDetail:
         assert resp.status_code == 200
         assert "Acme Corp" in resp.text
         assert "75" in resp.text  # score
+
+    @patch("app.api.views.get_company_score_with_band", return_value=(80, "HIGH_PRIORITY"))
+    @patch("app.api.views.get_company")
+    def test_detail_shows_band_when_pack_defines(
+        self, mock_get, mock_get_score, views_client, mock_db_session
+    ):
+        """Company detail shows recommendation_band badge when pack defines bands (Issue #242 Phase 3)."""
+        company = _make_company_read()
+        mock_get.return_value = company
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        mock_order = MagicMock()
+        mock_order.limit.return_value.all.return_value = []
+        mock_order.first.return_value = None
+        mock_order.filter.return_value = mock_order
+        mock_order.all.return_value = []
+        mock_filter.order_by.return_value = mock_order
+        mock_query.filter.return_value = mock_filter
+        mock_db_session.query.return_value = mock_query
+
+        resp = views_client.get("/companies/1")
+        assert resp.status_code == 200
+        assert "HIGH_PRIORITY" in resp.text
 
     @patch("app.api.views.get_company")
     def test_detail_not_found(self, mock_get, views_client):

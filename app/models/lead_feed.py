@@ -48,6 +48,8 @@ class LeadFeed(Base):
     top_signal_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     esl_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sensitivity_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Issue #242 Phase 3 — pack recommendation band when available
+    recommendation_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

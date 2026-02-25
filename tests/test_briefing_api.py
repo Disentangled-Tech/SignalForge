@@ -134,3 +134,42 @@ def test_briefing_json_multi_workspace_scopes_by_workspace_id(mock_get_data, moc
     mock_get_data.assert_called_once()
     call_kwargs = mock_get_data.call_args[1]
     assert call_kwargs["workspace_id"] == ws_uuid
+
+
+@patch("app.api.briefing.get_briefing_data")
+def test_briefing_json_includes_recommendation_band(mock_get_data):
+    """Briefing API emerging_companies include recommendation_band when pack defines bands (Issue #242 Phase 3)."""
+    co = MagicMock()
+    co.id = 1
+    co.name = "BandCo"
+    co.website_url = "https://bandco.example.com"
+    snap = MagicMock()
+    snap.composite = 75
+    snap.momentum = 70
+    snap.complexity = 65
+    snap.pressure = 60
+    snap.leadership_gap = 55
+    mock_get_data.return_value = {
+        "items": [],
+        "emerging_companies": [{
+            "company": co,
+            "snapshot": snap,
+            "engagement_snapshot": MagicMock(esl_score=1.0, cadence_blocked=False),
+            "outreach_score": 75,
+            "esl_score": 1.0,
+            "engagement_type": "Standard Outreach",
+            "cadence_blocked": False,
+            "stability_cap_triggered": False,
+            "top_signals": [],
+            "recommendation_band": "HIGH_PRIORITY",
+        }],
+        "display_scores": {},
+        "esl_by_company": {},
+    }
+    app = _create_app(MagicMock(), _make_user())
+    client = TestClient(app)
+    resp = client.get("/daily")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["emerging_companies"]) == 1
+    assert data["emerging_companies"][0]["recommendation_band"] == "HIGH_PRIORITY"

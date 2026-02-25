@@ -156,6 +156,7 @@ def get_leads_from_feed(
             "top_signal_ids": row.top_signal_ids or [],
             "esl_decision": row.esl_decision,
             "sensitivity_level": row.sensitivity_level,
+            "recommendation_band": row.recommendation_band,
             "last_seen": row.last_seen,
             "outreach_status_summary": row.outreach_status_summary,
             "as_of": row.as_of,

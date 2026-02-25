@@ -106,6 +106,9 @@
         </div>
         <div class="emerging-badges">
             <span class="emerging-recommendation">{{ ec.engagement_type }}</span>
+            {% if ec.recommendation_band %}
+            <span class="badge {% if ec.recommendation_band == 'HIGH_PRIORITY' %}badge-green{% elif ec.recommendation_band == 'WATCH' %}badge-yellow{% else %}badge-gray{% endif %}">{{ ec.recommendation_band }}</span>
+            {% endif %}
             {% if ec.cadence_blocked %}
             <span class="emerging-cooldown">Cooldown active</span>
             {% endif %}
