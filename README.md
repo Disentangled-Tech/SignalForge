@@ -125,7 +125,8 @@ Both require the `X-Internal-Token` header matching `INTERNAL_JOB_TOKEN`.
 ## Documentation
 
 | Doc | Description |
-|-----|-------------|
+| --- | --- |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Glossary of acronyms (ESL, ORE, TRS, ADR, etc.) |
 | [docs/pipeline.md](docs/pipeline.md) | Pipeline stages (ingest, derive, score, update_lead_feed) and API behavior |
 | [docs/deriver-engine.md](docs/deriver-engine.md) | Deriver engine: passthrough and pattern derivers, evidence, logging |
 | [docs/adapter-interface.md](docs/adapter-interface.md) | Ingestion adapter contract and RawEvent schema |
