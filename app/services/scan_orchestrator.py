@@ -207,7 +207,7 @@ async def run_scan_company_full(
     new_count = await run_scan_company(db, company_id)
     analysis = analyze_company(db, company_id, pack=effective_pack, pack_id=effective_pack_id)
     if analysis is not None:
-        score_company(db, company_id, analysis, pack=effective_pack)
+        score_company(db, company_id, analysis, pack=effective_pack, pack_id=effective_pack_id)
     changed = (
         _analysis_changed(prev_analysis, analysis, db, pack=effective_pack)
         if analysis
@@ -278,7 +278,7 @@ async def run_scan_company_with_job(
     try:
         analysis = analyze_company(db, company_id, pack=pack, pack_id=pack_id)
         if analysis is not None:
-            score_company(db, company_id, analysis, pack=pack)
+            score_company(db, company_id, analysis, pack=pack, pack_id=pack_id)
     except Exception as exc:
         logger.error("Analysis/scoring failed for company %s: %s", company_id, exc)
         job.finished_at = datetime.now(UTC)

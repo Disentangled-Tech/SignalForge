@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -160,7 +160,7 @@ class TestRunScanCompanyFull:
         assert changed is False  # no prev analysis
         mock_scan.assert_awaited_once_with(db, 1)
         mock_analyze.assert_called_once_with(db, 1, pack=mock_pack, pack_id=pack_uuid)
-        mock_score.assert_called_once_with(db, 1, analysis, pack=mock_pack)
+        mock_score.assert_called_once_with(db, 1, analysis, pack=mock_pack, pack_id=pack_uuid)
 
     @pytest.mark.asyncio
     @patch("app.services.scan_orchestrator.score_company")
@@ -414,7 +414,6 @@ class TestRunScanAll:
         from app.services.scan_orchestrator import run_scan_all
 
         workspace_pack_uuid = uuid4()
-        default_pack_uuid = uuid4()
         mock_get_pack_for_workspace.return_value = workspace_pack_uuid
         mock_pack = MagicMock()
         mock_resolve_pack.return_value = mock_pack
@@ -443,7 +442,7 @@ class TestRunScanAll:
         """Phase 3: run_scan_company_full with pack_id creates AnalysisRecord with that pack."""
         import json
 
-        from app.models import Company, SignalRecord, SignalPack
+        from app.models import Company, SignalPack, SignalRecord
         from app.services.pack_resolver import get_default_pack, resolve_pack
         from app.services.scan_orchestrator import run_scan_company_full
 

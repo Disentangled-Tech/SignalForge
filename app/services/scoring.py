@@ -256,15 +256,19 @@ def score_company(
     company_id: int,
     analysis: AnalysisRecord,
     pack: Pack | None = None,
+    pack_id: "UUID | None" = None,
 ) -> int:
     """Score a company from its latest analysis and persist the result.
 
     1. Loads optional custom weights from AppSettings.
     2. Uses pack when provided; otherwise resolves from db (Issue #189, Plan Step 2.3).
     3. Computes the deterministic score.
-    4. Updates ``company.cto_need_score`` and ``company.current_stage``.
+    4. Updates ``company.cto_need_score`` and ``company.current_stage`` only when
+       the pack is the default pack (cto_need_score caches default-pack score only).
     5. Commits and returns the score.
     """
+    from uuid import UUID
+
     from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
     custom_weights = get_custom_weights(db)
@@ -287,8 +291,15 @@ def score_company(
         logger.error("score_company: company_id=%s not found", company_id)
         return score
 
-    company.cto_need_score = score
-    company.current_stage = analysis.stage
+    # Only persist to company.cto_need_score when using the default pack.
+    # cto_need_score is a denormalized cache for the default pack only.
+    default_pack_id = get_default_pack_id(db)
+    pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
+    persist_to_company = pack_uuid is None or pack_uuid == default_pack_id
+
+    if persist_to_company:
+        company.cto_need_score = score
+        company.current_stage = analysis.stage
     db.commit()
 
     if score == 0 and (pain_signals or analysis.stage):

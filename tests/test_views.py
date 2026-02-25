@@ -600,6 +600,7 @@ class TestCompanyDetail:
                 mock_o.first.return_value = None
             elif model is Company:
                 mock_o.first.return_value = _make_mock_company()
+                mock_f.first.return_value = _make_mock_company()
             elif model is SignalPack or (
                 hasattr(model, "parent")
                 and getattr(model.parent, "class_", None) is SignalPack
@@ -776,12 +777,14 @@ class TestCompanyDetail:
     @patch("app.services.scoring.calculate_score")
     @patch("app.services.scoring.get_custom_weights")
     @patch("app.services.pack_resolver.resolve_pack")
+    @patch("app.services.pack_resolver.get_pack_for_workspace")
     @patch("app.services.pack_resolver.get_default_pack_id")
     @patch("app.api.views.get_company")
     def test_detail_repair_path_calls_score_company_with_pack(
         self,
         mock_get,
         mock_get_pack_id,
+        mock_get_pack_for_workspace,
         mock_resolve_pack,
         mock_get_custom_weights,
         mock_calculate_score,
@@ -792,6 +795,10 @@ class TestCompanyDetail:
         """When stored score differs from recomputed, repair path calls score_company with pack."""
         from app.packs.loader import load_pack
 
+        default_uuid = uuid4()
+        mock_get_pack_id.return_value = default_uuid
+        mock_get_pack_for_workspace.return_value = default_uuid
+
         company = _make_company_read(cto_need_score=75)
         mock_get.return_value = company
 
@@ -801,7 +808,6 @@ class TestCompanyDetail:
         self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
 
         pack = load_pack("fractional_cto_v1", "1")
-        mock_get_pack_id.return_value = uuid4()
         mock_resolve_pack.return_value = pack
         mock_get_custom_weights.return_value = None
         mock_calculate_score.return_value = 35  # differs from 75 → repair triggers
@@ -813,6 +819,49 @@ class TestCompanyDetail:
         call_kwargs = mock_score_company.call_args[1]
         assert "pack" in call_kwargs
         assert call_kwargs["pack"] is pack
+        assert call_kwargs.get("pack_id") == default_uuid
+
+    @patch("app.services.scoring.score_company")
+    @patch("app.services.scoring.calculate_score")
+    @patch("app.services.scoring.get_custom_weights")
+    @patch("app.services.pack_resolver.resolve_pack")
+    @patch("app.services.pack_resolver.get_pack_for_workspace")
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    @patch("app.api.views.get_company")
+    def test_detail_repair_path_skipped_when_non_default_pack(
+        self,
+        mock_get,
+        mock_get_pack_id,
+        mock_get_pack_for_workspace,
+        mock_resolve_pack,
+        mock_get_custom_weights,
+        mock_calculate_score,
+        mock_score_company,
+        views_client,
+        mock_db_session,
+    ):
+        """When workspace uses non-default pack, repair path does not call score_company."""
+        default_uuid = uuid4()
+        workspace_pack_uuid = uuid4()
+        mock_get_pack_id.return_value = default_uuid
+        mock_get_pack_for_workspace.return_value = workspace_pack_uuid
+
+        company = _make_company_read(cto_need_score=75)
+        mock_get.return_value = company
+
+        mock_analysis = MagicMock()
+        mock_analysis.stage = "scaling_team"
+        mock_analysis.pain_signals_json = {"signals": {"hiring_engineers": {"value": True}}}
+        self._setup_query_mock(mock_db_session, signals=[], analysis=mock_analysis, briefing=None)
+
+        mock_resolve_pack.return_value = MagicMock()
+        mock_get_custom_weights.return_value = None
+        mock_calculate_score.return_value = 35  # differs from 75
+
+        resp = views_client.get("/companies/1")
+
+        assert resp.status_code == 200
+        mock_score_company.assert_not_called()
 
     @patch("app.api.views.get_company")
     def test_outreach_form_prefill(self, mock_get, views_client, mock_db_session):
