@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from urllib.parse import unquote
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -967,6 +967,192 @@ class TestCompaniesScanAll:
         assert resp.status_code == 200
         assert "Scan all" in resp.text
         assert 'action="/companies/scan-all"' in resp.text
+
+
+# ── Workspace ID filtering tests (integration) ───────────────────────
+
+
+class TestWorkspaceIdFiltering:
+    """Verify workspace_id filtering in companies_list, scan_all, and rescan."""
+
+    def _login(self, client, db):
+        """Create user, login, return username."""
+        import uuid
+
+        from app.schemas.company import CompanyCreate
+        from app.services.company import create_company
+
+        username = f"ws_filter_{uuid.uuid4().hex[:12]}"
+        user = User(username=username)
+        user.set_password(TEST_PASSWORD_INTEGRATION)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # Create a company for rescan tests
+        company = create_company(db, CompanyCreate(company_name="RescanCo"))
+        db.commit()
+
+        resp = client.post(
+            "/login",
+            data={"username": username, "password": TEST_PASSWORD_INTEGRATION},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        return username, company.id
+
+    @pytest.mark.integration
+    def test_scan_all_blocked_when_legacy_job_running(self, client_with_db, db):
+        """Running scan with workspace_id=None (legacy) blocks Scan all."""
+        self._login(client_with_db, db)
+
+        job = JobRun(
+            job_type="scan",
+            status="running",
+            workspace_id=None,
+        )
+        db.add(job)
+        db.commit()
+
+        resp = client_with_db.post("/companies/scan-all", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "scan_all=running" in resp.headers.get("location", "")
+
+    @pytest.mark.integration
+    def test_scan_all_blocked_when_default_workspace_job_running(self, client_with_db, db):
+        """Running scan with workspace_id=DEFAULT_WORKSPACE_ID blocks Scan all."""
+        from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+        self._login(client_with_db, db)
+
+        job = JobRun(
+            job_type="scan",
+            status="running",
+            workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+        )
+        db.add(job)
+        db.commit()
+
+        resp = client_with_db.post("/companies/scan-all", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "scan_all=running" in resp.headers.get("location", "")
+
+    def test_scan_all_not_blocked_when_other_workspace_job_running(self, views_client, mock_db_session):
+        """Running scan with different workspace_id does NOT block Scan all.
+
+        When the only running job has workspace_id != default and != NULL, the filter
+        returns no match, so we allow starting a new scan (scan_all=queued).
+        """
+        mock_first = MagicMock(return_value=None)  # No matching job (other workspace)
+        mock_filter = MagicMock()
+        mock_filter.first = mock_first
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post("/companies/scan-all", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "scan_all=queued" in resp.headers.get("location", "")
+
+    @pytest.mark.integration
+    @patch("app.api.views.list_companies")
+    def test_companies_list_scan_all_running_when_legacy_job(self, mock_list, client_with_db, db):
+        """GET /companies shows Scan all disabled when legacy job (workspace_id=None) running."""
+        mock_list.return_value = ([], 0)
+        self._login(client_with_db, db)
+
+        job = JobRun(
+            job_type="scan",
+            status="running",
+            workspace_id=None,
+        )
+        db.add(job)
+        db.commit()
+
+        resp = client_with_db.get("/companies")
+        assert resp.status_code == 200
+        assert "Scan all" in resp.text
+        assert "disabled" in resp.text
+
+    @patch("app.api.views.list_companies")
+    def test_companies_list_scan_all_not_running_when_other_workspace_job(
+        self, mock_list, views_client, mock_db_session
+    ):
+        """GET /companies shows Scan all enabled when only other-workspace job running."""
+        mock_list.return_value = ([], 0)
+        mock_first = MagicMock(return_value=None)  # No matching job (other workspace)
+        mock_filter = MagicMock()
+        mock_filter.first = mock_first
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.get("/companies")
+        assert resp.status_code == 200
+        assert "Scan all" in resp.text
+        # Scan all button should NOT be disabled when scan_all_running is False
+        assert "disabled>Scan all" not in resp.text
+
+    @pytest.mark.integration
+    @patch("app.api.views.get_company")
+    def test_rescan_blocked_when_legacy_job_running(self, mock_get, client_with_db, db):
+        """Running company_scan with workspace_id=None blocks rescan."""
+        _, company_id = self._login(client_with_db, db)
+        mock_get.return_value = _make_company_read(id=company_id, company_name="RescanCo")
+
+        job = JobRun(
+            job_type="company_scan",
+            company_id=company_id,
+            status="running",
+            workspace_id=None,
+        )
+        db.add(job)
+        db.commit()
+
+        resp = client_with_db.post(f"/companies/{company_id}/rescan", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "rescan=running" in resp.headers.get("location", "")
+
+    @pytest.mark.integration
+    @patch("app.api.views.get_company")
+    def test_rescan_blocked_when_default_workspace_job_running(self, mock_get, client_with_db, db):
+        """Running company_scan with workspace_id=DEFAULT blocks rescan."""
+        from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+        _, company_id = self._login(client_with_db, db)
+        mock_get.return_value = _make_company_read(id=company_id, company_name="RescanCo")
+
+        job = JobRun(
+            job_type="company_scan",
+            company_id=company_id,
+            status="running",
+            workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+        )
+        db.add(job)
+        db.commit()
+
+        resp = client_with_db.post(f"/companies/{company_id}/rescan", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "rescan=running" in resp.headers.get("location", "")
+
+    @patch("app.api.views.get_company")
+    def test_rescan_not_blocked_when_other_workspace_job_running(
+        self, mock_get, views_client, mock_db_session
+    ):
+        """Running company_scan with different workspace_id does NOT block rescan.
+
+        When the only running job has workspace_id != default and != NULL, the filter
+        returns no match, so we allow starting a new rescan (rescan=queued).
+        """
+        company = _make_company_read(id=1, company_name="RescanCo")
+        mock_get.return_value = company
+
+        mock_first = MagicMock(return_value=None)  # No matching job (other workspace)
+        mock_order = MagicMock()
+        mock_order.first = mock_first
+        mock_filter = MagicMock()
+        mock_filter.order_by.return_value = mock_order
+        mock_db_session.query.return_value.filter.return_value = mock_filter
+
+        resp = views_client.post("/companies/1/rescan", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "rescan=queued" in resp.headers.get("location", "")
 
 
 # ── Company detail scan status tests ─────────────────────────────────

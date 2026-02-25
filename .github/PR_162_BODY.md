@@ -36,7 +36,8 @@ Implements the full Scan All validation and Pack Architecture migration roadmap 
 - **JobRun**: `pack_id` and `workspace_id` set when creating scan and company_scan jobs (audit trail)
 - **scan_orchestrator**: `run_scan_all`, `run_scan_company_with_job` set `workspace_id=UUID(DEFAULT_WORKSPACE_ID)`
 - **views.py company_rescan**: Sets `pack_id` and `workspace_id` on JobRun for audit consistency
-- **Tests**: `test_run_scan_all_sets_pack_id_when_available`, `test_creates_job_run_with_pack_id_when_available`, `test_rescan_creates_job_run_with_pack_id_and_workspace_id`
+- **views.py**: `workspace_id` filtering in `companies_list`, `companies_scan_all`, `company_rescan` (multi-tenant readiness)
+- **Tests**: `test_run_scan_all_sets_pack_id_when_available`, `test_creates_job_run_with_pack_id_when_available`, `test_rescan_creates_job_run_with_pack_id_and_workspace_id`, `TestWorkspaceIdFiltering` (8 tests for workspace_id filtering)
 
 ### Phase 4 (Cleanup)
 - **views.py**: Company detail repair path passes `pack=pack` to `score_company`
