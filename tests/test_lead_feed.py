@@ -10,7 +10,14 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, LeadFeed, ReadinessSnapshot, SignalPack, Workspace
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    LeadFeed,
+    ReadinessSnapshot,
+    SignalPack,
+    Workspace,
+)
 from app.pipeline.lead_feed_writer import upsert_lead_feed
 from app.services.briefing import (
     get_emerging_companies_for_briefing,
@@ -20,6 +27,7 @@ from app.services.esl.esl_engine import compute_outreach_score
 from app.services.lead_feed import (
     build_lead_feed_from_snapshots,
     refresh_outreach_summary_for_entity,
+    upsert_lead_feed_from_snapshots,
     upsert_lead_feed_row,
 )
 
@@ -213,6 +221,37 @@ class TestUpsertLeadFeedRow:
         )
         assert count == 1
 
+    def test_upsert_lead_feed_row_stores_recommendation_band(
+        self,
+        db: Session,
+        lead_feed_company: Company,
+        fractional_cto_pack_id: UUID,
+    ) -> None:
+        """upsert_lead_feed_row stores recommendation_band when provided (Issue #242 Phase 3)."""
+        row = upsert_lead_feed_row(
+            db,
+            DEFAULT_WORKSPACE_ID,
+            fractional_cto_pack_id,
+            lead_feed_company.id,
+            composite_score=75,
+            recommendation_band="HIGH_PRIORITY",
+            as_of=date(2099, 2, 1),
+        )
+        db.commit()
+
+        assert row.recommendation_band == "HIGH_PRIORITY"
+        found = (
+            db.query(LeadFeed)
+            .filter(
+                LeadFeed.workspace_id == UUID(DEFAULT_WORKSPACE_ID),
+                LeadFeed.pack_id == fractional_cto_pack_id,
+                LeadFeed.entity_id == lead_feed_company.id,
+            )
+            .first()
+        )
+        assert found is not None
+        assert found.recommendation_band == "HIGH_PRIORITY"
+
 
 class TestBuildLeadFeedFromSnapshots:
     """Tests for build_lead_feed_from_snapshots."""
@@ -251,6 +290,67 @@ class TestBuildLeadFeedFromSnapshots:
         assert row.top_signal_ids == ["cto_role_posted", "funding_round"]
         assert row.esl_decision == "allow"
         assert row.as_of == as_of
+
+    def test_build_populates_recommendation_band_from_snapshot_explain(
+        self,
+        db: Session,
+        lead_feed_company: Company,
+        fractional_cto_pack_id: UUID,
+    ) -> None:
+        """upsert_lead_feed_from_snapshots populates recommendation_band from ReadinessSnapshot.explain (Issue #242 Phase 3)."""
+        as_of = date(2099, 2, 2)
+        rs = ReadinessSnapshot(
+            company_id=lead_feed_company.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
+            composite=80,
+            explain={
+                "top_events": [{"event_type": "funding_raised"}],
+                "recommendation_band": "HIGH_PRIORITY",
+            },
+            pack_id=fractional_cto_pack_id,
+        )
+        es = EngagementSnapshot(
+            company_id=lead_feed_company.id,
+            as_of=as_of,
+            esl_score=0.8,
+            engagement_type="Standard Outreach",
+            cadence_blocked=False,
+            pack_id=fractional_cto_pack_id,
+            esl_decision="allow",
+        )
+        db.add(rs)
+        db.add(es)
+        db.commit()
+        db.refresh(rs)
+        db.refresh(es)
+
+        result = upsert_lead_feed_from_snapshots(
+            db,
+            DEFAULT_WORKSPACE_ID,
+            fractional_cto_pack_id,
+            as_of,
+            readiness_snapshot=rs,
+            engagement_snapshot=es,
+        )
+        db.commit()
+
+        assert result is not None
+        assert result.recommendation_band == "HIGH_PRIORITY"
+        row = (
+            db.query(LeadFeed)
+            .filter(
+                LeadFeed.workspace_id == UUID(DEFAULT_WORKSPACE_ID),
+                LeadFeed.pack_id == fractional_cto_pack_id,
+                LeadFeed.entity_id == lead_feed_company.id,
+            )
+            .first()
+        )
+        assert row is not None
+        assert row.recommendation_band == "HIGH_PRIORITY"
 
     def test_build_excludes_suppressed_entities(
         self,

@@ -60,7 +60,7 @@ from app.services.outreach_history import (
     update_outreach_outcome,
 )
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
-from app.services.scoring import get_display_scores_for_companies, get_display_scores_with_bands
+from app.services.scoring import get_display_scores_with_bands
 
 logger = logging.getLogger(__name__)
 

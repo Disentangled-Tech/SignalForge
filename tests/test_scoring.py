@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -15,6 +15,7 @@ from app.services.scoring import (
     calculate_score,
     get_custom_weights,
     get_display_scores_for_companies,
+    get_display_scores_with_bands,
     score_company,
 )
 
@@ -307,6 +308,45 @@ class TestGetDisplayScoresForCompanies:
         result = get_display_scores_for_companies(db, [1])
         assert result == {1: 99}
         mock_batch.assert_called_once_with(db, [1], workspace_id=None)
+
+
+# ── get_display_scores_with_bands (Issue #242 Phase 3) ─────────────────
+
+
+class TestGetDisplayScoresWithBands:
+    """Tests for get_display_scores_with_bands()."""
+
+    def test_empty_company_ids_returns_empty_tuple(self) -> None:
+        db = MagicMock()
+        scores, bands = get_display_scores_with_bands(db, [])
+        assert scores == {}
+        assert bands == {}
+
+    @patch("app.services.score_resolver.get_company_scores_and_bands_batch")
+    def test_returns_scores_and_bands_from_batch(self, mock_batch) -> None:
+        """get_display_scores_with_bands delegates to get_company_scores_and_bands_batch."""
+        mock_batch.return_value = ({1: 75, 2: 60}, {1: "HIGH_PRIORITY", 2: "WATCH"})
+
+        db = MagicMock()
+        scores, bands = get_display_scores_with_bands(db, [1, 2])
+        assert scores == {1: 75, 2: 60}
+        assert bands == {1: "HIGH_PRIORITY", 2: "WATCH"}
+        mock_batch.assert_called_once_with(db, [1, 2], workspace_id=None)
+
+    @patch("app.services.score_resolver.get_company_scores_and_bands_batch")
+    def test_passes_workspace_id_when_provided(self, mock_batch) -> None:
+        """get_display_scores_with_bands passes workspace_id to batch resolver."""
+        mock_batch.return_value = ({1: 80}, {1: "HIGH_PRIORITY"})
+
+        db = MagicMock()
+        scores, bands = get_display_scores_with_bands(
+            db, [1], workspace_id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        )
+        assert scores == {1: 80}
+        assert bands == {1: "HIGH_PRIORITY"}
+        mock_batch.assert_called_once_with(
+            db, [1], workspace_id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        )
 
 
 # ── score_company ────────────────────────────────────────────────────
