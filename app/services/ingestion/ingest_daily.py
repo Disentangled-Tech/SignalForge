@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.ingestion.adapters.crunchbase_adapter import CrunchbaseAdapter
+from app.ingestion.adapters.newsapi_adapter import NewsAPIAdapter
 from app.ingestion.adapters.producthunt_adapter import ProductHuntAdapter
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.ingest import run_ingest
@@ -31,6 +32,7 @@ def _get_adapters() -> list:
     - Else: Build from env:
       - INGEST_CRUNCHBASE_ENABLED=1 and CRUNCHBASE_API_KEY set → CrunchbaseAdapter
       - INGEST_PRODUCTHUNT_ENABLED=1 and PRODUCTHUNT_API_TOKEN set → ProductHuntAdapter
+      - INGEST_NEWSAPI_ENABLED=1 and NEWSAPI_API_KEY set → NewsAPIAdapter
     Returns combined list (may be empty).
     """
     if os.getenv("INGEST_USE_TEST_ADAPTER", "").lower() in ("1", "true"):
@@ -47,6 +49,11 @@ def _get_adapters() -> list:
         and os.getenv("PRODUCTHUNT_API_TOKEN", "").strip()
     ):
         adapters.append(ProductHuntAdapter())
+    if (
+        os.getenv("INGEST_NEWSAPI_ENABLED", "").lower() in ("1", "true")
+        and os.getenv("NEWSAPI_API_KEY", "").strip()
+    ):
+        adapters.append(NewsAPIAdapter())
     return adapters
 
 
