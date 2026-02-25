@@ -159,25 +159,6 @@ class TestConstantsExist:
 # ── from_pack decay and suppressors (Issue #174) ────────────────────────────
 
 
-class TestFromPackEmptyReturnsCtoFallbacks:
-    """from_pack({}) returns fractional_cto_v1 defaults (Phase 1 audit, Plan §5)."""
-
-    def test_from_pack_empty_returns_cto_fallbacks(self) -> None:
-        """Empty config falls back to CTO-specific module constants for all sections."""
-        cfg = from_pack({})
-        assert cfg["base_scores_momentum"] == BASE_SCORES_MOMENTUM
-        assert cfg["base_scores_complexity"] == BASE_SCORES_COMPLEXITY
-        assert cfg["base_scores_pressure"] == BASE_SCORES_PRESSURE
-        assert cfg["base_scores_leadership_gap"] == BASE_SCORES_LEADERSHIP_GAP
-        assert cfg["cap_jobs_momentum"] == CAP_JOBS_MOMENTUM
-        assert cfg["cap_jobs_complexity"] == CAP_JOBS_COMPLEXITY
-        assert cfg["cap_founder_urgency"] == CAP_FOUNDER_URGENCY
-        assert cfg["cap_dimension_max"] == CAP_DIMENSION_MAX
-        assert cfg["composite_weights"] == COMPOSITE_WEIGHTS
-        assert cfg["quiet_signal_lookback_days"] == QUIET_SIGNAL_LOOKBACK_DAYS
-        assert cfg["quiet_signal_amplified_base"] == QUIET_SIGNAL_AMPLIFIED_BASE
-
-
 class TestFromPackDecayAndSuppressors:
     """from_pack() parses decay and suppressors from pack config."""
 

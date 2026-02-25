@@ -242,12 +242,6 @@ def from_pack(scoring_config: dict) -> dict:
     composite_weights, decay_momentum, decay_pressure, decay_complexity,
     suppress_cto_hired_60_days, suppress_cto_hired_180_days,
     minimum_threshold, disqualifier_signals (Phase 2, Issue #174).
-
-    CTO-specific fallbacks (Phase 1 audit, Plan §5):
-    When pack omits a section or provides empty/falsy value, we fall back to module
-    constants (BASE_SCORES_*, CAP_*, etc.) which match fractional_cto_v1. Non-CTO
-    packs must define their own base_scores, caps, decay, and suppressors to avoid
-    inheriting CTO defaults. See test_from_pack_empty_returns_cto_fallbacks.
     """
     bs = scoring_config.get("base_scores") or {}
     qs = scoring_config.get("quiet_signal") or {}
