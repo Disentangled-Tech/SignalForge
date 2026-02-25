@@ -6,12 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.job_run import JobRun
-from app.models.signal_record import SignalRecord
-from app.models.analysis_record import AnalysisRecord
 from app.services.scan_orchestrator import _analysis_changed, infer_source_type
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -284,6 +282,43 @@ class TestRunScanAll:
         assert job.status == "failed"
         assert job.companies_processed == 0
         assert job.error_message is not None
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_no_companies_with_url_sets_error_message(self, mock_scan_full):
+        """When no companies have website_url, job completes with error_message (Issue #162)."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        c1 = _company(1, "NoURL1", website_url=None)
+        c2 = _company(2, "NoURL2", website_url=None)
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1, c2]
+
+        job = await run_scan_all(db)
+
+        assert job.status == "completed"
+        assert job.companies_processed == 0
+        assert job.error_message is not None
+        assert "No companies with website URLs" in job.error_message
+        mock_scan_full.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_with_url_processes_and_updates_job(self, mock_scan_full):
+        """Company with website_url is scanned; job has companies_processed >= 1 (Issue #162)."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        c1 = _company(1, "WithURL", website_url="https://example.com")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1]
+        mock_scan_full.return_value = (2, MagicMock(), False)
+
+        job = await run_scan_all(db)
+
+        assert job.status == "completed"
+        assert job.companies_processed >= 1
+        assert job.finished_at is not None
+        mock_scan_full.assert_awaited_once()
 
 
 # ── run_scan_company_with_job tests ───────────────────────────────────

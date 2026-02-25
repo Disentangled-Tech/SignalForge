@@ -251,6 +251,38 @@ class TestAnalyzeCompanyHappyPath:
 # ---------------------------------------------------------------------------
 
 
+class TestAnalyzeCompanyPackParameter:
+    """Phase 1: analyze_company accepts pack parameter; no behavior change yet."""
+
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.analysis.render_prompt")
+    def test_accepts_pack_parameter_unchanged_behavior(self, mock_render, mock_get_llm) -> None:
+        """Passing pack parameter does not change behavior; same prompts used."""
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_llm.complete.side_effect = [
+            _VALID_STAGE_RESPONSE,
+            _VALID_PAIN_RESPONSE,
+            _EXPLANATION_TEXT,
+        ]
+
+        company = _make_company()
+        signals = [_make_signal("Signal A")]
+        db = _make_mock_db(company=company, signals=signals)
+
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        result = analyze_company(db, company_id=1, pack=pack)
+
+        assert result is not None
+        assert result.stage == "scaling_team"
+        # Phase 1: Same prompts used (stage_classification_v1, pain_signals_v1)
+        assert mock_render.call_args_list[0][0][0] == "stage_classification_v1"
+        assert mock_render.call_args_list[1][0][0] == "pain_signals_v1"
+
+
 class TestAnalyzeCompanyEdgeCases:
     def test_company_not_found_returns_none(self):
         db = _make_mock_db(company=None)
