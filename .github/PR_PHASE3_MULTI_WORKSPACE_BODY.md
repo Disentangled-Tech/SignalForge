@@ -39,14 +39,27 @@ Implements Phase 3 (Pack Activation Runtime) of the company signal data models p
 ### Template (`app/templates/companies/detail.html`)
 - Edit link, rescan form, outreach add form, outreach edit form, and outreach delete form append `?workspace_id={{ workspace_id }}` when `workspace_id` is present (multi-workspace mode)
 
-### Migration (`alembic/versions/20260227_add_user_workspaces.py`)
-- Creates `user_workspaces` (user_id, workspace_id) for workspace membership
-- Backfills all existing users into default workspace
+### Migrations
+- **`20260227_add_user_workspaces.py`**: Creates `user_workspaces` (user_id, workspace_id); backfills all existing users into default workspace
+- **`20260226_issue_240_schema_validation.py`**: No-op migration documenting schema alignment (Phase 4, Issue #240)
+- **`20260228_add_analysis_records_pack_index.py`**: Index `ix_analysis_records_company_pack_created` on `(company_id, pack_id, created_at DESC)` for pack-scoped analysis queries
+
+### Projection builder (`app/services/lead_feed/projection_builder.py`)
+- **`refresh_outreach_summary_for_entity`**: When `MULTI_WORKSPACE_ENABLED=true`, requires `workspace_id` (raises `ValueError` if missing) to avoid cross-tenant data mixing
+
+### Outreach history (`app/services/outreach_history.py`) — follow-up
+- **`update_outreach_outcome`**, **`delete_outreach_record`**: Pass `record.workspace_id or DEFAULT_WORKSPACE_ID` to `refresh_outreach_summary_for_entity` for legacy rows with `workspace_id IS NULL`
 
 ### Tests
 - **`tests/test_outreach_history.py`**: `test_update_outreach_outcome_workspace_isolated`, `test_delete_outreach_record_workspace_isolated`
 - **`tests/test_score_resolver.py`**: `test_get_company_score_uses_workspace_pack` — verifies `get_company_score` with `workspace_id` resolves pack from workspace
 - **`tests/test_views.py`**: `test_forged_workspace_id_returns_403` — verifies 403 when user lacks workspace access
+- **`tests/test_lead_feed.py`**: `test_refresh_outreach_summary_requires_workspace_id_when_multi_workspace` — verifies `ValueError` when `workspace_id` missing when multi-workspace enabled
+- **`tests/test_event_storage.py`**: `test_duplicate_signal_event_insert` — app-level dedup and DB constraint for duplicate events
+- **`tests/test_migrations.py`**: `test_migration_20260226_up_down`, `test_migration_20260228_up_down` — migration upgrade/downgrade
+
+### Config (`pyproject.toml`)
+- `addopts = "-p no:xdist"` — run integration tests serially to reduce deadlocks
 
 ## Code review fixes (cross-tenant protection)
 

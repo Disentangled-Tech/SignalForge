@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -16,7 +17,11 @@ from app.services.briefing import (
     get_emerging_companies_from_lead_feed,
 )
 from app.services.esl.esl_engine import compute_outreach_score
-from app.services.lead_feed import build_lead_feed_from_snapshots, upsert_lead_feed_row
+from app.services.lead_feed import (
+    build_lead_feed_from_snapshots,
+    refresh_outreach_summary_for_entity,
+    upsert_lead_feed_row,
+)
 
 DEFAULT_WORKSPACE_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -1266,3 +1271,16 @@ def test_get_emerging_companies_from_lead_feed_all_filtered_out_returns_empty(
 
     assert result is not None
     assert len(result) == 0
+
+
+def test_refresh_outreach_summary_requires_workspace_id_when_multi_workspace(db: Session) -> None:
+    """refresh_outreach_summary_for_entity raises when multi_workspace and workspace_id is None."""
+    company = Company(name="MultiWs Co", website_url="https://multi.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    with patch("app.config.get_settings") as mock_settings:
+        mock_settings.return_value.multi_workspace_enabled = True
+        with pytest.raises(ValueError, match="workspace_id is required"):
+            refresh_outreach_summary_for_entity(db, company.id, workspace_id=None)

@@ -57,6 +57,8 @@ ignore = ["E501", "B008"]  # B008: Depends/Query in defaults is FastAPI standard
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+# Integration tests may deadlock when run in parallel; run with -p no:xdist if using pytest-xdist
+addopts = "-p no:xdist"
 markers = [
     "integration: marks tests requiring real DB (deselect with -m 'not integration')",
 ]
