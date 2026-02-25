@@ -58,6 +58,9 @@ class CompanySignalScoreRead(BaseModel):
     pack_id: UUID | None = None
     computed_at: datetime
 
+    # Optional: recommendation band from pack (Issue #242)
+    recommendation_band: str | None = None
+
     # Optional EngagementSnapshot fields
     esl_score: float | None = None
     esl_decision: str | None = None

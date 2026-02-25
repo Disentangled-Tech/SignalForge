@@ -74,6 +74,13 @@ minimum_threshold: 0
 # Empty for fractional_cto_v1 to preserve parity with legacy (pack=None)
 disqualifier_signals: {}
 
+# Phase 2 (Issue #242): recommendation bands (0-100 scale)
+# Scaled from 0-20 spec: 7/20->34, 14/20->69, 15/20->70
+recommendation_bands:
+  ignore_max: 34
+  watch_max: 69
+  high_priority_min: 70
+
 # Pain-signal weights and stage bonuses (from app/services/scoring.py)
 pain_signal_weights:
   hiring_engineers: 15

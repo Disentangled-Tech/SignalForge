@@ -179,6 +179,21 @@ class TestReadinessParitySameEventsPackNoneVsCto:
         assert result_pack["leadership_gap"] == result_none["leadership_gap"]
 
 
+class TestRecommendationBandParity:
+    """When pack has bands, resolve_band matches expected for fixture scores (Issue #242)."""
+
+    def test_fixture_scores_produce_expected_bands(self) -> None:
+        """Fixed composites 34, 35, 69, 70 produce IGNORE, WATCH, WATCH, HIGH_PRIORITY."""
+        from app.packs.loader import load_pack
+        from app.services.signal_scorer import resolve_band
+
+        cto_pack = load_pack("fractional_cto_v1", "1")
+        assert resolve_band(34, cto_pack) == "IGNORE"
+        assert resolve_band(35, cto_pack) == "WATCH"
+        assert resolve_band(69, cto_pack) == "WATCH"
+        assert resolve_band(70, cto_pack) == "HIGH_PRIORITY"
+
+
 class TestEmergingCompaniesParityPackVsLegacy:
     """Same fixture data: pack snapshots vs legacy (pack_id=NULL) → same entity set."""
 

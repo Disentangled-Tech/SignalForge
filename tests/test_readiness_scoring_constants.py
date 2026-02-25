@@ -222,3 +222,62 @@ class TestFromPackMinimumThresholdAndDisqualifierSignals:
         """Pack disqualifier_signals parses to {event_type: window_days}."""
         cfg = from_pack({"disqualifier_signals": {"cto_hired": 180, "acquired": 365}})
         assert cfg["disqualifier_signals"] == {"cto_hired": 180, "acquired": 365}
+
+
+class TestFromPackRecommendationBands:
+    """from_pack() parses recommendation_bands (Phase 2, Issue #242)."""
+
+    def test_from_pack_recommendation_bands_none_when_missing(self) -> None:
+        """Missing or empty recommendation_bands returns None."""
+        assert from_pack({})["recommendation_bands"] is None
+        assert from_pack({"recommendation_bands": {}})["recommendation_bands"] is None
+
+    def test_from_pack_recommendation_bands_parses(self) -> None:
+        """Pack recommendation_bands parses to {ignore_max, watch_max, high_priority_min}."""
+        cfg = from_pack(
+            {
+                "recommendation_bands": {
+                    "ignore_max": 34,
+                    "watch_max": 69,
+                    "high_priority_min": 70,
+                }
+            }
+        )
+        assert cfg["recommendation_bands"] == {
+            "ignore_max": 34,
+            "watch_max": 69,
+            "high_priority_min": 70,
+        }
+
+    def test_from_pack_recommendation_bands_invalid_returns_none(self) -> None:
+        """Invalid bands (ignore_max >= watch_max) returns None."""
+        cfg = from_pack(
+            {
+                "recommendation_bands": {
+                    "ignore_max": 70,
+                    "watch_max": 69,
+                    "high_priority_min": 80,
+                }
+            }
+        )
+        assert cfg["recommendation_bands"] is None
+
+    def test_from_pack_fractional_cto_has_bands(self) -> None:
+        """Fractional CTO pack has recommendation_bands (Issue #242)."""
+        import os
+
+        import yaml
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "packs",
+            "fractional_cto_v1",
+            "scoring.yaml",
+        )
+        with open(path) as f:
+            scoring = yaml.safe_load(f)
+        cfg = from_pack(scoring)
+        assert cfg["recommendation_bands"] is not None
+        assert cfg["recommendation_bands"]["ignore_max"] == 34
+        assert cfg["recommendation_bands"]["watch_max"] == 69
+        assert cfg["recommendation_bands"]["high_priority_min"] == 70

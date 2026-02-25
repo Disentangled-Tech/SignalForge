@@ -241,7 +241,8 @@ def from_pack(scoring_config: dict) -> dict:
     cap_jobs_momentum, cap_jobs_complexity, cap_founder_urgency, cap_dimension_max,
     composite_weights, decay_momentum, decay_pressure, decay_complexity,
     suppress_cto_hired_60_days, suppress_cto_hired_180_days,
-    minimum_threshold, disqualifier_signals (Phase 2, Issue #174).
+    minimum_threshold, disqualifier_signals (Phase 2, Issue #174),
+    recommendation_bands (Phase 2, Issue #242).
     """
     bs = scoring_config.get("base_scores") or {}
     qs = scoring_config.get("quiet_signal") or {}
@@ -284,7 +285,28 @@ def from_pack(scoring_config: dict) -> dict:
         "disqualifier_signals": _norm_disqualifier_signals(
             scoring_config.get("disqualifier_signals")
         ),
+        "recommendation_bands": _norm_recommendation_bands(
+            scoring_config.get("recommendation_bands")
+        ),
     }
+
+
+def _norm_recommendation_bands(bands: dict | None) -> dict[str, int] | None:
+    """Normalize recommendation_bands to {ignore_max, watch_max, high_priority_min}.
+
+    Pack format: {ignore_max: int, watch_max: int, high_priority_min: int}.
+    Returns None when bands is None or invalid (no bands configured).
+    """
+    if not bands or not isinstance(bands, dict):
+        return None
+    ignore_max = _int_or(bands.get("ignore_max"), -1)
+    watch_max = _int_or(bands.get("watch_max"), -1)
+    high_priority_min = _int_or(bands.get("high_priority_min"), -1)
+    if ignore_max < 0 or watch_max < 0 or high_priority_min < 0:
+        return None
+    if not (ignore_max < watch_max < high_priority_min):
+        return None
+    return {"ignore_max": ignore_max, "watch_max": watch_max, "high_priority_min": high_priority_min}
 
 
 def _norm_disqualifier_signals(signals: dict | None) -> dict[str, int]:
