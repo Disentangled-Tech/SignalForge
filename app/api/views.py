@@ -28,6 +28,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import AUTH_COOKIE, get_current_user, get_db
@@ -178,8 +179,19 @@ def companies_list(
     total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE) if total else 1
 
     # Check if a full scan is already running (for Scan all button state)
+    # Scope by workspace_id for multi-tenant readiness; include legacy jobs (workspace_id=None)
+    _default_ws = UUID(DEFAULT_WORKSPACE_ID)
     scan_all_running = (
-        db.query(JobRun).filter(JobRun.job_type == "scan", JobRun.status == "running").first()
+        db.query(JobRun)
+        .filter(
+            JobRun.job_type == "scan",
+            JobRun.status == "running",
+            or_(
+                JobRun.workspace_id == _default_ws,
+                JobRun.workspace_id.is_(None),
+            ),
+        )
+        .first()
         is not None
     )
     scan_all_param = request.query_params.get("scan_all")
@@ -770,8 +782,18 @@ async def companies_scan_all(
     user: User = Depends(_require_ui_auth),
 ):
     """Queue a full scan across all companies, then redirect back to companies list."""
+    _default_ws = UUID(DEFAULT_WORKSPACE_ID)
     running_job = (
-        db.query(JobRun).filter(JobRun.job_type == "scan", JobRun.status == "running").first()
+        db.query(JobRun)
+        .filter(
+            JobRun.job_type == "scan",
+            JobRun.status == "running",
+            or_(
+                JobRun.workspace_id == _default_ws,
+                JobRun.workspace_id.is_(None),
+            ),
+        )
+        .first()
     )
     if running_job is not None:
         return RedirectResponse(url="/companies?scan_all=running", status_code=303)
@@ -807,12 +829,18 @@ async def company_rescan(
         raise HTTPException(status_code=404, detail="Company not found")
 
     # Check if a scan is already running for this company
+    # Scope by workspace_id for multi-tenant readiness; include legacy jobs (workspace_id=None)
+    _default_ws = UUID(DEFAULT_WORKSPACE_ID)
     running_job = (
         db.query(JobRun)
         .filter(
             JobRun.company_id == company_id,
             JobRun.job_type == "company_scan",
             JobRun.status == "running",
+            or_(
+                JobRun.workspace_id == _default_ws,
+                JobRun.workspace_id.is_(None),
+            ),
         )
         .order_by(JobRun.started_at.desc())
         .first()

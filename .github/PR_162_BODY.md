@@ -1,10 +1,12 @@
-# Validate and Implement Scan All — Phases 0–4
+# Validate and Implement Scan All — Phases 0–4 + Ingestion Adapters
 
 Closes https://github.com/Disentangled-Tech/SignalForge/issues/162
+Closes https://github.com/Disentangled-Tech/SignalForge/issues/134
+Closes https://github.com/Disentangled-Tech/SignalForge/issues/210
 
 ## Summary
 
-Implements the full Scan All validation and Pack Architecture migration roadmap from `.cursor/plans/validate_and_implement_scan_all_250f0fdc.plan.md`:
+Implements the full Scan All validation and Pack Architecture migration roadmap from `.cursor/plans/validate_and_implement_scan_all_250f0fdc.plan.md`, plus Crunchbase and Product Hunt ingestion adapters from `.cursor/plans/crunchbase_product_hunt_ingestion_adapters_85eab9c2.plan.md`:
 
 - **Phase 0**: Fix Issue #162 — validate Scan All, improve empty-state UX
 - **Phase 1**: Engine abstraction — `PackScoringInterface`, `PackAnalysisInterface`
@@ -41,9 +43,15 @@ Implements the full Scan All validation and Pack Architecture migration roadmap 
 - **docs/pipeline.md**: New "Scan vs Ingest/Derive/Score" section
 - **Tests**: `test_detail_repair_path_calls_score_company_with_pack`
 
+### Ingestion Adapters (Issues #134, #210)
+- **app/ingestion/adapters/**: `CrunchbaseAdapter`, `ProductHuntAdapter` (env-gated)
+- **ingest_daily.py**: `_get_adapters()` returns Crunchbase when `INGEST_CRUNCHBASE_ENABLED=1` and `CRUNCHBASE_API_KEY` set; Product Hunt when `INGEST_PRODUCTHUNT_ENABLED=1` and `PRODUCTHUNT_API_TOKEN` set
+- **docs/pipeline.md**: "Ingestion Adapters" section; link to `ingestion-adapters.md`
+- **Tests**: `test_run_ingest_daily_uses_crunchbase_when_configured`, `test_run_ingest_daily_uses_producthunt_when_configured`, `test_run_ingest_daily_test_adapter_takes_precedence`, `test_run_ingest_daily_uses_both_adapters_when_both_configured`
+
 ## Verification
 
-- [x] `pytest tests/ -v -W error -m 'not integration'` — 211 passed
+- [x] `pytest tests/ -v -W error -m 'not integration'` — 1171 passed
 - [x] `ruff check` on modified files — clean
 - [x] Fractional CTO behavior unchanged (pack interfaces extract same weights)
 - [x] No new migrations (JobRun.pack_id already exists)
@@ -51,4 +59,4 @@ Implements the full Scan All validation and Pack Architecture migration roadmap 
 ## Risk
 
 - **Low**: All changes additive; pack parameter optional with fallback
-- **Pre-existing**: Alembic multiple heads may block integration tests until resolved
+- **Alembic**: Removed duplicate migration files (`* 2.py`) that caused multiple heads

@@ -33,6 +33,20 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 - **Validation**: Invalid UUIDs for `workspace_id` or `pack_id` return **422 Unprocessable Entity**.
 - **Pack resolution**: Same as run_score/run_derive. Writes only to `(workspace_id, pack_id, entity_id)`; no cross-tenant leakage.
 
+## Ingestion Adapters
+
+Adapters fetch raw events from external sources. `run_ingest_daily` uses adapters returned by `_get_adapters()` based on environment variables.
+
+| Adapter | Env vars | Event types | Notes |
+|---------|----------|-------------|-------|
+| **Crunchbase** | `CRUNCHBASE_API_KEY`, `INGEST_CRUNCHBASE_ENABLED=1` | funding_raised | Requires Crunchbase API license. See [data.crunchbase.com/docs](https://data.crunchbase.com/docs). |
+| **Product Hunt** | `PRODUCTHUNT_API_TOKEN`, `INGEST_PRODUCTHUNT_ENABLED=1` | launch_major | GraphQL API. Rate limits apply. See [api.producthunt.com/v2/docs](https://api.producthunt.com/v2/docs). |
+| **TestAdapter** | `INGEST_USE_TEST_ADAPTER=1` | funding_raised, job_posted_engineering, cto_role_posted | Tests only. When set, only TestAdapter is used. |
+
+When `INGEST_USE_TEST_ADAPTER=1`, only TestAdapter is returned. Otherwise, Crunchbase is included when both `INGEST_CRUNCHBASE_ENABLED=1` and `CRUNCHBASE_API_KEY` are set; Product Hunt when both `INGEST_PRODUCTHUNT_ENABLED=1` and `PRODUCTHUNT_API_TOKEN` are set.
+
+For detailed setup, API key acquisition, rate limits, and pagination, see [ingestion-adapters.md](ingestion-adapters.md).
+
 ## Scan vs Ingest/Derive/Score
 
 Two pipelines feed the fractional CTO use case; they use different data models and entry points.
