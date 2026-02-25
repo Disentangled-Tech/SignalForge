@@ -301,3 +301,175 @@ def test_update_outreach_outcome_not_found(db: Session):
 
     result = update_outreach_outcome(db, company.id, 99999, "replied")
     assert result is None
+
+
+# ── Phase 3: workspace_id scoping ────────────────────────────────────────────
+
+
+def test_list_outreach_for_company_with_workspace_id_includes_default_and_null(
+    db: Session,
+):
+    """When workspace_id=DEFAULT_WORKSPACE_ID, includes records with default or NULL (Phase 3)."""
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    company = Company(name="Workspace Filter Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    base = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+    create_outreach_record(
+        db, company.id, base, "email", "Default workspace", None
+    )
+
+    records = list_outreach_for_company(
+        db, company.id, workspace_id=DEFAULT_WORKSPACE_ID
+    )
+    assert len(records) == 1
+    assert records[0].message == "Default workspace"
+
+
+def test_get_draft_for_company_with_workspace_id_returns_draft_when_default(
+    db: Session,
+):
+    """When workspace_id=DEFAULT_WORKSPACE_ID, returns draft from default or NULL (Phase 3)."""
+    from app.models.analysis_record import AnalysisRecord
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    company = Company(name="Draft Workspace Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    analysis = AnalysisRecord(company_id=company.id, source_type="manual")
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+
+    briefing = BriefingItem(
+        company_id=company.id,
+        analysis_id=analysis.id,
+        outreach_message="Draft for default workspace",
+    )
+    db.add(briefing)
+    db.commit()
+
+    draft = get_draft_for_company(
+        db, company.id, workspace_id=DEFAULT_WORKSPACE_ID
+    )
+    assert draft == "Draft for default workspace"
+
+
+def test_update_outreach_outcome_workspace_isolated(db: Session):
+    """update_outreach_outcome with workspace_id restricts to records in that workspace."""
+    from uuid import UUID
+
+    from app.models.workspace import Workspace
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    other_ws = "00000000-0000-0000-0000-000000000002"
+    # Create workspace for FK (required for outreach_history.workspace_id)
+    ws = Workspace(id=UUID(other_ws), name="Other Workspace")
+    db.add(ws)
+    db.commit()
+
+    company = Company(name="Update Isolate Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    # Space 61+ days apart to avoid cooldown
+    sent_default = base - timedelta(days=100)
+    sent_other = base - timedelta(days=35)
+    record_default = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_default,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        workspace_id=DEFAULT_WORKSPACE_ID,
+    )
+    record_other = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_other,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        workspace_id=other_ws,
+    )
+
+    # Update with other workspace: only record_other should be updated
+    updated = update_outreach_outcome(
+        db, company.id, record_other.id, "replied", workspace_id=other_ws
+    )
+    assert updated is not None
+    assert updated.outcome == "replied"
+
+    # Update with other workspace targeting default-workspace record: should return None
+    result = update_outreach_outcome(
+        db, company.id, record_default.id, "replied", workspace_id=other_ws
+    )
+    assert result is None
+    db.refresh(record_default)
+    assert record_default.outcome is None
+
+
+def test_delete_outreach_record_workspace_isolated(db: Session):
+    """delete_outreach_record with workspace_id restricts to records in that workspace."""
+    from uuid import UUID
+
+    from app.models.workspace import Workspace
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    other_ws = "00000000-0000-0000-0000-000000000002"
+    # Create workspace for FK (required for outreach_history.workspace_id)
+    ws = Workspace(id=UUID(other_ws), name="Other Workspace")
+    db.add(ws)
+    db.commit()
+
+    company = Company(name="Delete Isolate Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    # Space 61+ days apart to avoid cooldown
+    sent_default = base - timedelta(days=100)
+    sent_other = base - timedelta(days=35)
+    record_default = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_default,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        workspace_id=DEFAULT_WORKSPACE_ID,
+    )
+    record_other = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=sent_other,
+        outreach_type="email",
+        message=None,
+        notes=None,
+        workspace_id=other_ws,
+    )
+
+    # Delete with other workspace: only record_other should be deleted
+    deleted = delete_outreach_record(
+        db, company.id, record_other.id, workspace_id=other_ws
+    )
+    assert deleted is True
+
+    remaining = list_outreach_for_company(db, company.id)
+    assert len(remaining) == 1
+    assert remaining[0].id == record_default.id
+
+    # Delete with other workspace targeting default-workspace record: should return False
+    deleted = delete_outreach_record(
+        db, company.id, record_default.id, workspace_id=other_ws
+    )
+    assert deleted is False

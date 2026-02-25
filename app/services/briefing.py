@@ -23,7 +23,11 @@ from app.services.email_service import send_briefing_email
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.esl.esl_gate_filter import is_suppressed_from_engagement
 from app.services.outreach import generate_outreach
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import (
+    get_default_pack_id,
+    get_pack_for_workspace,
+    resolve_pack,
+)
 from app.services.settings_resolver import get_resolved_settings
 
 logger = logging.getLogger(__name__)
@@ -75,13 +79,17 @@ def select_top_companies(
         db.query(BriefingItem.company_id)
         .filter(BriefingItem.created_at >= dedup_cutoff)
     )
+    default_ws_uuid = uuid.UUID(DEFAULT_WORKSPACE_ID)
     if workspace_id is not None:
+        ws_uuid = (
+            uuid.UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        )
         recently_briefed_q = recently_briefed_q.filter(
-            BriefingItem.workspace_id == workspace_id
+            BriefingItem.workspace_id == ws_uuid
         )
     else:
         recently_briefed_q = recently_briefed_q.filter(
-            (BriefingItem.workspace_id == DEFAULT_WORKSPACE_ID)
+            (BriefingItem.workspace_id == default_ws_uuid)
             | (BriefingItem.workspace_id.is_(None))
         )
     recently_briefed_ids = recently_briefed_q.distinct().subquery()
@@ -295,10 +303,19 @@ def generate_briefing(
     When workspace_id is provided, BriefingItems are scoped to that workspace.
     When None, uses default workspace (single-tenant mode).
     """
+    from uuid import UUID
+
     from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 
     ws_id = workspace_id or DEFAULT_WORKSPACE_ID
-    job = JobRun(job_type="briefing", status="running")
+    ws_uuid = UUID(ws_id) if isinstance(ws_id, str) else ws_id
+    pack_id = get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+    job = JobRun(
+        job_type="briefing",
+        status="running",
+        workspace_id=ws_uuid,
+        pack_id=pack_id,
+    )
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -397,16 +414,26 @@ def _generate_for_company(
     workspace_id: str | None = None,
 ) -> BriefingItem | None:
     """Build a single BriefingItem for *company*.  Returns ``None`` when skipped."""
+    from uuid import UUID
+
     from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 
     today = date.today()
     ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    ws_uuid = UUID(str(ws_id)) if isinstance(ws_id, str) else ws_id
+    default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+
     existing_q = db.query(BriefingItem).filter(
         BriefingItem.company_id == company.id,
         BriefingItem.briefing_date == today,
     )
-    if ws_id is not None:
-        existing_q = existing_q.filter(BriefingItem.workspace_id == ws_id)
+    if ws_uuid == default_uuid:
+        existing_q = existing_q.filter(
+            (BriefingItem.workspace_id == ws_uuid)
+            | (BriefingItem.workspace_id.is_(None))
+        )
+    else:
+        existing_q = existing_q.filter(BriefingItem.workspace_id == ws_uuid)
     existing = existing_q.first()
     if existing:
         logger.info(
@@ -417,13 +444,24 @@ def _generate_for_company(
         )
         return None
 
-    # Latest analysis record.
-    analysis: AnalysisRecord | None = (
+    # Latest analysis record (pack-scoped: prefer workspace's active pack).
+    pack_id = get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+    default_pack_id = get_default_pack_id(db)
+    analysis_q = (
         db.query(AnalysisRecord)
         .filter(AnalysisRecord.company_id == company.id)
         .order_by(AnalysisRecord.created_at.desc())
-        .first()
     )
+    if pack_id is not None and default_pack_id is not None:
+        from sqlalchemy import or_
+
+        analysis_q = analysis_q.filter(
+            or_(
+                AnalysisRecord.pack_id == pack_id,
+                (AnalysisRecord.pack_id.is_(None)) & (pack_id == default_pack_id),
+            )
+        )
+    analysis: AnalysisRecord | None = analysis_q.first()
     if analysis is None:
         logger.info("No analysis for company %s — skipping briefing", company.name)
         return None
@@ -455,10 +493,9 @@ def _generate_for_company(
     risk_summary = parsed.get("risk_summary", "") if parsed else ""
     suggested_angle = parsed.get("suggested_angle", "") if parsed else ""
 
-    # Outreach draft.
-    outreach = generate_outreach(db, company, analysis)
-
-    ws_uuid = uuid.UUID(ws_id) if isinstance(ws_id, str) else ws_id
+    # Outreach draft (Phase 3: pass pack for offer_type from workspace's active pack).
+    pack = resolve_pack(db, pack_id) if pack_id else None
+    outreach = generate_outreach(db, company, analysis, pack=pack)
     item = BriefingItem(
         company_id=company.id,
         analysis_id=analysis.id,

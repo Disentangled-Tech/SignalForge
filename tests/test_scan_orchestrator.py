@@ -130,12 +130,21 @@ class TestAnalysisChanged:
 
 class TestRunScanCompanyFull:
     @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_default_pack")
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
     @patch("app.services.scan_orchestrator.score_company")
     @patch("app.services.scan_orchestrator.analyze_company")
     @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
-    async def test_runs_scan_analysis_scoring(self, mock_scan, mock_analyze, mock_score):
+    async def test_runs_scan_analysis_scoring(
+        self, mock_scan, mock_analyze, mock_score, mock_get_pack_id, mock_get_pack
+    ):
         """run_scan_company_full runs scan, analysis, and scoring; updates company score."""
         from app.services.scan_orchestrator import run_scan_company_full
+
+        pack_uuid = uuid4()
+        mock_pack = MagicMock()
+        mock_get_pack_id.return_value = pack_uuid
+        mock_get_pack.return_value = mock_pack
 
         db = MagicMock()
         # No prior analysis (for change detection)
@@ -150,8 +159,8 @@ class TestRunScanCompanyFull:
         assert result_analysis is analysis
         assert changed is False  # no prev analysis
         mock_scan.assert_awaited_once_with(db, 1)
-        mock_analyze.assert_called_once_with(db, 1, pack=ANY)
-        mock_score.assert_called_once_with(db, 1, analysis, pack=ANY)
+        mock_analyze.assert_called_once_with(db, 1, pack=mock_pack, pack_id=pack_uuid)
+        mock_score.assert_called_once_with(db, 1, analysis, pack=mock_pack)
 
 
 # ── run_scan_company tests ───────────────────────────────────────────
@@ -347,12 +356,21 @@ class TestRunScanAll:
 
 class TestRunScanCompanyWithJob:
     @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_default_pack")
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
     @patch("app.services.scan_orchestrator.score_company")
     @patch("app.services.scan_orchestrator.analyze_company")
     @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
-    async def test_creates_job_run_and_completes(self, mock_scan, mock_analyze, mock_score):
+    async def test_creates_job_run_and_completes(
+        self, mock_scan, mock_analyze, mock_score, mock_get_pack_id, mock_get_pack
+    ):
         """run_scan_company_with_job creates JobRun and completes successfully."""
         from app.services.scan_orchestrator import run_scan_company_with_job
+
+        pack_uuid = uuid4()
+        mock_pack = MagicMock()
+        mock_get_pack_id.return_value = pack_uuid
+        mock_get_pack.return_value = mock_pack
 
         db = MagicMock()
         mock_scan.return_value = 2
@@ -366,7 +384,7 @@ class TestRunScanCompanyWithJob:
         assert job.finished_at is not None
         db.add.assert_called_once()
         mock_scan.assert_awaited_once_with(db, 1)
-        mock_analyze.assert_called_once_with(db, 1, pack=ANY)
+        mock_analyze.assert_called_once_with(db, 1, pack=mock_pack, pack_id=pack_uuid)
         mock_score.assert_called_once()
 
     @pytest.mark.asyncio

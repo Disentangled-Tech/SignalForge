@@ -140,27 +140,69 @@ def create_outreach_record(
     return record
 
 
-def get_draft_for_company(db: Session, company_id: int) -> str | None:
-    """Return the latest BriefingItem.outreach_message for pre-fill, or None."""
-    item = (
+def get_draft_for_company(
+    db: Session,
+    company_id: int,
+    workspace_id: str | None = None,
+) -> str | None:
+    """Return the latest BriefingItem.outreach_message for pre-fill, or None.
+
+    When workspace_id provided (Phase 3), filters by workspace (legacy rows
+    with workspace_id=None included when workspace_id is default).
+    """
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    q = (
         db.query(BriefingItem)
         .filter(BriefingItem.company_id == company_id)
         .order_by(BriefingItem.created_at.desc())
-        .first()
     )
+    if workspace_id is not None:
+        from uuid import UUID
+
+        ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+        if ws_uuid == default_uuid:
+            q = q.filter(
+                (BriefingItem.workspace_id == ws_uuid)
+                | (BriefingItem.workspace_id.is_(None))
+            )
+        else:
+            q = q.filter(BriefingItem.workspace_id == ws_uuid)
+    item = q.first()
     return item.outreach_message if item and item.outreach_message else None
 
 
 def list_outreach_for_company(
-    db: Session, company_id: int
+    db: Session,
+    company_id: int,
+    workspace_id: str | None = None,
 ) -> list[OutreachHistory]:
-    """List outreach records for a company, ordered by sent_at desc."""
-    return (
+    """List outreach records for a company, ordered by sent_at desc.
+
+    When workspace_id provided (Phase 3), filters by workspace (legacy rows
+    with workspace_id=None included when workspace_id is default).
+    """
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    q = (
         db.query(OutreachHistory)
         .filter(OutreachHistory.company_id == company_id)
         .order_by(OutreachHistory.sent_at.desc())
-        .all()
     )
+    if workspace_id is not None:
+        from uuid import UUID
+
+        ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+        if ws_uuid == default_uuid:
+            q = q.filter(
+                (OutreachHistory.workspace_id == ws_uuid)
+                | (OutreachHistory.workspace_id.is_(None))
+            )
+        else:
+            q = q.filter(OutreachHistory.workspace_id == ws_uuid)
+    return q.all()
 
 
 def update_outreach_outcome(
@@ -168,19 +210,33 @@ def update_outreach_outcome(
     company_id: int,
     outreach_id: int,
     outcome: str | None,
+    workspace_id: str | None = None,
 ) -> OutreachHistory | None:
     """Update the outcome of an existing outreach record. Returns None if not found.
 
     outcome=None or empty string clears the outcome.
+    When workspace_id provided (Phase 3), restricts to records in that workspace
+    to prevent cross-tenant modification.
     """
-    record = (
-        db.query(OutreachHistory)
-        .filter(
-            OutreachHistory.id == outreach_id,
-            OutreachHistory.company_id == company_id,
-        )
-        .first()
+    q = db.query(OutreachHistory).filter(
+        OutreachHistory.id == outreach_id,
+        OutreachHistory.company_id == company_id,
     )
+    if workspace_id is not None:
+        from uuid import UUID
+
+        from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+        ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+        if ws_uuid == default_uuid:
+            q = q.filter(
+                (OutreachHistory.workspace_id == ws_uuid)
+                | (OutreachHistory.workspace_id.is_(None))
+            )
+        else:
+            q = q.filter(OutreachHistory.workspace_id == ws_uuid)
+    record = q.first()
     if record is None:
         return None
     record.outcome = outcome if outcome else None
@@ -197,17 +253,35 @@ def update_outreach_outcome(
 
 
 def delete_outreach_record(
-    db: Session, company_id: int, outreach_id: int
+    db: Session,
+    company_id: int,
+    outreach_id: int,
+    workspace_id: str | None = None,
 ) -> bool:
-    """Delete an outreach record. Returns True if deleted, False if not found."""
-    record = (
-        db.query(OutreachHistory)
-        .filter(
-            OutreachHistory.id == outreach_id,
-            OutreachHistory.company_id == company_id,
-        )
-        .first()
+    """Delete an outreach record. Returns True if deleted, False if not found.
+
+    When workspace_id provided (Phase 3), restricts to records in that workspace
+    to prevent cross-tenant modification.
+    """
+    q = db.query(OutreachHistory).filter(
+        OutreachHistory.id == outreach_id,
+        OutreachHistory.company_id == company_id,
     )
+    if workspace_id is not None:
+        from uuid import UUID
+
+        from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+        ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+        if ws_uuid == default_uuid:
+            q = q.filter(
+                (OutreachHistory.workspace_id == ws_uuid)
+                | (OutreachHistory.workspace_id.is_(None))
+            )
+        else:
+            q = q.filter(OutreachHistory.workspace_id == ws_uuid)
+    record = q.first()
     if record is None:
         return False
     ws_id = record.workspace_id

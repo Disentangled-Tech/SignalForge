@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
 
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.analysis_record import AnalysisRecord
@@ -127,6 +131,7 @@ def generate_outreach(
     db: Session,
     company: Company,
     analysis: AnalysisRecord,
+    pack: Pack | None = None,
 ) -> dict:
     """Generate a personalised outreach draft for a company.
 
@@ -157,12 +162,15 @@ def generate_outreach(
             "context (evidence, stage, notes). operator_claims_used must be []."
         )
 
-    # Phase 2: offer_type from pack manifest for domain language
+    # Phase 2/3: offer_type from pack manifest for domain language.
+    # When pack provided (e.g. from briefing with workspace context), use it.
+    # Otherwise fall back to default pack for backward compat.
     offer_type = "fractional CTO"
     try:
-        from app.services.pack_resolver import get_default_pack
+        if pack is None:
+            from app.services.pack_resolver import get_default_pack
 
-        pack = get_default_pack(db)
+            pack = get_default_pack(db)
         if pack is not None and isinstance(pack.manifest, dict):
             offer_type = pack.manifest.get("offer_type", offer_type)
     except Exception:
