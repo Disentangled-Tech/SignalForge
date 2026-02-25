@@ -11,6 +11,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -36,6 +37,7 @@ from app.models.briefing_item import BriefingItem
 from app.models.job_run import JobRun
 from app.models.signal_record import SignalRecord
 from app.models.user import User
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.schemas.company import CompanyCreate, CompanySource, CompanyUpdate
 from app.services.analysis import ALLOWED_STAGES
 from app.services.auth import authenticate_user, create_access_token
@@ -55,6 +57,7 @@ from app.services.outreach_history import (
     list_outreach_for_company,
     update_outreach_outcome,
 )
+from app.services.pack_resolver import get_default_pack_id
 from app.services.scoring import get_display_scores_for_companies
 
 logger = logging.getLogger(__name__)
@@ -66,6 +69,7 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
 # ── Auth helper ──────────────────────────────────────────────────────
+
 
 def _require_ui_auth(
     request: Request,
@@ -82,6 +86,7 @@ def _require_ui_auth(
 
 
 # ── Public routes ────────────────────────────────────────────────────
+
 
 @router.get("/", response_class=HTMLResponse)
 def index():
@@ -174,9 +179,7 @@ def companies_list(
 
     # Check if a full scan is already running (for Scan all button state)
     scan_all_running = (
-        db.query(JobRun)
-        .filter(JobRun.job_type == "scan", JobRun.status == "running")
-        .first()
+        db.query(JobRun).filter(JobRun.job_type == "scan", JobRun.status == "running").first()
         is not None
     )
     scan_all_param = request.query_params.get("scan_all")
@@ -316,6 +319,7 @@ def companies_add_submit(
 
 # ── Companies: import ────────────────────────────────────────────────
 
+
 @router.get("/companies/import", response_class=HTMLResponse)
 def companies_import_form(
     request: Request,
@@ -396,6 +400,7 @@ def companies_import_submit(
 
 # ── Companies: detail ────────────────────────────────────────────────
 
+
 @router.get("/companies/{company_id}", response_class=HTMLResponse)
 def company_detail(
     request: Request,
@@ -458,9 +463,7 @@ def company_detail(
         pack_id = get_default_pack_id(db)
         pack = resolve_pack(db, pack_id) if pack_id else None
         pain_signals = (
-            analysis.pain_signals_json
-            if isinstance(analysis.pain_signals_json, dict)
-            else {}
+            analysis.pain_signals_json if isinstance(analysis.pain_signals_json, dict) else {}
         )
         recomputed_score = calculate_score(
             pain_signals=pain_signals,
@@ -471,7 +474,7 @@ def company_detail(
         )
         # Repair: if stored score differs from recomputed, persist the correct value
         if company.cto_need_score != recomputed_score:
-            score_company(db, company_id, analysis)
+            score_company(db, company_id, analysis, pack=pack)
             company = get_company(db, company_id) or company
 
     # Query param for one-time flash: ?rescan=queued | ?rescan=running
@@ -534,14 +537,10 @@ def company_outreach_add(
     if not outreach_type.strip():
         errors.append("Outreach type is required.")
     elif outreach_type.strip() not in _OUTREACH_TYPES:
-        errors.append(
-            f"Outreach type must be one of: {', '.join(sorted(_OUTREACH_TYPES))}"
-        )
+        errors.append(f"Outreach type must be one of: {', '.join(sorted(_OUTREACH_TYPES))}")
     outcome_val = outcome.strip() or None
     if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
-        errors.append(
-            f"Outcome must be one of: {', '.join(sorted(_OUTREACH_OUTCOMES))}"
-        )
+        errors.append(f"Outcome must be one of: {', '.join(sorted(_OUTREACH_OUTCOMES))}")
 
     if errors:
         return RedirectResponse(
@@ -747,9 +746,7 @@ def company_edit_submit(
     result = update_company(db, company_id, data)
     if result is None:
         raise HTTPException(status_code=404, detail="Company not found")
-    return RedirectResponse(
-        url=f"/companies/{company_id}?success=Company+updated", status_code=303
-    )
+    return RedirectResponse(url=f"/companies/{company_id}?success=Company+updated", status_code=303)
 
 
 # ── Companies: scan all ──────────────────────────────────────────────
@@ -774,19 +771,13 @@ async def companies_scan_all(
 ):
     """Queue a full scan across all companies, then redirect back to companies list."""
     running_job = (
-        db.query(JobRun)
-        .filter(JobRun.job_type == "scan", JobRun.status == "running")
-        .first()
+        db.query(JobRun).filter(JobRun.job_type == "scan", JobRun.status == "running").first()
     )
     if running_job is not None:
-        return RedirectResponse(
-            url="/companies?scan_all=running", status_code=303
-        )
+        return RedirectResponse(url="/companies?scan_all=running", status_code=303)
 
     background_tasks.add_task(_run_scan_all_background)
-    return RedirectResponse(
-        url="/companies?scan_all=queued", status_code=303
-    )
+    return RedirectResponse(url="/companies?scan_all=queued", status_code=303)
 
 
 # ── Companies: rescan ────────────────────────────────────────────────
@@ -827,15 +818,16 @@ async def company_rescan(
         .first()
     )
     if running_job is not None:
-        return RedirectResponse(
-            url=f"/companies/{company_id}?rescan=running", status_code=302
-        )
+        return RedirectResponse(url=f"/companies/{company_id}?rescan=running", status_code=302)
 
-    # Create JobRun and queue background task
+    # Create JobRun and queue background task (pack_id, workspace_id for audit)
+    pack_id = get_default_pack_id(db)
     job = JobRun(
         job_type="company_scan",
         company_id=company_id,
         status="running",
+        pack_id=pack_id,
+        workspace_id=UUID(DEFAULT_WORKSPACE_ID),
     )
     db.add(job)
     db.commit()
@@ -843,12 +835,11 @@ async def company_rescan(
 
     background_tasks.add_task(_run_rescan_background, company_id, job.id)
 
-    return RedirectResponse(
-        url=f"/companies/{company_id}?rescan=queued", status_code=302
-    )
+    return RedirectResponse(url=f"/companies/{company_id}?rescan=queued", status_code=302)
 
 
 # ── Companies: delete ────────────────────────────────────────────────
+
 
 @router.post("/companies/{company_id}/delete")
 def company_delete(
@@ -861,4 +852,3 @@ def company_delete(
     if not deleted:
         raise HTTPException(status_code=404, detail="Company not found")
     return RedirectResponse(url="/companies", status_code=302)
-
