@@ -103,6 +103,10 @@ class TestRunScoreNightly:
         )
         assert rs is not None
         assert rs.pack_id == pack.id
+        # Issue #242: fractional_cto_v1 has recommendation_bands; explain includes band
+        assert rs.explain is not None
+        assert "recommendation_band" in rs.explain
+        assert rs.explain["recommendation_band"] in ("IGNORE", "WATCH", "HIGH_PRIORITY")
 
         es = (
             db.query(EngagementSnapshot)

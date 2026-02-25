@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import Company, ReadinessSnapshot, SignalEvent
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
 from app.services.readiness.readiness_engine import compute_readiness
+from app.services.signal_scorer import resolve_band
 
 
 def write_readiness_snapshot(
@@ -60,6 +61,11 @@ def write_readiness_snapshot(
         company_status=company_status,
         pack=pack,
     )
+
+    # Recommendation band (Issue #242): store when pack defines bands
+    band = resolve_band(result["composite"], pack)
+    if band is not None:
+        result["explain"]["recommendation_band"] = band
 
     # Delta: today.composite - prev.composite (v2-spec §6.4, Issue #104)
     prev_snapshot = (

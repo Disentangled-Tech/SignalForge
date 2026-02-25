@@ -155,6 +155,26 @@ def _validate_scoring(scoring: dict[str, Any], signal_ids: set[str]) -> None:
                     f"scoring suppressors.{key} must be non-negative number, got {val!r}"
                 )
 
+    # Optional: validate recommendation_bands when present (Issue #242)
+    bands = scoring.get("recommendation_bands")
+    if bands is not None and isinstance(bands, dict):
+        for key in ("ignore_max", "watch_max", "high_priority_min"):
+            val = bands.get(key)
+            if val is None:
+                continue
+            if not isinstance(val, (int, float)) or val < 0:
+                raise ValidationError(
+                    f"scoring recommendation_bands.{key} must be non-negative number, got {val!r}"
+                )
+        ig = bands.get("ignore_max")
+        wm = bands.get("watch_max")
+        hp = bands.get("high_priority_min")
+        if ig is not None and wm is not None and hp is not None:
+            if not (ig < wm < hp):
+                raise ValidationError(
+                    "scoring recommendation_bands must satisfy ignore_max < watch_max < high_priority_min"
+                )
+
 
 def _validate_derivers(derivers: dict[str, Any], signal_ids: set[str]) -> None:
     """Validate derivers passthrough and pattern signal_ids are in taxonomy.
