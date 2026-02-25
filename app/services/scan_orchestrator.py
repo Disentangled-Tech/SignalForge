@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +16,7 @@ from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.job_run import JobRun
 from app.services.analysis import analyze_company
+from app.services.pack_resolver import get_default_pack, get_default_pack_id
 from app.services.page_discovery import discover_pages
 from app.services.scoring import (
     _get_signal_value,
@@ -78,7 +82,9 @@ async def run_scan_company(db: Session, company_id: int) -> int:
         logger.info("Company %s has no website_url – skipping", company_id)
         return 0
 
-    logger.info("Scanning company %s (%s) – website_url=%s", company_id, company.name, company.website_url)
+    logger.info(
+        "Scanning company %s (%s) – website_url=%s", company_id, company.name, company.website_url
+    )
     pages = await discover_pages(company.website_url)
     logger.info("Company %s: discovered %d pages with content", company_id, len(pages))
     new_count = 0
@@ -115,9 +121,7 @@ def _extract_signal_values(
         return {}
     normalized = _normalize_signals(signals, known_keys)
     return {
-        k: _is_signal_true(_get_signal_value(v))
-        for k, v in normalized.items()
-        if k in known_keys
+        k: _is_signal_true(_get_signal_value(v)) for k, v in normalized.items() if k in known_keys
     }
 
 
@@ -149,17 +153,15 @@ def _analysis_changed(
 
 
 async def run_scan_company_full(
-    db: Session, company_id: int
+    db: Session,
+    company_id: int,
+    pack: Pack | None = None,
 ) -> tuple[int, AnalysisRecord | None, bool]:
     """Run scan + analysis + scoring for a single company (no JobRun).
 
     Used by run_scan_all for bulk scans. Updates company.cto_need_score
-    when analysis succeeds.
-
-    Returns
-    -------
-    tuple[int, AnalysisRecord | None, bool]
-        (new_signals_count, analysis_record or None, analysis_changed)
+    when analysis succeeds. Phase 2: Resolves pack and passes to analysis/scoring.
+    When pack is provided (e.g. from run_scan_all), avoids per-company resolution.
     """
     prev_analysis = (
         db.query(AnalysisRecord)
@@ -167,13 +169,12 @@ async def run_scan_company_full(
         .order_by(AnalysisRecord.created_at.desc())
         .first()
     )
+    effective_pack = pack if pack is not None else get_default_pack(db)
     new_count = await run_scan_company(db, company_id)
-    analysis = analyze_company(db, company_id)
+    analysis = analyze_company(db, company_id, pack=effective_pack)
     if analysis is not None:
-        score_company(db, company_id, analysis)
-    changed = (
-        _analysis_changed(prev_analysis, analysis, db) if analysis else False
-    )
+        score_company(db, company_id, analysis, pack=effective_pack)
+    changed = _analysis_changed(prev_analysis, analysis, db) if analysis else False
     return new_count, analysis, changed
 
 
@@ -209,10 +210,12 @@ async def run_scan_company_with_job(
         if job is None:
             raise ValueError(f"JobRun {job_id} not found")
     else:
+        pack_id = get_default_pack_id(db)
         job = JobRun(
             job_type="company_scan",
             company_id=company_id,
             status="running",
+            pack_id=pack_id,
         )
         db.add(job)
         db.commit()
@@ -229,10 +232,11 @@ async def run_scan_company_with_job(
         db.refresh(job)
         return job
 
+    pack = get_default_pack(db)
     try:
-        analysis = analyze_company(db, company_id)
+        analysis = analyze_company(db, company_id, pack=pack)
         if analysis is not None:
-            score_company(db, company_id, analysis)
+            score_company(db, company_id, analysis, pack=pack)
     except Exception as exc:
         logger.error("Analysis/scoring failed for company %s: %s", company_id, exc)
         job.finished_at = datetime.now(UTC)
@@ -265,11 +269,13 @@ async def run_scan_all(db: Session) -> JobRun:
     JobRun
         The completed (or failed) job-run record.
     """
-    job = JobRun(job_type="scan", status="running")
+    pack_id = get_default_pack_id(db)
+    job = JobRun(job_type="scan", status="running", pack_id=pack_id)
     db.add(job)
     db.commit()
     db.refresh(job)
 
+    pack = get_default_pack(db)
     companies = db.query(Company).all()
     companies_with_url = [c for c in companies if c.website_url]
     processed = 0
@@ -279,7 +285,7 @@ async def run_scan_all(db: Session) -> JobRun:
     if companies_with_url:
         for company in companies_with_url:
             try:
-                _, _, changed = await run_scan_company_full(db, company.id)
+                _, _, changed = await run_scan_company_full(db, company.id, pack=pack)
                 processed += 1
                 if changed:
                     changed_count += 1
@@ -310,4 +316,3 @@ async def run_scan_all(db: Session) -> JobRun:
     db.commit()
     db.refresh(job)
     return job
-

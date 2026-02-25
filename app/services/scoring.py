@@ -272,11 +272,16 @@ def get_display_scores_for_companies(db: Session, company_ids: list[int]) -> dic
     return result
 
 
-def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int:
+def score_company(
+    db: Session,
+    company_id: int,
+    analysis: AnalysisRecord,
+    pack: Pack | None = None,
+) -> int:
     """Score a company from its latest analysis and persist the result.
 
     1. Loads optional custom weights from AppSettings.
-    2. Resolves active pack when available (Issue #189, Plan Step 1.5).
+    2. Uses pack when provided; otherwise resolves from db (Issue #189, Plan Step 2.3).
     3. Computes the deterministic score.
     4. Updates ``company.cto_need_score`` and ``company.current_stage``.
     5. Commits and returns the score.
@@ -284,8 +289,9 @@ def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int
     from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
     custom_weights = get_custom_weights(db)
-    pack_id = get_default_pack_id(db)
-    pack = resolve_pack(db, pack_id) if pack_id else None
+    effective_pack = pack if pack is not None else (
+        resolve_pack(db, pid) if (pid := get_default_pack_id(db)) else None
+    )
     pain_signals = (
         analysis.pain_signals_json if isinstance(analysis.pain_signals_json, dict) else {}
     )
@@ -293,7 +299,7 @@ def score_company(db: Session, company_id: int, analysis: AnalysisRecord) -> int
         pain_signals=pain_signals,
         stage=analysis.stage or "",
         custom_weights=custom_weights,
-        pack=pack,
+        pack=effective_pack,
         db=db,
     )
 

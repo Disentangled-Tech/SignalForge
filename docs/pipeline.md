@@ -33,6 +33,21 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 - **Validation**: Invalid UUIDs for `workspace_id` or `pack_id` return **422 Unprocessable Entity**.
 - **Pack resolution**: Same as run_score/run_derive. Writes only to `(workspace_id, pack_id, entity_id)`; no cross-tenant leakage.
 
+## Scan vs Ingest/Derive/Score
+
+Two pipelines feed the fractional CTO use case; they use different data models and entry points.
+
+| Pipeline | Entry | Data model | Output |
+|----------|-------|------------|--------|
+| **Scan** | `POST /internal/run_scan` or Companies page "Scan all" | Web scraping → `SignalRecord` (HTML-derived) | `AnalysisRecord` → `company.cto_need_score` via `score_company` |
+| **Ingest → Derive → Score** | `POST /internal/run_ingest`, `run_derive`, `run_score` | Events → `SignalEvent` → `SignalInstance` (event-derived) | `ReadinessSnapshot` + `EngagementSnapshot` |
+
+**Relationship**
+
+- **Scan**: For companies with `website_url`. Discovers pages, extracts text, stores `SignalRecord`. Runs LLM analysis (stage, pain signals) and deterministic scoring. Updates `company.cto_need_score` and `company.current_stage`. Pack is resolved via `get_default_pack(db)` and passed to `analyze_company` / `score_company`.
+- **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via pack derivers, computes TRS + ESL, writes snapshots. Pack-scoped; workspace-scoped when multi-tenant.
+- **Briefing**: Uses both. `select_top_companies` (legacy) and `get_emerging_companies` (pack) can surface companies. Pack path reads from `lead_feed` when populated, else join of ReadinessSnapshot + EngagementSnapshot.
+
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 
 When `lead_feed` has rows for workspace/pack/as_of, the briefing page and weekly review

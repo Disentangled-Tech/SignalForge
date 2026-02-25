@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -31,16 +32,16 @@ def _mock_db(*companies: Company):
     def _query_filter(model):
         chain = MagicMock()
         if model is Company:
+
             def _filter_first(*a, **kw):
                 inner = MagicMock()
                 inner.first.return_value = companies[0] if companies else None
                 return inner
+
             chain.filter = _filter_first
         return chain
 
-    db.query.side_effect = lambda m: (
-        _query_filter(m) if m is Company else db.query.return_value
-    )
+    db.query.side_effect = lambda m: _query_filter(m) if m is Company else db.query.return_value
     return db
 
 
@@ -137,9 +138,7 @@ class TestRunScanCompanyFull:
 
         db = MagicMock()
         # No prior analysis (for change detection)
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            None
-        )
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
         mock_scan.return_value = 2
         analysis = MagicMock()
         mock_analyze.return_value = analysis
@@ -150,8 +149,8 @@ class TestRunScanCompanyFull:
         assert result_analysis is analysis
         assert changed is False  # no prev analysis
         mock_scan.assert_awaited_once_with(db, 1)
-        mock_analyze.assert_called_once_with(db, 1)
-        mock_score.assert_called_once_with(db, 1, analysis)
+        mock_analyze.assert_called_once_with(db, 1, pack=ANY)
+        mock_score.assert_called_once_with(db, 1, analysis, pack=ANY)
 
 
 # ── run_scan_company tests ───────────────────────────────────────────
@@ -320,6 +319,26 @@ class TestRunScanAll:
         assert job.finished_at is not None
         mock_scan_full.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_sets_pack_id_when_available(self, mock_scan_full, mock_get_pack_id):
+        """Phase 3: JobRun gets pack_id for audit when default pack is in DB."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        pack_uuid = uuid4()
+        mock_get_pack_id.return_value = pack_uuid
+
+        c1 = _company(1, "WithURL", website_url="https://example.com")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1]
+        mock_scan_full.return_value = (2, MagicMock(), False)
+
+        job = await run_scan_all(db)
+
+        assert job.pack_id == pack_uuid
+        mock_get_pack_id.assert_called_once_with(db)
+
 
 # ── run_scan_company_with_job tests ───────────────────────────────────
 
@@ -329,9 +348,7 @@ class TestRunScanCompanyWithJob:
     @patch("app.services.scan_orchestrator.score_company")
     @patch("app.services.scan_orchestrator.analyze_company")
     @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
-    async def test_creates_job_run_and_completes(
-        self, mock_scan, mock_analyze, mock_score
-    ):
+    async def test_creates_job_run_and_completes(self, mock_scan, mock_analyze, mock_score):
         """run_scan_company_with_job creates JobRun and completes successfully."""
         from app.services.scan_orchestrator import run_scan_company_with_job
 
@@ -347,7 +364,7 @@ class TestRunScanCompanyWithJob:
         assert job.finished_at is not None
         db.add.assert_called_once()
         mock_scan.assert_awaited_once_with(db, 1)
-        mock_analyze.assert_called_once_with(db, 1)
+        mock_analyze.assert_called_once_with(db, 1, pack=ANY)
         mock_score.assert_called_once()
 
     @pytest.mark.asyncio
@@ -381,7 +398,11 @@ class TestRunScanCompanyWithJob:
         existing_job.status = "running"
         existing_job.finished_at = None
         existing_job.error_message = None
-        db.query.return_value.filter.return_value.first.return_value = existing_job
+        # JobRun lookup first, then get_default_pack (SignalPack query returns None)
+        db.query.return_value.filter.return_value.first.side_effect = [
+            existing_job,
+            None,  # get_default_pack_id returns None → load_pack from filesystem
+        ]
 
         mock_scan.return_value = 1
         mock_analyze.return_value = MagicMock()
@@ -392,3 +413,29 @@ class TestRunScanCompanyWithJob:
         assert job.status == "completed"
         db.add.assert_not_called()
         db.query.return_value.filter.assert_called()
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_creates_job_run_with_pack_id_when_available(
+        self, mock_scan, mock_analyze, mock_score, mock_get_pack_id
+    ):
+        """Phase 3: JobRun gets pack_id for audit when default pack is in DB."""
+        from app.services.scan_orchestrator import run_scan_company_with_job
+
+        pack_uuid = uuid4()
+        mock_get_pack_id.return_value = pack_uuid
+
+        db = MagicMock()
+        mock_scan.return_value = 2
+        mock_analyze.return_value = MagicMock()
+
+        job = await run_scan_company_with_job(db, 1)
+
+        assert job.status == "completed"
+        db.add.assert_called_once()
+        added_job = db.add.call_args[0][0]
+        assert added_job.pack_id == pack_uuid
+        mock_get_pack_id.assert_called_once_with(db)

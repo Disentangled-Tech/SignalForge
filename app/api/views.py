@@ -471,7 +471,7 @@ def company_detail(
         )
         # Repair: if stored score differs from recomputed, persist the correct value
         if company.cto_need_score != recomputed_score:
-            score_company(db, company_id, analysis)
+            score_company(db, company_id, analysis, pack=pack)
             company = get_company(db, company_id) or company
 
     # Query param for one-time flash: ?rescan=queued | ?rescan=running
