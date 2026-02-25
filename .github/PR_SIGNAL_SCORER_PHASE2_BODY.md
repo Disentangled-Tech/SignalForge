@@ -69,6 +69,9 @@ Implements Phases 2 and 3 of the SignalScorer v0 plan: adds recommendation bands
 - **`tests/test_score_nightly.py`**: Assertion that `rs.explain["recommendation_band"]` in ("IGNORE", "WATCH", "HIGH_PRIORITY")
 - **`tests/test_briefing_api.py`**: `test_briefing_json_includes_recommendation_band`
 - **`tests/test_briefing_views.py`**: `test_emerging_section_shows_recommendation_band_when_pack_defines`
+- **`tests/test_score_resolver.py`**: `get_company_score_with_band`, `get_company_scores_and_bands_batch` unit tests
+- **`tests/test_scoring.py`**: `TestGetDisplayScoresWithBands` for `get_display_scores_with_bands`
+- **`tests/test_lead_feed.py`**: `test_upsert_lead_feed_row_stores_recommendation_band`, `test_build_populates_recommendation_band_from_snapshot_explain`
 
 ## Out of scope (split to separate PR if desired)
 

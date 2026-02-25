@@ -549,7 +549,7 @@ class TestImportCompanies:
 
 
 class TestCompanyDetail:
-    @patch("app.api.views.get_company_score_with_band", return_value=(75, None))
+    @patch("app.services.score_resolver.get_company_score_with_band", return_value=(75, None))
     @patch("app.api.views.get_company")
     def test_detail_renders(self, mock_get, mock_get_score, views_client, mock_db_session):
         """GET /companies/1 renders company info."""
@@ -573,7 +573,7 @@ class TestCompanyDetail:
         assert "Acme Corp" in resp.text
         assert "75" in resp.text  # score
 
-    @patch("app.api.views.get_company_score_with_band", return_value=(80, "HIGH_PRIORITY"))
+    @patch("app.services.score_resolver.get_company_score_with_band", return_value=(80, "HIGH_PRIORITY"))
     @patch("app.api.views.get_company")
     def test_detail_shows_band_when_pack_defines(
         self, mock_get, mock_get_score, views_client, mock_db_session

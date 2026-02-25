@@ -12,6 +12,7 @@ See [pipeline.md](pipeline.md) for the high-level adapter table and pipeline flo
 |---------|----------|-------------|-------|
 | **Crunchbase** | `CRUNCHBASE_API_KEY`, `INGEST_CRUNCHBASE_ENABLED=1` | funding_raised | Requires Crunchbase API license |
 | **Product Hunt** | `PRODUCTHUNT_API_TOKEN`, `INGEST_PRODUCTHUNT_ENABLED=1` | launch_major | Implemented; rate limits apply; retry on 429/5xx |
+| **NewsAPI** | `NEWSAPI_API_KEY`, `INGEST_NEWSAPI_ENABLED=1` | funding_raised | Keyword-based queries. 100 req/day free tier. See [NewsAPI](#newsapi). |
 | **TestAdapter** | `INGEST_USE_TEST_ADAPTER=1` | funding_raised, job_posted_engineering, cto_role_posted | Tests only; when set, only TestAdapter is used |
 
 When `INGEST_USE_TEST_ADAPTER=1`, only TestAdapter is returned. Otherwise, adapters are built from env: each adapter is included when its enable flag is set and its API key/token is present.
@@ -95,6 +96,43 @@ When `PRODUCTHUNT_API_TOKEN` is unset or empty, the adapter returns `[]` and log
 Product launches map to `RawEvent` with:
 - `event_type_candidate`: `launch_major`
 - `raw_payload`: includes `votesCount`, `commentsCount`, `makers` (list of `{name}`) when available from the API.
+
+---
+
+## NewsAPI {#newsapi}
+
+### API Key Acquisition
+
+The NewsAPI adapter uses the [NewsAPI.org](https://newsapi.org/) Everything endpoint. To obtain a key:
+
+1. Sign up at [newsapi.org/register](https://newsapi.org/register).
+2. Use the API key from your account dashboard.
+3. Free tier: 100 requests/day.
+
+### Configuration
+
+```bash
+export NEWSAPI_API_KEY=your-api-key
+export INGEST_NEWSAPI_ENABLED=1
+```
+
+Optional: customize search keywords via `INGEST_NEWSAPI_KEYWORDS` (comma-separated) or `INGEST_NEWSAPI_KEYWORDS_JSON` (JSON array).
+
+When `NEWSAPI_API_KEY` is unset or empty, the adapter returns `[]` and logs at debug. No exception is raised.
+
+### Rate Limits
+
+- Free tier: 100 requests/day.
+- Paid plans available for higher limits.
+
+### Event Mapping
+
+Funding-related articles are mapped to `RawEvent` with:
+
+- `event_type_candidate`: `funding_raised`
+- `company_name` extracted from title/description heuristics
+- `event_time` from article `publishedAt`
+- `url`: article URL
 
 ---
 
