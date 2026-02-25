@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -36,6 +37,11 @@ query Posts($postedAfter: DateTime!, $first: Int!, $after: String) {
         url
         website
         createdAt
+        votesCount
+        commentsCount
+        makers {
+          name
+        }
       }
       cursor
     }
@@ -87,6 +93,20 @@ def _parse_created_at(value: Any) -> datetime:
         return datetime.now(UTC)
 
 
+def _extract_makers(node: dict) -> list[dict[str, str]]:
+    """Extract makers as list of {name: str} from post node. Omit if malformed."""
+    makers_raw = node.get("makers")
+    if not isinstance(makers_raw, list):
+        return []
+    result: list[dict[str, str]] = []
+    for m in makers_raw:
+        if isinstance(m, dict) and "name" in m:
+            name_val = m.get("name")
+            if name_val is not None:
+                result.append({"name": str(name_val)})
+    return result
+
+
 def _post_node_to_raw_event(node: dict) -> RawEvent | None:
     """Map a Product Hunt post node to RawEvent."""
     post_id = node.get("id")
@@ -106,6 +126,15 @@ def _post_node_to_raw_event(node: dict) -> RawEvent | None:
 
     domain = _domain_from_url(website_url)
 
+    raw_payload: dict[str, Any] = {"tagline": tagline}
+    if "votesCount" in node:
+        raw_payload["votesCount"] = node["votesCount"]
+    if "commentsCount" in node:
+        raw_payload["commentsCount"] = node["commentsCount"]
+    makers = _extract_makers(node)
+    if makers:
+        raw_payload["makers"] = makers
+
     return RawEvent(
         company_name=name or "Unknown",
         domain=domain,
@@ -117,8 +146,17 @@ def _post_node_to_raw_event(node: dict) -> RawEvent | None:
         summary=tagline,
         url=url,
         source_event_id=source_event_id,
-        raw_payload={"votesCount": node.get("votesCount"), "tagline": tagline},
+        raw_payload=raw_payload,
     )
+
+
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_SECS = (1, 2, 4)
+
+
+def _should_retry(status_code: int) -> bool:
+    """Return True if status code warrants retry (429 or 5xx)."""
+    return status_code == 429 or (500 <= status_code < 600)
 
 
 def _fetch_page(
@@ -127,7 +165,7 @@ def _fetch_page(
     posted_after: str,
     after_cursor: str | None = None,
 ) -> tuple[list[dict], bool, str | None]:
-    """Fetch one page of posts. Returns (nodes, has_next, end_cursor)."""
+    """Fetch one page of posts with retry on 429/5xx. Returns (nodes, has_next, end_cursor)."""
     variables: dict[str, Any] = {
         "postedAfter": posted_after,
         "first": _DEFAULT_PAGE_SIZE,
@@ -142,17 +180,41 @@ def _fetch_page(
         "Authorization": f"Bearer {token}",
     }
 
-    response = client.post(
-        _PRODUCTHUNT_GRAPHQL_URL,
-        json=payload,
-        headers=headers,
-        timeout=30.0,
-    )
+    last_response: httpx.Response | None = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        response = client.post(
+            _PRODUCTHUNT_GRAPHQL_URL,
+            json=payload,
+            headers=headers,
+            timeout=30.0,
+        )
+        last_response = response
 
-    if response.status_code != 200:
+        if response.status_code == 200:
+            break
+
+        if _should_retry(response.status_code) and attempt < _RETRY_ATTEMPTS - 1:
+            delay = _RETRY_BACKOFF_SECS[attempt]
+            logger.warning(
+                "Product Hunt API %s (attempt %d/%d) – retrying in %ds",
+                response.status_code,
+                attempt + 1,
+                _RETRY_ATTEMPTS,
+                delay,
+            )
+            time.sleep(delay)
+        else:
+            if response.status_code != 200:
+                logger.warning(
+                    "Product Hunt API returned %s – stopping",
+                    response.status_code,
+                )
+            return [], False, None
+
+    if last_response is None or last_response.status_code != 200:
         return [], False, None
 
-    data = response.json()
+    data = last_response.json()
     if "errors" in data and data["errors"]:
         logger.warning("Product Hunt GraphQL errors: %s", data["errors"][:3])
         return [], False, None

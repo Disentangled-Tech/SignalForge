@@ -1,4 +1,4 @@
-"""Tests for Product Hunt ingestion adapter (Phase 3, Issue #210)."""
+"""Tests for Product Hunt ingestion adapter (Phase 3, Issue #210; Phase 1, Issue #243)."""
 
 from __future__ import annotations
 
@@ -17,9 +17,12 @@ def _make_post_node(
     website: str = "https://acme.com",
     url: str = "https://www.producthunt.com/posts/acme",
     created_at: str = "2026-02-20T10:00:00Z",
+    votes_count: int | None = None,
+    comments_count: int | None = None,
+    makers: list[dict] | None = None,
 ) -> dict:
     """Build a single Product Hunt post node as returned by GraphQL API."""
-    return {
+    node: dict = {
         "id": post_id,
         "name": name,
         "tagline": tagline,
@@ -27,6 +30,13 @@ def _make_post_node(
         "url": url,
         "createdAt": created_at,
     }
+    if votes_count is not None:
+        node["votesCount"] = votes_count
+    if comments_count is not None:
+        node["commentsCount"] = comments_count
+    if makers is not None:
+        node["makers"] = makers
+    return node
 
 
 def _make_graphql_response(edges: list[dict]) -> dict:
@@ -122,9 +132,12 @@ class TestProductHuntAdapterRateLimit:
     """Tests for rate limit / non-200 handling."""
 
     @patch.dict("os.environ", {"PRODUCTHUNT_API_TOKEN": "test-token"}, clear=False)
+    @patch("app.ingestion.adapters.producthunt_adapter.time.sleep")
     @patch("app.ingestion.adapters.producthunt_adapter.httpx")
-    def test_producthunt_adapter_handles_rate_limit(self, mock_httpx: MagicMock) -> None:
-        """429 or non-200 response -> returns [] without raising."""
+    def test_producthunt_adapter_handles_rate_limit(
+        self, mock_httpx: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        """429 or non-200 response -> returns [] without raising (after retries exhausted)."""
         mock_response = MagicMock()
         mock_response.status_code = 429
         mock_client = MagicMock()
@@ -138,6 +151,119 @@ class TestProductHuntAdapterRateLimit:
 
         assert isinstance(events, list)
         assert len(events) == 0
+
+
+class TestProductHuntRawPayloadMetadata:
+    """Tests for raw_payload including votesCount, commentsCount, makers (Issue #243)."""
+
+    @patch.dict("os.environ", {"PRODUCTHUNT_API_TOKEN": "test-token"}, clear=False)
+    @patch("app.ingestion.adapters.producthunt_adapter.httpx")
+    def test_producthunt_raw_payload_includes_votes_comments_makers(
+        self, mock_httpx: MagicMock
+    ) -> None:
+        """raw_payload contains votesCount, commentsCount, makers when API returns them."""
+        node = _make_post_node(
+            votes_count=42,
+            comments_count=7,
+            makers=[{"name": "Alice"}, {"name": "Bob"}],
+        )
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = _make_graphql_response([node])
+        mock_client = MagicMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_httpx.Client.return_value = mock_client
+
+        adapter = ProductHuntAdapter()
+        events = adapter.fetch_events(since=datetime(2026, 2, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        raw = events[0]
+        assert raw.raw_payload is not None
+        assert raw.raw_payload.get("votesCount") == 42
+        assert raw.raw_payload.get("commentsCount") == 7
+        makers = raw.raw_payload.get("makers")
+        assert makers == [{"name": "Alice"}, {"name": "Bob"}]
+
+
+class TestProductHuntRetry:
+    """Tests for retry on 429/5xx (Issue #243)."""
+
+    @patch.dict("os.environ", {"PRODUCTHUNT_API_TOKEN": "test-token"}, clear=False)
+    @patch("app.ingestion.adapters.producthunt_adapter.time.sleep")
+    @patch("app.ingestion.adapters.producthunt_adapter.httpx")
+    def test_producthunt_retries_on_429_then_succeeds(
+        self, mock_httpx: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        """429 -> 429 -> 200: retries then returns events."""
+        node = _make_post_node()
+        success_response = MagicMock()
+        success_response.status_code = 200
+        success_response.json.return_value = _make_graphql_response([node])
+        rate_limit_response = MagicMock()
+        rate_limit_response.status_code = 429
+
+        mock_client = MagicMock()
+        mock_client.post.side_effect = [
+            rate_limit_response,
+            rate_limit_response,
+            success_response,
+        ]
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_httpx.Client.return_value = mock_client
+
+        adapter = ProductHuntAdapter()
+        events = adapter.fetch_events(since=datetime(2026, 2, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert mock_client.post.call_count == 3
+
+    @patch.dict("os.environ", {"PRODUCTHUNT_API_TOKEN": "test-token"}, clear=False)
+    @patch("app.ingestion.adapters.producthunt_adapter.time.sleep")
+    @patch("app.ingestion.adapters.producthunt_adapter.httpx")
+    def test_producthunt_retries_exhausted_returns_empty(
+        self, mock_httpx: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        """429 three times -> returns [] without raising."""
+        rate_limit_response = MagicMock()
+        rate_limit_response.status_code = 429
+
+        mock_client = MagicMock()
+        mock_client.post.return_value = rate_limit_response
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_httpx.Client.return_value = mock_client
+
+        adapter = ProductHuntAdapter()
+        events = adapter.fetch_events(since=datetime(2026, 2, 1, tzinfo=UTC))
+
+        assert events == []
+        assert mock_client.post.call_count == 3
+
+    @patch.dict("os.environ", {"PRODUCTHUNT_API_TOKEN": "test-token"}, clear=False)
+    @patch("app.ingestion.adapters.producthunt_adapter.time.sleep")
+    @patch("app.ingestion.adapters.producthunt_adapter.httpx")
+    def test_producthunt_api_failure_does_not_crash(
+        self, mock_httpx: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        """500 response -> returns [] without raising."""
+        server_error_response = MagicMock()
+        server_error_response.status_code = 500
+
+        mock_client = MagicMock()
+        mock_client.post.return_value = server_error_response
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_httpx.Client.return_value = mock_client
+
+        adapter = ProductHuntAdapter()
+        events = adapter.fetch_events(since=datetime(2026, 2, 1, tzinfo=UTC))
+
+        assert events == []
+        assert mock_client.post.call_count == 3
 
 
 class TestProductHuntAdapterRespectsSince:
