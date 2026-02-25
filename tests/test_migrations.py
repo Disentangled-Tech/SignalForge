@@ -88,6 +88,35 @@ def test_alembic_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
     assert "outreach_history" in tables
 
 
+def test_migration_20260226_up_down(_ensure_migrations: None) -> None:
+    """Migration 20260226_issue_240: upgrade and downgrade succeed (Phase 4, Issue #240)."""
+    result = _run_alembic_env("current")
+    out = result.stdout or ""
+    if "20260226_issue_240" not in out and "(head)" not in out:
+        _run_alembic_env("upgrade", "head", timeout=60)
+
+    result = _run_alembic_env("downgrade", "20260225_analysis_pack_id", timeout=60)
+    assert result.returncode == 0, f"downgrade failed: {result.stderr}"
+
+    result = _run_alembic_env("upgrade", "20260226_issue_240", timeout=60)
+    assert result.returncode == 0, f"upgrade to 20260226 failed: {result.stderr}"
+
+    result = _run_alembic_env("upgrade", "head", timeout=60)
+    assert result.returncode == 0, f"upgrade to head failed: {result.stderr}"
+
+
+def test_migration_20260228_up_down(_ensure_migrations: None) -> None:
+    """Migration 20260228_analysis_pack_idx: upgrade and downgrade succeed."""
+    result = _run_alembic_env("downgrade", "20260227_user_workspaces", timeout=60)
+    assert result.returncode == 0, f"downgrade failed: {result.stderr}"
+
+    result = _run_alembic_env("upgrade", "20260228_analysis_pack_idx", timeout=60)
+    assert result.returncode == 0, f"upgrade to 20260228 failed: {result.stderr}"
+
+    result = _run_alembic_env("upgrade", "head", timeout=60)
+    assert result.returncode == 0, f"upgrade to head failed: {result.stderr}"
+
+
 @pytest.mark.integration
 def test_config_checksum_migration_fails_when_pack_missing(_ensure_migrations: None) -> None:
     """Migration 20260224 fails when fractional_cto_v1 pack cannot be loaded (Option B).

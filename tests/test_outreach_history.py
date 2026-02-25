@@ -416,6 +416,15 @@ def test_update_outreach_outcome_workspace_isolated(db: Session):
     db.refresh(record_default)
     assert record_default.outcome is None
 
+    # Regression: when defaulting to DEFAULT_WORKSPACE_ID (missing workspace_id in request),
+    # cannot update record in other workspace — prevents cross-tenant modify
+    result = update_outreach_outcome(
+        db, company.id, record_other.id, "declined", workspace_id=DEFAULT_WORKSPACE_ID
+    )
+    assert result is None
+    db.refresh(record_other)
+    assert record_other.outcome == "replied"  # unchanged; we could not cross-tenant update
+
 
 def test_delete_outreach_record_workspace_isolated(db: Session):
     """delete_outreach_record with workspace_id restricts to records in that workspace."""
@@ -457,6 +466,13 @@ def test_delete_outreach_record_workspace_isolated(db: Session):
         notes=None,
         workspace_id=other_ws,
     )
+
+    # Regression: when defaulting to DEFAULT_WORKSPACE_ID (missing workspace_id in request),
+    # cannot delete record in other workspace — prevents cross-tenant delete
+    deleted = delete_outreach_record(
+        db, company.id, record_other.id, workspace_id=DEFAULT_WORKSPACE_ID
+    )
+    assert deleted is False
 
     # Delete with other workspace: only record_other should be deleted
     deleted = delete_outreach_record(

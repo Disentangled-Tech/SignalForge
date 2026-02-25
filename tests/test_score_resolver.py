@@ -177,3 +177,43 @@ def test_get_company_scores_batch_prefers_snapshot_over_cto_need(db: Session) ->
 
     result = get_company_scores_batch(db, [company.id])
     assert result == {company.id: 82}
+
+
+def test_get_company_score_uses_workspace_pack(
+    db: Session, fractional_cto_pack_id
+) -> None:
+    """Phase 3: get_company_score with workspace_id resolves pack from workspace."""
+    from uuid import uuid4
+
+    from app.models import Workspace
+
+    other_ws_id = uuid4()
+    ws = Workspace(
+        id=other_ws_id,
+        name="Other Workspace",
+        active_pack_id=fractional_cto_pack_id,
+    )
+    db.add(ws)
+    db.commit()
+
+    company = Company(name="Workspace Score Co", website_url="https://ws.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=date.today(),
+        momentum=30,
+        complexity=25,
+        pressure=20,
+        leadership_gap=10,
+        composite=88,
+        pack_id=fractional_cto_pack_id,
+        computed_at=datetime.now(UTC),
+    )
+    db.add(snapshot)
+    db.commit()
+
+    score = get_company_score(db, company.id, workspace_id=str(other_ws_id))
+    assert score == 88

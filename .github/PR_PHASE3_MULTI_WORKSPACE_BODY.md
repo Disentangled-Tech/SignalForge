@@ -19,18 +19,52 @@ Implements Phase 3 (Pack Activation Runtime) of the company signal data models p
 
 ### Views (`app/api/views.py`)
 - **`_resolve_workspace_id(request)`**: Resolves `workspace_id` from `request.query_params` or `request.state` when `multi_workspace_enabled`; validates with `validate_uuid_param_or_422`
-- **`company_detail`**: Uses `_resolve_workspace_id`, passes `workspace_id` to `list_outreach_for_company`, `get_draft_for_company`, `get_company_score`; passes `workspace_id` to template context
-- **`company_outreach_add`**: Resolves `workspace_id`, passes to `create_outreach_record`; preserves `workspace_id` in redirect URLs
-- **`company_outreach_edit`**: Resolves `workspace_id`, passes to `update_outreach_outcome`; preserves in redirects
-- **`company_outreach_delete`**: Resolves `workspace_id`, passes to `delete_outreach_record`; preserves in redirects
+- **`_require_workspace_access(db, user, workspace_id)`**: Enforces workspace membership via `user_workspaces`; raises 403 when user lacks access (Phase 3)
+- **`company_detail`**: Uses `_resolve_workspace_id`, `_require_workspace_access`; passes `workspace_id` to `list_outreach_for_company`, `get_draft_for_company`, `get_company_score`; scopes `analysis` and `briefing` by pack/workspace; passes `workspace_id` to template context
+- **`companies_list`**: Resolves `workspace_id`, enforces access; passes to `list_companies` and `get_display_scores_for_companies`; adds `workspace_id` to template and links
+- **`company_outreach_add`**: Resolves `workspace_id`; when `multi_workspace_enabled` and missing, defaults to `DEFAULT_WORKSPACE_ID` (prevents cross-tenant). Enforces access; passes to `create_outreach_record`; preserves `workspace_id` in redirect URLs
+- **`company_outreach_edit`**: Same default; enforces access; passes to `update_outreach_outcome`; preserves in redirects
+- **`company_outreach_delete`**: Same default; enforces access; passes to `delete_outreach_record`; preserves in redirects
 - **`_company_redirect_url(company_id, params)`**: Builds redirect URLs with optional query params
+
+### Outreach (`app/services/outreach.py`)
+- **`generate_outreach`**: Preserves backward compat: `offer_type` fallback remains "fractional CTO" when pack unavailable (not "consultant")
+
+### Score resolver (`app/services/score_resolver.py`)
+- **`get_company_score`**, **`get_company_scores_batch`**: When `workspace_id` provided, resolve pack via `get_pack_for_workspace` (Phase 3); company detail and list now show correct pack-scoped scores for non-default workspaces
+
+### Companies list (`app/templates/companies/list.html`)
+- Company links and sort/pagination URLs include `?workspace_id=` when multi-workspace enabled
 
 ### Template (`app/templates/companies/detail.html`)
 - Edit link, rescan form, outreach add form, outreach edit form, and outreach delete form append `?workspace_id={{ workspace_id }}` when `workspace_id` is present (multi-workspace mode)
 
-### Tests (`tests/test_outreach_history.py`)
-- **`test_update_outreach_outcome_workspace_isolated`**: Verifies `update_outreach_outcome` with `workspace_id` only updates records in that workspace
-- **`test_delete_outreach_record_workspace_isolated`**: Verifies `delete_outreach_record` with `workspace_id` only deletes records in that workspace
+### Migrations
+- **`20260227_add_user_workspaces.py`**: Creates `user_workspaces` (user_id, workspace_id); backfills all existing users into default workspace
+- **`20260226_issue_240_schema_validation.py`**: No-op migration documenting schema alignment (Phase 4, Issue #240)
+- **`20260228_add_analysis_records_pack_index.py`**: Index `ix_analysis_records_company_pack_created` on `(company_id, pack_id, created_at DESC)` for pack-scoped analysis queries
+
+### Projection builder (`app/services/lead_feed/projection_builder.py`)
+- **`refresh_outreach_summary_for_entity`**: When `MULTI_WORKSPACE_ENABLED=true`, requires `workspace_id` (raises `ValueError` if missing) to avoid cross-tenant data mixing
+
+### Outreach history (`app/services/outreach_history.py`) — follow-up
+- **`update_outreach_outcome`**, **`delete_outreach_record`**: Pass `record.workspace_id or DEFAULT_WORKSPACE_ID` to `refresh_outreach_summary_for_entity` for legacy rows with `workspace_id IS NULL`
+
+### Tests
+- **`tests/test_outreach_history.py`**: `test_update_outreach_outcome_workspace_isolated`, `test_delete_outreach_record_workspace_isolated`
+- **`tests/test_score_resolver.py`**: `test_get_company_score_uses_workspace_pack` — verifies `get_company_score` with `workspace_id` resolves pack from workspace
+- **`tests/test_views.py`**: `test_forged_workspace_id_returns_403` — verifies 403 when user lacks workspace access
+- **`tests/test_lead_feed.py`**: `test_refresh_outreach_summary_requires_workspace_id_when_multi_workspace` — verifies `ValueError` when `workspace_id` missing when multi-workspace enabled
+- **`tests/test_event_storage.py`**: `test_duplicate_signal_event_insert` — app-level dedup and DB constraint for duplicate events
+- **`tests/test_migrations.py`**: `test_migration_20260226_up_down`, `test_migration_20260228_up_down` — migration upgrade/downgrade
+
+### Config (`pyproject.toml`)
+- `addopts = "-p no:xdist"` — run integration tests serially to reduce deadlocks
+
+## Code review fixes (cross-tenant protection)
+
+- **workspace_id default**: When `multi_workspace_enabled` and request has no `workspace_id` (e.g. direct POST without query params), views now default to `DEFAULT_WORKSPACE_ID` instead of passing `None`. Prevents cross-tenant modify/delete when workspace_id is missing.
+- **offer_type fallback**: Restored "fractional CTO" as fallback when pack unavailable (preserves backward compat for fractional CTO flow).
 
 ## Verification
 

@@ -228,9 +228,16 @@ def refresh_outreach_summary_for_entity(
     When workspace_id is provided, updates only lead_feed rows for that workspace
     using workspace-scoped outreach. When None (legacy), updates all rows for entity.
 
-    TODO(multi-workspace): When MULTI_WORKSPACE_ENABLED=true, require workspace_id
-    and add assertion; passing None would mix outreach data across tenants.
+    When MULTI_WORKSPACE_ENABLED=true, workspace_id is required to avoid cross-tenant
+    data mixing.
     """
+    from app.config import get_settings
+
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        raise ValueError(
+            "workspace_id is required when MULTI_WORKSPACE_ENABLED=true "
+            "to avoid cross-tenant outreach data mixing"
+        )
     outreach_by = _batch_outreach_summary_for_entities(
         db, [entity_id], workspace_id=workspace_id
     )

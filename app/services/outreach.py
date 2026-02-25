@@ -162,9 +162,9 @@ def generate_outreach(
             "context (evidence, stage, notes). operator_claims_used must be []."
         )
 
-    # Phase 2/3: offer_type from pack manifest for domain language.
+    # Phase 2: offer_type from pack manifest for domain language.
     # When pack provided (e.g. from briefing with workspace context), use it.
-    # Otherwise fall back to default pack for backward compat.
+    # Fallback "fractional CTO" preserves backward compat when pack unavailable.
     offer_type = "fractional CTO"
     try:
         if pack is None:

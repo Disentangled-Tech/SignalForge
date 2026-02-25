@@ -18,10 +18,11 @@
     <form method="GET" action="/companies" style="display: flex; gap: 0.75rem; align-items: center;">
         <input type="hidden" name="sort_by" value="{{ sort_by or 'score' }}">
         <input type="hidden" name="order" value="{{ sort_order or 'desc' }}">
+        {% if workspace_id %}<input type="hidden" name="workspace_id" value="{{ workspace_id }}">{% endif %}
         <input type="text" name="search" value="{{ search or '' }}" placeholder="Search companies…" style="flex: 1;">
         <button type="submit" class="btn btn-secondary">Search</button>
         {% if search %}
-        <a href="/companies?sort_by={{ sort_by or 'score' }}&order={{ sort_order or 'desc' }}" class="btn btn-secondary">Clear</a>
+        <a href="/companies?sort_by={{ sort_by or 'score' }}&order={{ sort_order or 'desc' }}{% if workspace_id %}&workspace_id={{ workspace_id }}{% endif %}" class="btn btn-secondary">Clear</a>
         {% endif %}
     </form>
 </div>
@@ -30,20 +31,19 @@
     <span>Sort by:</span>
     {% set current_sort = sort_by or 'score' %}
     {% set current_order = sort_order or 'desc' %}
-    {% set search_qs = 'search=' ~ search if search else '' %}
-    {% set qs_sep = '&' if search_qs else '' %}
+    {% set extra_qs = ('&search=' ~ search if search else '') ~ ('&workspace_id=' ~ workspace_id if workspace_id else '') %}
     {# Score: toggle asc/desc when on score; else default desc #}
     {% set score_order = 'asc' if (current_sort == 'score' and current_order == 'desc') else 'desc' %}
-    {% set score_url = '/companies?sort_by=score&order=' ~ score_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {% set score_url = '/companies?sort_by=score&order=' ~ score_order ~ extra_qs %}
     {# Name: toggle when on name; else default asc #}
     {% set name_order = 'desc' if (current_sort == 'name' and current_order == 'asc') else 'asc' %}
-    {% set name_url = '/companies?sort_by=name&order=' ~ name_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {% set name_url = '/companies?sort_by=name&order=' ~ name_order ~ extra_qs %}
     {# Last Scan: toggle when on last_scan_at; else default desc #}
     {% set last_scan_order = 'asc' if (current_sort == 'last_scan_at' and current_order == 'desc') else 'desc' %}
-    {% set last_scan_url = '/companies?sort_by=last_scan_at&order=' ~ last_scan_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {% set last_scan_url = '/companies?sort_by=last_scan_at&order=' ~ last_scan_order ~ extra_qs %}
     {# Created: toggle when on created_at; else default desc #}
     {% set created_order = 'asc' if (current_sort == 'created_at' and current_order == 'desc') else 'desc' %}
-    {% set created_url = '/companies?sort_by=created_at&order=' ~ created_order ~ (qs_sep ~ search_qs if search_qs else '') %}
+    {% set created_url = '/companies?sort_by=created_at&order=' ~ created_order ~ extra_qs %}
     <a href="{{ score_url }}" class="{% if current_sort == 'score' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Score {% if current_sort == 'score' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
     <a href="{{ name_url }}" class="{% if current_sort == 'name' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Name {% if current_sort == 'name' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
     <a href="{{ last_scan_url }}" class="{% if current_sort == 'last_scan_at' %}badge badge-green{% else %}btn btn-secondary{% endif %}" style="text-decoration: none;">Last Scan {% if current_sort == 'last_scan_at' %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}</a>
@@ -65,7 +65,7 @@
     <tbody>
         {% for c in companies %}
         <tr>
-            <td><a href="/companies/{{ c.id }}">{{ c.company_name }}</a></td>
+            <td><a href="/companies/{{ c.id }}{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}">{{ c.company_name }}</a></td>
             <td>
                 {% set display_score = company_scores[c.id] if c.id in company_scores else c.cto_need_score %}
                 {% if display_score is not none %}
@@ -80,7 +80,7 @@
             <td>{{ c.last_scan_at.strftime('%Y-%m-%d %H:%M') if c.last_scan_at else '—' }}</td>
             <td>{{ c.founder_name or '—' }}</td>
             <td>
-                <a href="/companies/{{ c.id }}" class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">View</a>
+                <a href="/companies/{{ c.id }}{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}" class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">View</a>
             </td>
         </tr>
         {% endfor %}
@@ -95,8 +95,7 @@
 
 {% if total and total > page_size %}
 <div class="card" style="margin-top: 1rem; padding: 0.75rem 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-    {% set pagination_base = '/companies?sort_by=' ~ (sort_by or 'score') ~ '&order=' ~ (sort_order or 'desc') %}
-    {% set pagination_base = pagination_base ~ ('&search=' ~ search if search else '') %}
+    {% set pagination_base = '/companies?sort_by=' ~ (sort_by or 'score') ~ '&order=' ~ (sort_order or 'desc') ~ ('&search=' ~ search if search else '') ~ ('&workspace_id=' ~ workspace_id if workspace_id else '') %}
     <span>Page {{ page }} of {{ total_pages }} ({{ total }} total)</span>
     {% if page > 1 %}
     <a href="{{ pagination_base }}&page={{ page - 1 }}" class="btn btn-secondary">Previous</a>
