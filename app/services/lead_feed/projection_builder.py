@@ -110,6 +110,7 @@ def upsert_lead_feed_row(
     top_signal_ids: list[str] | None = None,
     esl_decision: str | None = None,
     sensitivity_level: str | None = None,
+    recommendation_band: str | None = None,
     last_seen: datetime | None = None,
     outreach_status_summary: dict | None = None,
     as_of: date,
@@ -137,6 +138,7 @@ def upsert_lead_feed_row(
         "top_signal_ids": top_signal_ids or [],
         "esl_decision": esl_decision,
         "sensitivity_level": sensitivity_level,
+        "recommendation_band": recommendation_band,
         "last_seen": last_seen,
         "outreach_status_summary": outreach_status_summary,
         "as_of": as_of,
@@ -197,6 +199,11 @@ def upsert_lead_feed_from_snapshots(
     sensitivity_level = engagement_snapshot.sensitivity_level or (
         engagement_snapshot.explain or {}
     ).get("sensitivity_level")
+    recommendation_band = None
+    if readiness_snapshot.explain:
+        band_val = readiness_snapshot.explain.get("recommendation_band")
+        if band_val in ("IGNORE", "WATCH", "HIGH_PRIORITY"):
+            recommendation_band = band_val
     last_seen = last_seen_by.get(entity_id)
     if last_seen is None and readiness_snapshot.computed_at:
         last_seen = readiness_snapshot.computed_at
@@ -211,6 +218,7 @@ def upsert_lead_feed_from_snapshots(
         top_signal_ids=top_signal_ids,
         esl_decision=esl_decision,
         sensitivity_level=sensitivity_level,
+        recommendation_band=recommendation_band,
         last_seen=last_seen,
         outreach_status_summary=outreach_summary,
         as_of=as_of,

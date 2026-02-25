@@ -60,7 +60,7 @@ from app.services.outreach_history import (
     update_outreach_outcome,
 )
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
-from app.services.scoring import get_display_scores_for_companies
+from app.services.scoring import get_display_scores_for_companies, get_display_scores_with_bands
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +217,7 @@ def companies_list(
         workspace_id=workspace_id,
     )
     company_ids = [c.id for c in companies]
-    company_scores = get_display_scores_for_companies(
+    company_scores, company_bands = get_display_scores_with_bands(
         db, company_ids, workspace_id=workspace_id
     )
     total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE) if total else 1
@@ -257,6 +257,7 @@ def companies_list(
             "user": user,
             "companies": companies,
             "company_scores": company_scores,
+            "company_bands": company_bands,
             "search": search,
             "sort_by": sort_by,
             "sort_order": sort_order,
@@ -568,10 +569,12 @@ def company_detail(
             score_company(db, company_id, analysis, pack=pack, pack_id=pack_id)
             company = get_company(db, company_id) or company
 
-    # Display score: pack-scoped (ReadinessSnapshot > cto_need_score)
-    from app.services.score_resolver import get_company_score
+    # Display score and band: pack-scoped (ReadinessSnapshot > cto_need_score)
+    from app.services.score_resolver import get_company_score_with_band
 
-    recomputed_score = get_company_score(db, company_id, workspace_id=workspace_id)
+    recomputed_score, recommendation_band = get_company_score_with_band(
+        db, company_id, workspace_id=workspace_id
+    )
 
     # Query param for one-time flash: ?rescan=queued | ?rescan=running
     rescan_param = request.query_params.get("rescan")
@@ -595,6 +598,7 @@ def company_detail(
             "outreach_history": outreach_history,
             "draft_message": draft_message,
             "recomputed_score": recomputed_score,
+            "recommendation_band": recommendation_band,
             "scan_job": scan_job,
             "rescan_param": rescan_param,
             "flash_message": success,

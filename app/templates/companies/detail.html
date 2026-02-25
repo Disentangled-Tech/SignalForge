@@ -21,6 +21,9 @@
             <span class="badge {% if display_score > 70 %}badge-green{% elif display_score >= 40 %}badge-yellow{% else %}badge-red{% endif %}" style="font-size: 1.1rem; padding: 0.3rem 0.8rem;">
                 Score: {{ display_score }}
             </span>
+            {% if recommendation_band %}
+            <span class="badge {% if recommendation_band == 'HIGH_PRIORITY' %}badge-green{% elif recommendation_band == 'WATCH' %}badge-yellow{% else %}badge-gray{% endif %}" style="font-size: 1rem; padding: 0.3rem 0.6rem;">{{ recommendation_band }}</span>
+            {% endif %}
             {% if recomputed_score is not none and company.cto_need_score != recomputed_score %}
             <span class="text-muted" style="font-size: 0.75rem;">(stored: {{ company.cto_need_score or '—' }})</span>
             {% endif %}

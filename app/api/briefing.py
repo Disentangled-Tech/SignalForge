@@ -110,6 +110,7 @@ def api_briefing_daily(
             leadership_gap=ec["snapshot"].leadership_gap if ec.get("snapshot") else None,
             esl_decision=ec.get("esl_decision"),
             sensitivity_level=ec.get("sensitivity_level"),
+            recommendation_band=ec.get("recommendation_band"),
         )
         for ec in data["emerging_companies"]
     ]

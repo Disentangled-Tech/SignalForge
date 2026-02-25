@@ -56,6 +56,8 @@ class EmergingCompanyBriefing(BaseModel):
     complexity: int | None = None
     pressure: int | None = None
     leadership_gap: int | None = None
+    # Issue #242 Phase 3 — pack recommendation band when available
+    recommendation_band: str | None = None
 
 
 class BriefingResponse(BaseModel):

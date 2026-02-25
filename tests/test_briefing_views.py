@@ -642,6 +642,53 @@ class TestEmergingCompaniesSection:
         assert "Outreach: 30" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
+    def test_emerging_section_shows_recommendation_band_when_pack_defines(
+        self, mock_get_data, mock_db, mock_user
+    ):
+        """Emerging section displays recommendation_band badge when pack defines bands (Issue #242 Phase 3)."""
+        co = MagicMock()
+        co.id = 3
+        co.name = "BandCo"
+        co.website_url = "https://bandco.example.com"
+        snap = MagicMock()
+        snap.composite = 80
+        snap.momentum = 75
+        snap.complexity = 70
+        snap.pressure = 65
+        snap.leadership_gap = 60
+        snap.explain = {"recommendation_band": "HIGH_PRIORITY"}
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 1.0
+        eng_snap.engagement_type = "Standard Outreach"
+        eng_snap.cadence_blocked = False
+        eng_snap.explain = {}
+        mock_get_data.return_value = {
+            "items": [],
+            "emerging_companies": [{
+                "company": co,
+                "snapshot": snap,
+                "engagement_snapshot": eng_snap,
+                "outreach_score": 80,
+                "esl_score": 1.0,
+                "engagement_type": "Standard Outreach",
+                "cadence_blocked": False,
+                "stability_cap_triggered": False,
+                "top_signals": [],
+                "recommendation_band": "HIGH_PRIORITY",
+            }],
+            "display_scores": {},
+            "esl_by_company": {},
+        }
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "HIGH_PRIORITY" in resp.text
+        assert "BandCo" in resp.text
+
+    @patch("app.api.briefing_views.get_briefing_data")
     def test_emerging_section_shows_stability_cap_badge(
         self, mock_get_data, mock_db, mock_user
     ):

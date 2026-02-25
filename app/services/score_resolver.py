@@ -17,6 +17,16 @@ from app.models.readiness_snapshot import ReadinessSnapshot
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
 
 
+def _band_from_explain(explain: dict | None) -> str | None:
+    """Extract recommendation_band from ReadinessSnapshot.explain (Issue #242 Phase 3)."""
+    if not explain:
+        return None
+    band = explain.get("recommendation_band")
+    if band in ("IGNORE", "WATCH", "HIGH_PRIORITY"):
+        return band
+    return None
+
+
 def get_company_score(
     db: Session,
     company_id: int,
@@ -86,6 +96,52 @@ def get_company_score(
             return company.cto_need_score
 
     return None
+
+
+def get_company_score_with_band(
+    db: Session,
+    company_id: int,
+    pack_id: UUID | str | None = None,
+    workspace_id: str | UUID | None = None,
+) -> tuple[int | None, str | None]:
+    """Resolve display score and recommendation_band for a company (Issue #242 Phase 3).
+
+    Same resolution order as get_company_score. Returns (score, band) where band
+    is from ReadinessSnapshot.explain when pack defines bands; None otherwise.
+    """
+    pack_uuid: UUID | None = None
+    if pack_id is not None:
+        pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
+    elif workspace_id is not None:
+        pack_uuid = get_pack_for_workspace(db, workspace_id)
+    if pack_uuid is None:
+        pack_uuid = get_default_pack_id(db)
+
+    default_pack_uuid = get_default_pack_id(db)
+    pack_filter = (
+        or_(
+            ReadinessSnapshot.pack_id == pack_uuid,
+            (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
+        )
+        if pack_uuid is not None and default_pack_uuid is not None
+        else (ReadinessSnapshot.pack_id == pack_uuid if pack_uuid is not None else ReadinessSnapshot.pack_id.is_(None))
+    )
+    snapshot = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company_id,
+            pack_filter,
+        )
+        .order_by(ReadinessSnapshot.as_of.desc())
+        .first()
+    )
+    if snapshot is not None:
+        band = _band_from_explain(snapshot.explain)
+        return snapshot.composite, band
+
+    # Fallback: no band when using cto_need_score
+    score = get_company_score(db, company_id, pack_id=pack_id, workspace_id=workspace_id)
+    return score, None
 
 
 def get_company_scores_batch(
@@ -161,3 +217,80 @@ def get_company_scores_batch(
                 result[c.id] = c.cto_need_score
 
     return result
+
+
+def get_company_scores_and_bands_batch(
+    db: Session,
+    company_ids: list[int],
+    pack_id: UUID | str | None = None,
+    workspace_id: str | UUID | None = None,
+) -> tuple[dict[int, int], dict[int, str | None]]:
+    """Resolve display scores and bands for multiple companies (Issue #242 Phase 3).
+
+    Same resolution as get_company_scores_batch. Returns (scores, bands) where
+    bands[cid] is from ReadinessSnapshot.explain when pack defines bands; None otherwise.
+    """
+    if not company_ids:
+        return {}, {}
+
+    pack_uuid: UUID | None = None
+    if pack_id is not None:
+        pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
+    elif workspace_id is not None:
+        pack_uuid = get_pack_for_workspace(db, workspace_id)
+    if pack_uuid is None:
+        pack_uuid = get_default_pack_id(db)
+
+    default_pack_uuid = get_default_pack_id(db)
+    pack_filter = (
+        or_(
+            ReadinessSnapshot.pack_id == pack_uuid,
+            (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
+        )
+        if pack_uuid is not None and default_pack_uuid is not None
+        else (
+            ReadinessSnapshot.pack_id == pack_uuid
+            if pack_uuid is not None
+            else ReadinessSnapshot.pack_id.is_(None)
+        )
+    )
+
+    snapshots = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id.in_(company_ids),
+            pack_filter,
+        )
+        .order_by(ReadinessSnapshot.company_id, ReadinessSnapshot.as_of.desc())
+        .all()
+    )
+    latest_by_company: dict[int, ReadinessSnapshot] = {}
+    for s in snapshots:
+        if s.company_id not in latest_by_company:
+            latest_by_company[s.company_id] = s
+
+    scores: dict[int, int] = {
+        cid: latest_by_company[cid].composite
+        for cid in company_ids
+        if cid in latest_by_company
+    }
+    bands: dict[int, str | None] = {
+        cid: _band_from_explain(latest_by_company[cid].explain)
+        for cid in company_ids
+        if cid in latest_by_company
+    }
+
+    missing = [cid for cid in company_ids if cid not in scores]
+    is_default_pack = pack_uuid is None or pack_uuid == default_pack_uuid
+    if missing and is_default_pack:
+        companies = (
+            db.query(Company)
+            .filter(Company.id.in_(missing), Company.cto_need_score.isnot(None))
+            .all()
+        )
+        for c in companies:
+            if c.cto_need_score is not None:
+                scores[c.id] = c.cto_need_score
+                bands[c.id] = None
+
+    return scores, bands
