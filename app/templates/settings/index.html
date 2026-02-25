@@ -150,6 +150,11 @@
         {% else %}
         <p class="text-muted">No job runs yet. Scan and briefing jobs will appear here.</p>
         {% endif %}
+        {% if ingest_zero_explain %}
+        <div style="margin-top: 1rem; padding: 1rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 0.9rem; color: #1e40af;">
+            <strong>Why 0 new companies?</strong> Ingest completed with no new events. This can happen when: (1) No adapters are configured — set <code>INGEST_CRUNCHBASE_ENABLED=1</code> and <code>CRUNCHBASE_API_KEY</code> (or Product Hunt equivalents) in .env; (2) Crunchbase/Product Hunt returned no events in the date range. See <a href="https://github.com/Disentangled-Tech/SignalForge/blob/main/docs/ingestion-adapters.md" style="color: #1d4ed8;">ingestion-adapters.md</a>.
+        </div>
+        {% endif %}
     </div>
 
     {% set failed_job = recent_jobs|selectattr('error_message')|first %}
