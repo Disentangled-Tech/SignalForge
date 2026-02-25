@@ -243,11 +243,13 @@ def update_outreach_outcome(
     db.commit()
     db.refresh(record)
     # Refresh lead_feed outreach_status_summary (Phase 3, Issue #225)
+    from uuid import UUID
+
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
     from app.services.lead_feed import refresh_outreach_summary_for_entity
 
-    refresh_outreach_summary_for_entity(
-        db, company_id, workspace_id=record.workspace_id
-    )
+    ws_id = record.workspace_id or UUID(DEFAULT_WORKSPACE_ID)
+    refresh_outreach_summary_for_entity(db, company_id, workspace_id=ws_id)
     db.commit()
     return record
 
@@ -284,7 +286,7 @@ def delete_outreach_record(
     record = q.first()
     if record is None:
         return False
-    ws_id = record.workspace_id
+    ws_id = record.workspace_id or UUID(DEFAULT_WORKSPACE_ID)
     db.delete(record)
     db.commit()
     # Refresh lead_feed outreach_status_summary (Phase 3, Issue #225)

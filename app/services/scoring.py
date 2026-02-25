@@ -230,15 +230,20 @@ def get_custom_weights(db: Session) -> dict[str, int] | None:
         return None
 
 
-def get_display_scores_for_companies(db: Session, company_ids: list[int]) -> dict[int, int]:
-    """Resolve display scores for companies (pack-scoped, Phase 2).
+def get_display_scores_for_companies(
+    db: Session,
+    company_ids: list[int],
+    workspace_id: str | None = None,
+) -> dict[int, int]:
+    """Resolve display scores for companies (pack-scoped, Phase 2/3).
 
     Uses batched ReadinessSnapshot + Company lookup to avoid N+1 queries.
     Returns dict company_id -> score; omits companies with no score.
+    When workspace_id provided (Phase 3), pack resolved from workspace's active pack.
     """
     from app.services.score_resolver import get_company_scores_batch
 
-    return get_company_scores_batch(db, company_ids)
+    return get_company_scores_batch(db, company_ids, workspace_id=workspace_id)
 
 
 def score_company(

@@ -19,6 +19,7 @@ from app.models.signal_instance import SignalInstance
 from app.models.signal_pack import SignalPack
 from app.models.signal_record import SignalRecord
 from app.models.user import User
+from app.models.user_workspace import UserWorkspace
 from app.models.watchlist import Watchlist
 from app.models.workspace import Workspace
 
@@ -42,6 +43,7 @@ __all__ = [
     "SignalPack",
     "SignalRecord",
     "User",
+    "UserWorkspace",
     "Watchlist",
     "Workspace",
 ]

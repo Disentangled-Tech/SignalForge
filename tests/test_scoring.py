@@ -285,7 +285,7 @@ class TestGetDisplayScoresForCompanies:
         db = MagicMock()
         result = get_display_scores_for_companies(db, [1, 2])
         assert result == {1: 35, 2: 30}
-        mock_batch.assert_called_once_with(db, [1, 2])
+        mock_batch.assert_called_once_with(db, [1, 2], workspace_id=None)
 
     @patch("app.services.score_resolver.get_company_scores_batch")
     def test_uses_latest_analysis_when_multiple_exist(self, mock_batch) -> None:
@@ -295,7 +295,7 @@ class TestGetDisplayScoresForCompanies:
         db = MagicMock()
         result = get_display_scores_for_companies(db, [1])
         assert result == {1: 35}
-        mock_batch.assert_called_once_with(db, [1])
+        mock_batch.assert_called_once_with(db, [1], workspace_id=None)
 
     @patch("app.services.score_resolver.get_company_scores_batch")
     def test_uses_custom_weights_when_set(self, mock_batch) -> None:
@@ -305,7 +305,7 @@ class TestGetDisplayScoresForCompanies:
         db = MagicMock()
         result = get_display_scores_for_companies(db, [1])
         assert result == {1: 99}
-        mock_batch.assert_called_once_with(db, [1])
+        mock_batch.assert_called_once_with(db, [1], workspace_id=None)
 
 
 # ── score_company ────────────────────────────────────────────────────

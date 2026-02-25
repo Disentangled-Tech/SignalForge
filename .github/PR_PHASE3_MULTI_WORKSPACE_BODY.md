@@ -19,21 +19,34 @@ Implements Phase 3 (Pack Activation Runtime) of the company signal data models p
 
 ### Views (`app/api/views.py`)
 - **`_resolve_workspace_id(request)`**: Resolves `workspace_id` from `request.query_params` or `request.state` when `multi_workspace_enabled`; validates with `validate_uuid_param_or_422`
-- **`company_detail`**: Uses `_resolve_workspace_id`, passes `workspace_id` to `list_outreach_for_company`, `get_draft_for_company`, `get_company_score`; passes `workspace_id` to template context
-- **`company_outreach_add`**: Resolves `workspace_id`; when `multi_workspace_enabled` and missing, defaults to `DEFAULT_WORKSPACE_ID` (prevents cross-tenant). Passes to `create_outreach_record`; preserves `workspace_id` in redirect URLs
-- **`company_outreach_edit`**: Same default; passes to `update_outreach_outcome`; preserves in redirects
-- **`company_outreach_delete`**: Same default; passes to `delete_outreach_record`; preserves in redirects
+- **`_require_workspace_access(db, user, workspace_id)`**: Enforces workspace membership via `user_workspaces`; raises 403 when user lacks access (Phase 3)
+- **`company_detail`**: Uses `_resolve_workspace_id`, `_require_workspace_access`; passes `workspace_id` to `list_outreach_for_company`, `get_draft_for_company`, `get_company_score`; scopes `analysis` and `briefing` by pack/workspace; passes `workspace_id` to template context
+- **`companies_list`**: Resolves `workspace_id`, enforces access; passes to `list_companies` and `get_display_scores_for_companies`; adds `workspace_id` to template and links
+- **`company_outreach_add`**: Resolves `workspace_id`; when `multi_workspace_enabled` and missing, defaults to `DEFAULT_WORKSPACE_ID` (prevents cross-tenant). Enforces access; passes to `create_outreach_record`; preserves `workspace_id` in redirect URLs
+- **`company_outreach_edit`**: Same default; enforces access; passes to `update_outreach_outcome`; preserves in redirects
+- **`company_outreach_delete`**: Same default; enforces access; passes to `delete_outreach_record`; preserves in redirects
 - **`_company_redirect_url(company_id, params)`**: Builds redirect URLs with optional query params
 
 ### Outreach (`app/services/outreach.py`)
 - **`generate_outreach`**: Preserves backward compat: `offer_type` fallback remains "fractional CTO" when pack unavailable (not "consultant")
 
+### Score resolver (`app/services/score_resolver.py`)
+- **`get_company_score`**, **`get_company_scores_batch`**: When `workspace_id` provided, resolve pack via `get_pack_for_workspace` (Phase 3); company detail and list now show correct pack-scoped scores for non-default workspaces
+
+### Companies list (`app/templates/companies/list.html`)
+- Company links and sort/pagination URLs include `?workspace_id=` when multi-workspace enabled
+
 ### Template (`app/templates/companies/detail.html`)
 - Edit link, rescan form, outreach add form, outreach edit form, and outreach delete form append `?workspace_id={{ workspace_id }}` when `workspace_id` is present (multi-workspace mode)
 
-### Tests (`tests/test_outreach_history.py`)
-- **`test_update_outreach_outcome_workspace_isolated`**: Verifies `update_outreach_outcome` with `workspace_id` only updates records in that workspace; regression: cannot update record in other workspace when defaulting to `DEFAULT_WORKSPACE_ID`
-- **`test_delete_outreach_record_workspace_isolated`**: Verifies `delete_outreach_record` with `workspace_id` only deletes records in that workspace; regression: cannot delete record in other workspace when defaulting to `DEFAULT_WORKSPACE_ID`
+### Migration (`alembic/versions/20260227_add_user_workspaces.py`)
+- Creates `user_workspaces` (user_id, workspace_id) for workspace membership
+- Backfills all existing users into default workspace
+
+### Tests
+- **`tests/test_outreach_history.py`**: `test_update_outreach_outcome_workspace_isolated`, `test_delete_outreach_record_workspace_isolated`
+- **`tests/test_score_resolver.py`**: `test_get_company_score_uses_workspace_pack` — verifies `get_company_score` with `workspace_id` resolves pack from workspace
+- **`tests/test_views.py`**: `test_forged_workspace_id_returns_403` — verifies 403 when user lacks workspace access
 
 ## Code review fixes (cross-tenant protection)
 

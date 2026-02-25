@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from urllib.parse import unquote
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
@@ -1516,6 +1516,92 @@ class TestCompanyOutreach:
         assert resp.status_code == 303
         assert "outreach_error" in resp.headers.get("location", "")
         assert "declined" in resp.headers.get("location", "")
+
+
+# ── Workspace access control (Phase 3) ───────────────────────────────
+
+
+@pytest.mark.integration
+def test_forged_workspace_id_returns_403(client_with_db, db):
+    """User without access to workspace B gets 403 when requesting workspace_id=B.
+
+    Verifies _require_workspace_access blocks cross-tenant access.
+    """
+    from datetime import timedelta
+
+    from app.models.user_workspace import UserWorkspace
+    from app.models.workspace import Workspace
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+    from app.services.outreach_history import create_outreach_record
+
+    other_ws = "00000000-0000-0000-0000-000000000002"
+    ws = Workspace(id=UUID(other_ws), name="Other Workspace")
+    db.add(ws)
+    db.commit()
+
+    # User has access to default workspace only (no row for other_ws)
+    username = f"ws_access_{uuid4().hex[:12]}"
+    user = User(username=username)
+    user.set_password(TEST_PASSWORD_INTEGRATION)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Ensure user has default workspace (required for user_workspaces)
+    db.add(UserWorkspace(user_id=user.id, workspace_id=UUID(DEFAULT_WORKSPACE_ID)))
+    db.commit()
+
+    company = Company(name="Forge Test Co", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
+    record_other = create_outreach_record(
+        db,
+        company_id=company.id,
+        sent_at=base - timedelta(days=100),
+        outreach_type="email",
+        message=None,
+        notes=None,
+        workspace_id=other_ws,
+    )
+    db.commit()
+
+    # Login
+    resp = client_with_db.post(
+        "/login",
+        data={"username": username, "password": TEST_PASSWORD_INTEGRATION},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+    with patch("app.api.views.get_settings") as mock_settings:
+        settings = MagicMock()
+        settings.multi_workspace_enabled = True
+        mock_settings.return_value = settings
+
+        # Forged workspace_id: user has no access to other_ws
+        resp = client_with_db.get(
+            f"/companies/{company.id}?workspace_id={other_ws}",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 403
+
+        resp = client_with_db.post(
+            f"/companies/{company.id}/outreach/{record_other.id}/edit",
+            data={"outcome": "replied"},
+            params={"workspace_id": other_ws},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 403
+
+        resp = client_with_db.post(
+            f"/companies/{company.id}/outreach/{record_other.id}/delete",
+            params={"workspace_id": other_ws},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 403
 
 
 # ── Root redirect test ──────────────────────────────────────────────

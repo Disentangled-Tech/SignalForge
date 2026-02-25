@@ -1,7 +1,8 @@
-"""Pack-scoped score resolution (Phase 2, Plan Step 3).
+"""Pack-scoped score resolution (Phase 2, Plan Step 3; Phase 3 workspace-scoped).
 
 Resolution order: ReadinessSnapshot (pack_id match) > Company.cto_need_score
 when pack is default (backward compat). Used by briefing, company list, detail.
+When workspace_id provided, pack is resolved from workspace's active pack.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models.company import Company
 from app.models.readiness_snapshot import ReadinessSnapshot
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
 
 
 def get_company_score(
@@ -28,6 +29,9 @@ def get_company_score(
     1. Latest ReadinessSnapshot for company where pack_id matches (or NULL when pack is default).
     2. Company.cto_need_score when pack is default (backward compat).
 
+    When workspace_id is provided, pack is resolved from workspace's active pack.
+    When pack_id is explicitly provided, it overrides workspace resolution.
+
     Parameters
     ----------
     db : Session
@@ -35,21 +39,21 @@ def get_company_score(
     company_id : int
         Company to resolve score for.
     pack_id : UUID | str | None
-        Pack to use. When None, uses default pack.
+        Pack to use. When None, resolved from workspace_id or default pack.
     workspace_id : str | UUID | None
-        Unused in Phase 2; reserved for workspace-scoped pack resolution.
+        When provided, resolves pack via get_pack_for_workspace (Phase 3).
 
     Returns
     -------
     int | None
         Composite score (0-100) or cto_need_score fallback; None when no data.
     """
-    _ = workspace_id  # Phase 3: workspace-scoped pack resolution
-
     pack_uuid: UUID | None = None
     if pack_id is not None:
         pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
-    else:
+    elif workspace_id is not None:
+        pack_uuid = get_pack_for_workspace(db, workspace_id)
+    if pack_uuid is None:
         pack_uuid = get_default_pack_id(db)
 
     # 1. Try ReadinessSnapshot: pack_id match or NULL (legacy) when querying for default
@@ -94,17 +98,18 @@ def get_company_scores_batch(
 
     Same resolution order as get_company_score: ReadinessSnapshot first,
     then Company.cto_need_score when pack is default. Uses 2–3 queries
-    total instead of 2–3 per company.
+    total instead of 2–3 per company. When workspace_id provided, pack
+    resolved from workspace's active pack (Phase 3).
     """
-    _ = workspace_id  # Phase 3: workspace-scoped pack resolution
-
     if not company_ids:
         return {}
 
     pack_uuid: UUID | None = None
     if pack_id is not None:
         pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
-    else:
+    elif workspace_id is not None:
+        pack_uuid = get_pack_for_workspace(db, workspace_id)
+    if pack_uuid is None:
         pack_uuid = get_default_pack_id(db)
 
     default_pack_uuid = get_default_pack_id(db)

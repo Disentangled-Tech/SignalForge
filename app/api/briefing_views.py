@@ -223,7 +223,9 @@ def get_briefing_data(
     display_scores: dict[int, int] = {}
     if items:
         company_ids = [item.company_id for item in items]
-        display_scores = get_display_scores_for_companies(db, company_ids)
+        display_scores = get_display_scores_for_companies(
+            db, company_ids, workspace_id=workspace_id
+        )
 
     settings = get_settings()
     pack = resolve_pack(db, pack_id) if pack_id else None

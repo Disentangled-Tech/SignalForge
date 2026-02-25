@@ -103,6 +103,25 @@ def _resolve_workspace_id(request: Request) -> str | None:
     return ws
 
 
+def _require_workspace_access(
+    db: Session, user: User, workspace_id: str | None
+) -> None:
+    """Raise 403 if user does not have access to workspace (Phase 3).
+
+    Only enforced when multi_workspace_enabled and workspace_id is not None.
+    Default workspace allowed for all (backfilled on migration).
+    """
+    if not get_settings().multi_workspace_enabled or workspace_id is None:
+        return
+    from app.services.workspace_access import user_has_access_to_workspace
+
+    if not user_has_access_to_workspace(db, user, workspace_id):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this workspace",
+        )
+
+
 # ── Public routes ────────────────────────────────────────────────────
 
 
@@ -183,6 +202,11 @@ def companies_list(
     sort_by = sort_by if sort_by in _VALID_SORT_BY else "score"
     sort_order = order if order in _VALID_SORT_ORDER else _DEFAULT_ORDER[sort_by]
     page = max(1, page)
+    # Phase 3: scope display scores by workspace when multi_workspace enabled
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
     companies, total = list_companies(
         db,
         sort_by=sort_by,
@@ -190,9 +214,12 @@ def companies_list(
         search=search,
         page=page,
         page_size=_PAGE_SIZE,
+        workspace_id=workspace_id,
     )
     company_ids = [c.id for c in companies]
-    company_scores = get_display_scores_for_companies(db, company_ids)
+    company_scores = get_display_scores_for_companies(
+        db, company_ids, workspace_id=workspace_id
+    )
     total_pages = max(1, (total + _PAGE_SIZE - 1) // _PAGE_SIZE) if total else 1
 
     # Check if a full scan is already running (for Scan all button state)
@@ -240,6 +267,7 @@ def companies_list(
             "flash_message": flash_message,
             "flash_type": flash_type if flash_message else None,
             "scan_all_running": scan_all_running,
+            "workspace_id": workspace_id if get_settings().multi_workspace_enabled else None,
         },
     )
 
@@ -444,6 +472,7 @@ def company_detail(
 
     # Resolve workspace when multi_workspace_enabled (Phase 3)
     workspace_id = _resolve_workspace_id(request) or DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
 
     # Latest company scan job (for status display)
     scan_job = (
@@ -465,21 +494,47 @@ def company_detail(
         .all()
     )
 
-    # Latest analysis
-    analysis = (
+    # Latest analysis (Phase 3: pack-scoped when multi_workspace)
+    from app.services.pack_resolver import (
+        get_default_pack_id,
+        get_pack_for_workspace,
+        resolve_pack,
+    )
+
+    pack_id = get_pack_for_workspace(db, workspace_id) or get_default_pack_id(db)
+    default_pack_id = get_default_pack_id(db)
+    analysis_q = (
         db.query(AnalysisRecord)
         .filter(AnalysisRecord.company_id == company_id)
         .order_by(AnalysisRecord.created_at.desc())
-        .first()
     )
+    if pack_id is not None and default_pack_id is not None:
+        analysis_q = analysis_q.filter(
+            or_(
+                AnalysisRecord.pack_id == pack_id,
+                (AnalysisRecord.pack_id.is_(None)) & (pack_id == default_pack_id),
+            )
+        )
+    analysis = analysis_q.first()
 
-    # Latest briefing item with outreach
-    briefing = (
+    # Latest briefing item with outreach (Phase 3: workspace-scoped)
+    from uuid import UUID
+
+    ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+    default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+    briefing_q = (
         db.query(BriefingItem)
         .filter(BriefingItem.company_id == company_id)
         .order_by(BriefingItem.created_at.desc())
-        .first()
     )
+    if ws_uuid == default_uuid:
+        briefing_q = briefing_q.filter(
+            (BriefingItem.workspace_id == ws_uuid)
+            | (BriefingItem.workspace_id.is_(None))
+        )
+    else:
+        briefing_q = briefing_q.filter(BriefingItem.workspace_id == ws_uuid)
+    briefing = briefing_q.first()
 
     # Outreach history and draft for pre-fill (Phase 3: scope by workspace)
     outreach_history = list_outreach_for_company(
@@ -491,11 +546,9 @@ def company_detail(
 
     # Repair: if analysis exists and stored score differs from recomputed, persist correct value
     if analysis is not None:
-        from app.services.pack_resolver import get_default_pack_id, resolve_pack
         from app.services.scoring import calculate_score, get_custom_weights, score_company
 
         custom_weights = get_custom_weights(db)
-        pack_id = get_default_pack_id(db)
         pack = resolve_pack(db, pack_id) if pack_id else None
         pain_signals = (
             analysis.pain_signals_json if isinstance(analysis.pain_signals_json, dict) else {}
@@ -585,6 +638,7 @@ def company_outreach_add(
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
         workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
 
     errors: list[str] = []
     if not sent_at.strip():
@@ -662,6 +716,7 @@ def company_outreach_edit(
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
         workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
 
     outcome_val = outcome.strip() or None
     if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
@@ -707,6 +762,7 @@ def company_outreach_delete(
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
         workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
 
     deleted = delete_outreach_record(
         db, company_id, outreach_id, workspace_id=workspace_id

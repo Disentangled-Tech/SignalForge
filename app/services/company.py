@@ -84,12 +84,14 @@ def list_companies(
     sort_by: str = "created_at",
     sort_order: str = "desc",
     search: str | None = None,
+    workspace_id: str | None = None,
 ) -> tuple[list[CompanyRead], int]:
     """Return paginated list of companies with optional search and sort.
 
     When sort_by='score', sorts by display score (recomputed from latest analysis)
     so the order matches what users see. Other sorts use stored DB columns.
     sort_order: 'asc' or 'desc'.
+    When workspace_id provided (Phase 3), display scores use workspace's active pack.
     """
     ascending = sort_order == "asc"
     base_query = db.query(Company)
@@ -108,7 +110,9 @@ def list_companies(
     if sort_by == "score":
         # Sort by display score (from analysis) so order matches what users see
         company_ids = [row[0] for row in base_query.with_entities(Company.id).all()]
-        display_scores = get_display_scores_for_companies(db, company_ids)
+        display_scores = get_display_scores_for_companies(
+            db, company_ids, workspace_id=workspace_id
+        )
         # Companies without score use -1; reverse for asc (low first)
         mult = 1 if ascending else -1
         sorted_ids = sorted(
