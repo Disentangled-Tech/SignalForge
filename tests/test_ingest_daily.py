@@ -442,6 +442,28 @@ class TestGetAdaptersCrunchbaseWiring:
         assert len(captured_adapters) == 1
         assert isinstance(captured_adapters[0], ProductHuntAdapter)
 
+    def test_run_ingest_daily_test_adapter_takes_precedence(
+        self, db: Session
+    ) -> None:
+        """When INGEST_USE_TEST_ADAPTER=1, only TestAdapter returned (Issue #134)."""
+        from app.services.ingestion.ingest_daily import _get_adapters
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "1",
+                "INGEST_CRUNCHBASE_ENABLED": "1",
+                "CRUNCHBASE_API_KEY": "test-key",
+                "INGEST_PRODUCTHUNT_ENABLED": "1",
+                "PRODUCTHUNT_API_TOKEN": "test-token",
+            },
+            clear=False,
+        ):
+            adapters = _get_adapters()
+
+        assert len(adapters) == 1
+        assert isinstance(adapters[0], TestAdapter)
+
     @patch("app.ingestion.adapters.crunchbase_adapter.httpx")
     @patch("app.ingestion.adapters.producthunt_adapter.httpx")
     def test_run_ingest_daily_uses_both_adapters_when_both_configured(

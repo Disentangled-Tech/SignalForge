@@ -79,6 +79,19 @@ def settings_page(
                 "name": pack.manifest.get("name", ""),
             }
 
+    # Help explain when ingest completes with 0 companies (adapters return empty or none configured)
+    latest_ingest = (
+        db.query(JobRun)
+        .filter(JobRun.job_type == "ingest")
+        .order_by(JobRun.started_at.desc())
+        .first()
+    )
+    ingest_zero_explain = (
+        latest_ingest is not None
+        and latest_ingest.status == "completed"
+        and (latest_ingest.companies_processed or 0) == 0
+    )
+
     return templates.TemplateResponse(
         request,
         "settings/index.html",
@@ -93,6 +106,7 @@ def settings_page(
             "scan_change_total": scan_change_total,
             "scan_change_denom": scan_change_denom,
             "active_pack": active_pack,
+            "ingest_zero_explain": ingest_zero_explain,
         },
     )
 
