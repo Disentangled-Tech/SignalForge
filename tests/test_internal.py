@@ -44,6 +44,7 @@ class TestRunScan:
         assert data["job_run_id"] == 42
         assert data["companies_processed"] == 5
         mock_scan.assert_called_once()
+        assert mock_scan.call_args[1]["workspace_id"] is None
 
     def test_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_scan without token header returns 422."""
@@ -57,6 +58,27 @@ class TestRunScan:
             headers={"X-Internal-Token": "wrong-token"},
         )
         assert response.status_code == 403
+
+    @patch("app.services.scan_orchestrator.run_scan_all", new_callable=AsyncMock)
+    def test_run_scan_with_workspace_id_passes_to_run_scan_all(
+        self, mock_scan, client: TestClient
+    ):
+        """POST /internal/run_scan with workspace_id forwards it (Phase 3)."""
+        job = JobRun(job_type="scan", status="completed")
+        job.id = 43
+        job.companies_processed = 2
+        mock_scan.return_value = job
+
+        response = client.post(
+            "/internal/run_scan",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": "00000000-0000-0000-0000-000000000001"},
+        )
+
+        assert response.status_code == 200
+        mock_scan.assert_called_once()
+        call_kwargs = mock_scan.call_args[1]
+        assert call_kwargs["workspace_id"] == "00000000-0000-0000-0000-000000000001"
 
     @patch("app.services.scan_orchestrator.run_scan_all", new_callable=AsyncMock)
     def test_scan_error_returns_failed(self, mock_scan, client: TestClient):
@@ -95,6 +117,7 @@ class TestRunBriefing:
         assert data["status"] == "completed"
         assert data["items_generated"] == 3
         mock_briefing.assert_called_once()
+        assert mock_briefing.call_args[1]["workspace_id"] is None
 
     def test_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_briefing without token header returns 422."""
@@ -108,6 +131,25 @@ class TestRunBriefing:
             headers={"X-Internal-Token": "wrong-token"},
         )
         assert response.status_code == 403
+
+    @patch("app.services.briefing.generate_briefing")
+    def test_run_briefing_with_workspace_id_passes_to_generate(
+        self, mock_briefing, client: TestClient
+    ):
+        """POST /internal/run_briefing with workspace_id forwards it (Phase 3)."""
+        mock_briefing.return_value = [MagicMock()]
+
+        response = client.post(
+            "/internal/run_briefing",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": "00000000-0000-0000-0000-000000000001"},
+        )
+
+        assert response.status_code == 200
+        mock_briefing.assert_called_once()
+        assert mock_briefing.call_args[1]["workspace_id"] == (
+            "00000000-0000-0000-0000-000000000001"
+        )
 
     @patch("app.services.briefing.generate_briefing")
     def test_briefing_error_returns_failed(

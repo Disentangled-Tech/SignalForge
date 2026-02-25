@@ -54,6 +54,7 @@ Implements Phase 3 (Pack Activation Runtime) of the company signal data models p
 - **`tests/test_outreach_history.py`**: `test_update_outreach_outcome_workspace_isolated`, `test_delete_outreach_record_workspace_isolated`
 - **`tests/test_score_resolver.py`**: `test_get_company_score_uses_workspace_pack` — verifies `get_company_score` with `workspace_id` resolves pack from workspace
 - **`tests/test_views.py`**: `test_forged_workspace_id_returns_403` — verifies 403 when user lacks workspace access
+- **`tests/test_ui_company_detail.py`**: `test_company_detail_no_workspace_filter_when_multi_workspace_disabled` — verifies no workspace filtering when multi-workspace disabled
 - **`tests/test_lead_feed.py`**: `test_refresh_outreach_summary_requires_workspace_id_when_multi_workspace` — verifies `ValueError` when `workspace_id` missing when multi-workspace enabled
 - **`tests/test_event_storage.py`**: `test_duplicate_signal_event_insert` — app-level dedup and DB constraint for duplicate events
 - **`tests/test_migrations.py`**: `test_migration_20260226_up_down`, `test_migration_20260228_up_down` — migration upgrade/downgrade
@@ -65,6 +66,16 @@ Implements Phase 3 (Pack Activation Runtime) of the company signal data models p
 
 - **workspace_id default**: When `multi_workspace_enabled` and request has no `workspace_id` (e.g. direct POST without query params), views now default to `DEFAULT_WORKSPACE_ID` instead of passing `None`. Prevents cross-tenant modify/delete when workspace_id is missing.
 - **offer_type fallback**: Restored "fractional CTO" as fallback when pack unavailable (preserves backward compat for fractional CTO flow).
+
+## Code review fixes (Phase 3 completeness)
+
+- **company_detail**: Uses conditional `workspace_id` resolution (same as other views); when `multi_workspace_enabled=False`, leaves `workspace_id=None` so no workspace filtering is applied. Fixes inconsistency that caused briefing/outreach to be filtered even in single-tenant mode.
+- **company_rescan**: Accepts `request`; resolves `workspace_id`, enforces `_require_workspace_access`; uses `get_pack_for_workspace` for job pack; preserves `workspace_id` in redirect URLs.
+- **companies_scan_all**: Accepts `request`; resolves `workspace_id`, enforces access; passes `workspace_id` to `run_scan_all`; preserves in redirect. Scan-all form action includes `?workspace_id=` when multi-workspace enabled.
+- **run_scan_company_with_job**: Uses `resolve_pack(db, job.pack_id)` when `job.pack_id` is set instead of always `get_default_pack(db)` (pack isolation).
+- **run_scan_all**: Accepts optional `workspace_id`; when provided, uses workspace's active pack for analysis/scoring.
+- **get_pack_for_workspace**: Early return when `workspace_id is None` (returns default pack); documents behavior.
+- **test_company_detail_no_workspace_filter_when_multi_workspace_disabled**: Regression test verifying no workspace filtering when multi-workspace disabled.
 
 ## Verification
 

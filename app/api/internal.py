@@ -44,15 +44,24 @@ def _require_internal_token(x_internal_token: str = Header(...)) -> None:
 async def run_scan(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID; uses default if omitted (Phase 3)",
+    ),
 ):
     """Trigger a full scan across all companies.
 
+    When workspace_id provided (Phase 3), uses that workspace's active pack
+    for analysis attribution. Omit for default workspace.
     Returns the completed JobRun summary.
     """
     from app.services.scan_orchestrator import run_scan_all
 
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
+
     try:
-        job = await run_scan_all(db)
+        job = await run_scan_all(db, workspace_id=ws_id)
         return {
             "status": job.status,
             "job_run_id": job.id,
@@ -67,15 +76,24 @@ async def run_scan(
 async def run_briefing(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID; uses default if omitted (Phase 3)",
+    ),
 ):
     """Trigger briefing generation for top companies.
 
+    When workspace_id provided (Phase 3), generates briefing for that
+    workspace's pack. Omit for default workspace.
     Returns the number of briefing items generated.
     """
     from app.services.briefing import generate_briefing
 
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
+
     try:
-        items = generate_briefing(db)
+        items = generate_briefing(db, workspace_id=ws_id)
         return {"status": "completed", "items_generated": len(items)}
     except Exception as exc:
         logger.exception("Internal briefing generation failed")

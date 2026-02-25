@@ -16,9 +16,10 @@ from sqlalchemy.orm import Session
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.job_run import JobRun
+from app.models.signal_pack import SignalPack
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.analysis import analyze_company
-from app.services.pack_resolver import get_default_pack, get_default_pack_id
+from app.services.pack_resolver import get_default_pack, get_default_pack_id, resolve_pack
 from app.services.page_discovery import discover_pages
 from app.services.scoring import (
     _get_signal_value,
@@ -131,17 +132,19 @@ def _analysis_changed(
     prev: AnalysisRecord | None,
     new: AnalysisRecord,
     db: Session,
+    pack: Pack | None = None,
 ) -> bool:
     """Return True if analysis output (stage or pain signals) changed from previous.
 
     Companies with no prior analysis are not counted as changed.
     Phase 2: Uses pack pain_signal_weights for known keys.
+    Phase 3: When pack provided, uses it for pack-aware change detection.
     """
     if prev is None:
         return False
     if (prev.stage or "").strip().lower() != (new.stage or "").strip().lower():
         return True
-    known_keys = get_known_pain_signal_keys(db)
+    known_keys = get_known_pain_signal_keys(db, pack=pack)
     prev_vals = _extract_signal_values(prev.pain_signals_json, known_keys)
     new_vals = _extract_signal_values(new.pain_signals_json, known_keys)
     all_keys = set(prev_vals) | set(new_vals)
@@ -158,12 +161,15 @@ async def run_scan_company_full(
     db: Session,
     company_id: int,
     pack: Pack | None = None,
+    pack_id: UUID | None = None,
 ) -> tuple[int, AnalysisRecord | None, bool]:
     """Run scan + analysis + scoring for a single company (no JobRun).
 
     Used by run_scan_all for bulk scans. Updates company.cto_need_score
     when analysis succeeds. Phase 2: Resolves pack and passes to analysis/scoring.
     When pack is provided (e.g. from run_scan_all), avoids per-company resolution.
+    When pack_id is provided with pack, uses it for AnalysisRecord attribution
+    (Phase 3: workspace-specific scans must attribute to workspace's pack, not default).
     """
     prev_analysis = (
         db.query(AnalysisRecord)
@@ -172,12 +178,41 @@ async def run_scan_company_full(
         .first()
     )
     effective_pack = pack if pack is not None else get_default_pack(db)
-    effective_pack_id = get_default_pack_id(db) if effective_pack is not None else None
+    # Phase 3: Use provided pack_id for AnalysisRecord attribution. When pack_id is None
+    # but pack is provided (e.g. workspace pack), derive pack_id from pack manifest to avoid
+    # wrongly attributing to default pack. Fall back to default only when pack is None.
+    if pack_id is not None:
+        effective_pack_id = pack_id
+    elif effective_pack is not None:
+        pack_id_str = effective_pack.manifest.get("id") if isinstance(
+            getattr(effective_pack, "manifest", None), dict
+        ) else None
+        version = effective_pack.manifest.get("version") if isinstance(
+            getattr(effective_pack, "manifest", None), dict
+        ) else None
+        if pack_id_str and version:
+            row = (
+                db.query(SignalPack.id)
+                .filter(
+                    SignalPack.pack_id == pack_id_str,
+                    SignalPack.version == version,
+                )
+                .first()
+            )
+            effective_pack_id = row[0] if row else get_default_pack_id(db)
+        else:
+            effective_pack_id = get_default_pack_id(db)
+    else:
+        effective_pack_id = None
     new_count = await run_scan_company(db, company_id)
     analysis = analyze_company(db, company_id, pack=effective_pack, pack_id=effective_pack_id)
     if analysis is not None:
         score_company(db, company_id, analysis, pack=effective_pack)
-    changed = _analysis_changed(prev_analysis, analysis, db) if analysis else False
+    changed = (
+        _analysis_changed(prev_analysis, analysis, db, pack=effective_pack)
+        if analysis
+        else False
+    )
     return new_count, analysis, changed
 
 
@@ -236,8 +271,10 @@ async def run_scan_company_with_job(
         db.refresh(job)
         return job
 
-    pack = get_default_pack(db)
     pack_id = job.pack_id if job.pack_id is not None else get_default_pack_id(db)
+    pack = (
+        resolve_pack(db, pack_id) if pack_id is not None else None
+    ) or get_default_pack(db)
     try:
         analysis = analyze_company(db, company_id, pack=pack, pack_id=pack_id)
         if analysis is not None:
@@ -262,30 +299,48 @@ async def run_scan_company_with_job(
 # ── Full scan ────────────────────────────────────────────────────────
 
 
-async def run_scan_all(db: Session) -> JobRun:
+async def run_scan_all(
+    db: Session, workspace_id: str | UUID | None = None
+) -> JobRun:
     """Run a scan across **all** companies.
 
     Creates a ``JobRun`` record to track progress. Individual company
     failures are caught and logged so the remaining companies are still
     processed.
 
+    When workspace_id is provided (Phase 3), uses that workspace's active
+    pack for analysis/scoring. Otherwise uses default pack and workspace.
+
     Returns
     -------
     JobRun
         The completed (or failed) job-run record.
     """
-    pack_id = get_default_pack_id(db)
+    from app.services.pack_resolver import get_pack_for_workspace
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    ws_uuid = UUID(str(ws_id)) if isinstance(ws_id, str) else ws_id
+    pack_id = (
+        get_pack_for_workspace(db, ws_id)
+        if workspace_id is not None
+        else get_default_pack_id(db)
+    ) or get_default_pack_id(db)
+
     job = JobRun(
         job_type="scan",
         status="running",
         pack_id=pack_id,
-        workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+        workspace_id=ws_uuid,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    pack = get_default_pack(db)
+    pack = (
+        resolve_pack(db, pack_id)
+        if pack_id is not None
+        else get_default_pack(db)
+    )
     companies = db.query(Company).all()
     companies_with_url = [c for c in companies if c.website_url]
     processed = 0
@@ -295,7 +350,9 @@ async def run_scan_all(db: Session) -> JobRun:
     if companies_with_url:
         for company in companies_with_url:
             try:
-                _, _, changed = await run_scan_company_full(db, company.id, pack=pack)
+                _, _, changed = await run_scan_company_full(
+                    db, company.id, pack=pack, pack_id=pack_id
+                )
                 processed += 1
                 if changed:
                     changed_count += 1

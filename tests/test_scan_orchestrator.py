@@ -162,6 +162,59 @@ class TestRunScanCompanyFull:
         mock_analyze.assert_called_once_with(db, 1, pack=mock_pack, pack_id=pack_uuid)
         mock_score.assert_called_once_with(db, 1, analysis, pack=mock_pack)
 
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_run_scan_company_full_uses_provided_pack_id_not_default(
+        self, mock_scan, mock_analyze, mock_score
+    ):
+        """When pack and pack_id are provided, analyze_company receives that pack_id."""
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        workspace_pack_uuid = uuid4()
+        mock_pack = MagicMock()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        mock_scan.return_value = 2
+        analysis = MagicMock()
+        mock_analyze.return_value = analysis
+
+        await run_scan_company_full(db, 1, pack=mock_pack, pack_id=workspace_pack_uuid)
+
+        mock_analyze.assert_called_once_with(
+            db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
+        )
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.score_company")
+    @patch("app.services.scan_orchestrator.analyze_company")
+    @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
+    async def test_run_scan_company_full_derives_pack_id_from_pack_when_pack_id_none(
+        self, mock_scan, mock_analyze, mock_score
+    ):
+        """When pack is provided but pack_id is None, derive pack_id from pack manifest."""
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        workspace_pack_uuid = uuid4()
+        mock_pack = MagicMock()
+        mock_pack.manifest = {"id": "bookkeeping_v1", "version": "1"}
+        mock_scan.return_value = 0
+        mock_analyze.return_value = MagicMock()
+
+        db = MagicMock()
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        # SignalPack lookup for pack_id derivation
+        db.query.return_value.filter.return_value.first.return_value = (workspace_pack_uuid,)
+
+        await run_scan_company_full(db, 1, pack=mock_pack, pack_id=None)
+
+        # Should derive pack_id from pack manifest and pass to analyze_company
+        mock_analyze.assert_called_once()
+        call_kwargs = mock_analyze.call_args[1]
+        assert call_kwargs["pack_id"] == workspace_pack_uuid
+        assert call_kwargs["pack"] == mock_pack
+
 
 # ── run_scan_company tests ───────────────────────────────────────────
 
@@ -350,6 +403,99 @@ class TestRunScanAll:
         assert job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
         mock_get_pack_id.assert_called_once_with(db)
 
+    @pytest.mark.asyncio
+    @patch("app.services.pack_resolver.get_pack_for_workspace")
+    @patch("app.services.scan_orchestrator.resolve_pack")
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_with_workspace_passes_workspace_pack_id(
+        self, mock_scan_full, mock_resolve_pack, mock_get_pack_for_workspace
+    ):
+        """Phase 3: run_scan_company_full receives workspace pack_id, not default."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        workspace_pack_uuid = uuid4()
+        default_pack_uuid = uuid4()
+        mock_get_pack_for_workspace.return_value = workspace_pack_uuid
+        mock_pack = MagicMock()
+        mock_resolve_pack.return_value = mock_pack
+
+        workspace_id = str(uuid4())
+        c1 = _company(1, "WithURL", website_url="https://example.com")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1]
+        mock_scan_full.return_value = (2, MagicMock(), False)
+
+        job = await run_scan_all(db, workspace_id=workspace_id)
+
+        assert job.pack_id == workspace_pack_uuid
+        mock_scan_full.assert_awaited_once_with(
+            db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
+        )
+
+    @pytest.mark.integration
+    @pytest.mark.asyncio
+    @patch("app.services.analysis.get_llm_provider")
+    @patch("app.services.scan_orchestrator.store_signal")
+    @patch("app.services.scan_orchestrator.discover_pages", new_callable=AsyncMock)
+    async def test_run_scan_all_workspace_attribution_analysis_record_pack_id(
+        self, mock_discover, mock_store, mock_get_llm, db
+    ):
+        """Phase 3: run_scan_company_full with pack_id creates AnalysisRecord with that pack."""
+        import json
+
+        from app.models import Company, SignalRecord, SignalPack
+        from app.services.pack_resolver import get_default_pack, resolve_pack
+        from app.services.scan_orchestrator import run_scan_company_full
+
+        fractional_cto = db.query(SignalPack).filter(
+            SignalPack.pack_id == "fractional_cto_v1", SignalPack.version == "1"
+        ).first()
+        if fractional_cto is None:
+            pytest.skip("fractional_cto_v1 pack not found")
+
+        company = Company(
+            name="Scan Attribution Co",
+            website_url="https://scan-attribution.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        sig = SignalRecord(
+            company_id=company.id,
+            source_url="https://scan-attribution.example.com/jobs",
+            source_type="jobs",
+            content_hash="attr789",
+            content_text="We are hiring senior engineers.",
+        )
+        db.add(sig)
+        db.commit()
+
+        mock_discover.return_value = [
+            ("https://scan-attribution.example.com/", "Home", "<html>home</html>"),
+        ]
+        mock_store.return_value = MagicMock()
+
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        stage_resp = json.dumps({
+            "stage": "early_customers",
+            "confidence": 70,
+            "evidence_bullets": [],
+            "assumptions": [],
+        })
+        pain_resp = json.dumps({"signals": {}})
+        mock_llm.complete.side_effect = [stage_resp, pain_resp, "Explanation."]
+
+        pack = resolve_pack(db, fractional_cto.id) or get_default_pack(db)
+
+        _, analysis, _ = await run_scan_company_full(
+            db, company.id, pack=pack, pack_id=fractional_cto.id
+        )
+
+        assert analysis is not None
+        assert analysis.pack_id == fractional_cto.id
+
 
 # ── run_scan_company_with_job tests ───────────────────────────────────
 
@@ -403,11 +549,13 @@ class TestRunScanCompanyWithJob:
         assert job.finished_at is not None
 
     @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_default_pack")
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
     @patch("app.services.scan_orchestrator.score_company")
     @patch("app.services.scan_orchestrator.analyze_company")
     @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
     async def test_updates_existing_job_when_job_id_provided(
-        self, mock_scan, mock_analyze, mock_score
+        self, mock_scan, mock_analyze, mock_score, mock_get_pack_id, mock_get_default_pack
     ):
         """When job_id is provided, updates that JobRun instead of creating new one."""
         from app.services.scan_orchestrator import run_scan_company_with_job
@@ -418,11 +566,14 @@ class TestRunScanCompanyWithJob:
         existing_job.status = "running"
         existing_job.finished_at = None
         existing_job.error_message = None
-        # JobRun lookup first, then get_default_pack (SignalPack query returns None)
-        db.query.return_value.filter.return_value.first.side_effect = [
-            existing_job,
-            None,  # get_default_pack_id returns None → load_pack from filesystem
-        ]
+        existing_job.pack_id = None  # No pack_id → use get_default_pack_id then get_default_pack
+        mock_get_pack_id.return_value = None
+        mock_get_default_pack.return_value = MagicMock()
+
+        # JobRun lookup: query(JobRun).filter(JobRun.id==job_id).first()
+        mock_filter = MagicMock()
+        mock_filter.first.return_value = existing_job
+        db.query.return_value.filter.return_value = mock_filter
 
         mock_scan.return_value = 1
         mock_analyze.return_value = MagicMock()

@@ -6,7 +6,7 @@
 <div class="header-row">
     <h1>Companies</h1>
     <div>
-        <form method="post" action="/companies/scan-all" style="display: inline;">
+        <form method="post" action="/companies/scan-all{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}" style="display: inline;">
             <button type="submit" class="btn btn-secondary" {% if scan_all_running %}disabled{% endif %}>Scan all</button>
         </form>
         <a href="/companies/import" class="btn btn-secondary">Import</a>

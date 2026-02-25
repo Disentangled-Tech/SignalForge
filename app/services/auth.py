@@ -16,12 +16,35 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 
 def create_user(db: Session, username: str, password: str) -> User:
-    """Create a new user with hashed password."""
+    """Create a new user with hashed password.
+
+    Phase 3: When user_workspaces exists, adds the new user to the default
+    workspace so they have access when MULTI_WORKSPACE_ENABLED=true.
+    """
+    from uuid import UUID
+
+    from app.models.user_workspace import UserWorkspace
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
     user = User(username=username)
     user.set_password(password)
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Phase 3: Add to default workspace for multi-tenant access
+    try:
+        db.add(
+            UserWorkspace(
+                user_id=user.id,
+                workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        # user_workspaces table may not exist (pre-migration); user still created
+
     return user
 
 

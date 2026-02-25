@@ -59,7 +59,7 @@ from app.services.outreach_history import (
     list_outreach_for_company,
     update_outreach_outcome,
 )
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
 from app.services.scoring import get_display_scores_for_companies
 
 logger = logging.getLogger(__name__)
@@ -471,7 +471,9 @@ def company_detail(
         raise HTTPException(status_code=404, detail="Company not found")
 
     # Resolve workspace when multi_workspace_enabled (Phase 3)
-    workspace_id = _resolve_workspace_id(request) or DEFAULT_WORKSPACE_ID
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
     _require_workspace_access(db, user, workspace_id)
 
     # Latest company scan job (for status display)
@@ -517,23 +519,24 @@ def company_detail(
         )
     analysis = analysis_q.first()
 
-    # Latest briefing item with outreach (Phase 3: workspace-scoped)
+    # Latest briefing item with outreach (Phase 3: workspace-scoped when multi_workspace)
     from uuid import UUID
 
-    ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
-    default_uuid = UUID(DEFAULT_WORKSPACE_ID)
     briefing_q = (
         db.query(BriefingItem)
         .filter(BriefingItem.company_id == company_id)
         .order_by(BriefingItem.created_at.desc())
     )
-    if ws_uuid == default_uuid:
-        briefing_q = briefing_q.filter(
-            (BriefingItem.workspace_id == ws_uuid)
-            | (BriefingItem.workspace_id.is_(None))
-        )
-    else:
-        briefing_q = briefing_q.filter(BriefingItem.workspace_id == ws_uuid)
+    if workspace_id is not None:
+        ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        default_uuid = UUID(DEFAULT_WORKSPACE_ID)
+        if ws_uuid == default_uuid:
+            briefing_q = briefing_q.filter(
+                (BriefingItem.workspace_id == ws_uuid)
+                | (BriefingItem.workspace_id.is_(None))
+            )
+        else:
+            briefing_q = briefing_q.filter(BriefingItem.workspace_id == ws_uuid)
     briefing = briefing_q.first()
 
     # Outreach history and draft for pre-fill (Phase 3: scope by workspace)
@@ -903,42 +906,55 @@ def company_edit_submit(
 # ── Companies: scan all ──────────────────────────────────────────────
 
 
-def _run_scan_all_background() -> None:
+def _run_scan_all_background(workspace_id: str | None = None) -> None:
     """Background task: run full scan across all companies. Uses its own DB session."""
     from app.services.scan_orchestrator import run_scan_all
 
     db = SessionLocal()
     try:
-        asyncio.run(run_scan_all(db))
+        asyncio.run(run_scan_all(db, workspace_id=workspace_id))
     finally:
         db.close()
 
 
 @router.post("/companies/scan-all")
 async def companies_scan_all(
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(_require_ui_auth),
 ):
     """Queue a full scan across all companies, then redirect back to companies list."""
-    _default_ws = UUID(DEFAULT_WORKSPACE_ID)
+    # Phase 3: resolve workspace, enforce access when multi_workspace enabled
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
+
+    ws_uuid = UUID(str(workspace_id)) if workspace_id else UUID(DEFAULT_WORKSPACE_ID)
     running_job = (
         db.query(JobRun)
         .filter(
             JobRun.job_type == "scan",
             JobRun.status == "running",
             or_(
-                JobRun.workspace_id == _default_ws,
+                JobRun.workspace_id == ws_uuid,
                 JobRun.workspace_id.is_(None),
             ),
         )
         .first()
     )
     if running_job is not None:
-        return RedirectResponse(url="/companies?scan_all=running", status_code=303)
+        url = "/companies?scan_all=running"
+        if workspace_id:
+            url += f"&workspace_id={workspace_id}"
+        return RedirectResponse(url=url, status_code=303)
 
-    background_tasks.add_task(_run_scan_all_background)
-    return RedirectResponse(url="/companies?scan_all=queued", status_code=303)
+    background_tasks.add_task(_run_scan_all_background, workspace_id)
+    url = "/companies?scan_all=queued"
+    if workspace_id:
+        url += f"&workspace_id={workspace_id}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 # ── Companies: rescan ────────────────────────────────────────────────
@@ -957,6 +973,7 @@ def _run_rescan_background(company_id: int, job_id: int) -> None:
 
 @router.post("/companies/{company_id}/rescan")
 async def company_rescan(
+    request: Request,
     company_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -967,9 +984,16 @@ async def company_rescan(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    # Check if a scan is already running for this company
-    # Scope by workspace_id for multi-tenant readiness; include legacy jobs (workspace_id=None)
-    _default_ws = UUID(DEFAULT_WORKSPACE_ID)
+    # Phase 3: resolve workspace, enforce access, use workspace's pack
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
+
+    ws_uuid = UUID(str(workspace_id)) if workspace_id else UUID(DEFAULT_WORKSPACE_ID)
+    pack_id = get_pack_for_workspace(db, workspace_id) or get_default_pack_id(db)
+
+    # Check if a scan is already running for this company (same workspace or legacy)
     running_job = (
         db.query(JobRun)
         .filter(
@@ -977,7 +1001,7 @@ async def company_rescan(
             JobRun.job_type == "company_scan",
             JobRun.status == "running",
             or_(
-                JobRun.workspace_id == _default_ws,
+                JobRun.workspace_id == ws_uuid,
                 JobRun.workspace_id.is_(None),
             ),
         )
@@ -985,16 +1009,20 @@ async def company_rescan(
         .first()
     )
     if running_job is not None:
-        return RedirectResponse(url=f"/companies/{company_id}?rescan=running", status_code=302)
+        params = {"rescan": "running"}
+        if workspace_id:
+            params["workspace_id"] = workspace_id
+        return RedirectResponse(
+            url=_company_redirect_url(company_id, params), status_code=302
+        )
 
     # Create JobRun and queue background task (pack_id, workspace_id for audit)
-    pack_id = get_default_pack_id(db)
     job = JobRun(
         job_type="company_scan",
         company_id=company_id,
         status="running",
         pack_id=pack_id,
-        workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+        workspace_id=ws_uuid,
     )
     db.add(job)
     db.commit()
@@ -1002,7 +1030,12 @@ async def company_rescan(
 
     background_tasks.add_task(_run_rescan_background, company_id, job.id)
 
-    return RedirectResponse(url=f"/companies/{company_id}?rescan=queued", status_code=302)
+    params = {"rescan": "queued"}
+    if workspace_id:
+        params["workspace_id"] = workspace_id
+    return RedirectResponse(
+        url=_company_redirect_url(company_id, params), status_code=302
+    )
 
 
 # ── Companies: delete ────────────────────────────────────────────────
