@@ -900,10 +900,10 @@ class TestCompanyRescan:
         mock_db_session.add.assert_called()
         mock_db_session.commit.assert_called()
 
-    @patch("app.api.views.get_default_pack_id")
+    @patch("app.api.views.get_pack_for_workspace")
     @patch("app.api.views.get_company")
     def test_rescan_creates_job_run_with_pack_id_and_workspace_id(
-        self, mock_get, mock_get_pack_id, views_client, mock_db_session
+        self, mock_get, mock_get_pack_for_workspace, views_client, mock_db_session
     ):
         """Company rescan creates JobRun with pack_id and workspace_id for audit."""
         from uuid import UUID
@@ -912,7 +912,8 @@ class TestCompanyRescan:
 
         company = _make_company_read()
         mock_get.return_value = company
-        mock_get_pack_id.return_value = uuid4()
+        pack_uuid = uuid4()
+        mock_get_pack_for_workspace.return_value = pack_uuid
 
         mock_first = MagicMock(return_value=None)
         mock_order = MagicMock()
@@ -929,7 +930,7 @@ class TestCompanyRescan:
         assert resp.status_code == 302
         mock_db_session.add.assert_called_once()
         added_job = mock_db_session.add.call_args[0][0]
-        assert added_job.pack_id == mock_get_pack_id.return_value
+        assert added_job.pack_id == pack_uuid
         assert added_job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
 
     @patch("app.api.views.get_company")

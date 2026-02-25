@@ -67,15 +67,20 @@ def get_default_pack(db: Session | None = None) -> Pack | None:
         return None
 
 
-def get_pack_for_workspace(db: Session, workspace_id: str | UUID) -> UUID | None:
+def get_pack_for_workspace(
+    db: Session, workspace_id: str | UUID | None
+) -> UUID | None:
     """Return the active pack for the workspace, or default pack if workspace has none.
 
     Phase 3 (Pack Activation Runtime): When workspace has active_pack_id, use it.
     Otherwise fall back to get_default_pack_id(db) for backward compatibility.
+    When workspace_id is None (multi_workspace disabled), returns default pack.
     Logs warning when workspace does not exist (avoids silent misattribution).
     """
     from app.models.workspace import Workspace
 
+    if workspace_id is None:
+        return get_default_pack_id(db)
     ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
     ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
     if ws is None:

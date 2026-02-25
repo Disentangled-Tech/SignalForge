@@ -18,7 +18,7 @@ from app.models.company import Company
 from app.models.job_run import JobRun
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.analysis import analyze_company
-from app.services.pack_resolver import get_default_pack, get_default_pack_id
+from app.services.pack_resolver import get_default_pack, get_default_pack_id, resolve_pack
 from app.services.page_discovery import discover_pages
 from app.services.scoring import (
     _get_signal_value,
@@ -236,8 +236,10 @@ async def run_scan_company_with_job(
         db.refresh(job)
         return job
 
-    pack = get_default_pack(db)
     pack_id = job.pack_id if job.pack_id is not None else get_default_pack_id(db)
+    pack = (
+        resolve_pack(db, pack_id) if pack_id is not None else None
+    ) or get_default_pack(db)
     try:
         analysis = analyze_company(db, company_id, pack=pack, pack_id=pack_id)
         if analysis is not None:
@@ -262,30 +264,48 @@ async def run_scan_company_with_job(
 # ── Full scan ────────────────────────────────────────────────────────
 
 
-async def run_scan_all(db: Session) -> JobRun:
+async def run_scan_all(
+    db: Session, workspace_id: str | UUID | None = None
+) -> JobRun:
     """Run a scan across **all** companies.
 
     Creates a ``JobRun`` record to track progress. Individual company
     failures are caught and logged so the remaining companies are still
     processed.
 
+    When workspace_id is provided (Phase 3), uses that workspace's active
+    pack for analysis/scoring. Otherwise uses default pack and workspace.
+
     Returns
     -------
     JobRun
         The completed (or failed) job-run record.
     """
-    pack_id = get_default_pack_id(db)
+    from app.services.pack_resolver import get_pack_for_workspace
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
+    ws_uuid = UUID(str(ws_id)) if isinstance(ws_id, str) else ws_id
+    pack_id = (
+        get_pack_for_workspace(db, ws_id)
+        if workspace_id is not None
+        else get_default_pack_id(db)
+    ) or get_default_pack_id(db)
+
     job = JobRun(
         job_type="scan",
         status="running",
         pack_id=pack_id,
-        workspace_id=UUID(DEFAULT_WORKSPACE_ID),
+        workspace_id=ws_uuid,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    pack = get_default_pack(db)
+    pack = (
+        resolve_pack(db, pack_id)
+        if pack_id is not None
+        else get_default_pack(db)
+    )
     companies = db.query(Company).all()
     companies_with_url = [c for c in companies if c.website_url]
     processed = 0

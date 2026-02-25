@@ -403,11 +403,13 @@ class TestRunScanCompanyWithJob:
         assert job.finished_at is not None
 
     @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_default_pack")
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
     @patch("app.services.scan_orchestrator.score_company")
     @patch("app.services.scan_orchestrator.analyze_company")
     @patch("app.services.scan_orchestrator.run_scan_company", new_callable=AsyncMock)
     async def test_updates_existing_job_when_job_id_provided(
-        self, mock_scan, mock_analyze, mock_score
+        self, mock_scan, mock_analyze, mock_score, mock_get_pack_id, mock_get_default_pack
     ):
         """When job_id is provided, updates that JobRun instead of creating new one."""
         from app.services.scan_orchestrator import run_scan_company_with_job
@@ -418,11 +420,14 @@ class TestRunScanCompanyWithJob:
         existing_job.status = "running"
         existing_job.finished_at = None
         existing_job.error_message = None
-        # JobRun lookup first, then get_default_pack (SignalPack query returns None)
-        db.query.return_value.filter.return_value.first.side_effect = [
-            existing_job,
-            None,  # get_default_pack_id returns None → load_pack from filesystem
-        ]
+        existing_job.pack_id = None  # No pack_id → use get_default_pack_id then get_default_pack
+        mock_get_pack_id.return_value = None
+        mock_get_default_pack.return_value = MagicMock()
+
+        # JobRun lookup: query(JobRun).filter(JobRun.id==job_id).first()
+        mock_filter = MagicMock()
+        mock_filter.first.return_value = existing_job
+        db.query.return_value.filter.return_value = mock_filter
 
         mock_scan.return_value = 1
         mock_analyze.return_value = MagicMock()
