@@ -20,17 +20,25 @@ Implements Phase 3 (Pack Activation Runtime) of the company signal data models p
 ### Views (`app/api/views.py`)
 - **`_resolve_workspace_id(request)`**: Resolves `workspace_id` from `request.query_params` or `request.state` when `multi_workspace_enabled`; validates with `validate_uuid_param_or_422`
 - **`company_detail`**: Uses `_resolve_workspace_id`, passes `workspace_id` to `list_outreach_for_company`, `get_draft_for_company`, `get_company_score`; passes `workspace_id` to template context
-- **`company_outreach_add`**: Resolves `workspace_id`, passes to `create_outreach_record`; preserves `workspace_id` in redirect URLs
-- **`company_outreach_edit`**: Resolves `workspace_id`, passes to `update_outreach_outcome`; preserves in redirects
-- **`company_outreach_delete`**: Resolves `workspace_id`, passes to `delete_outreach_record`; preserves in redirects
+- **`company_outreach_add`**: Resolves `workspace_id`; when `multi_workspace_enabled` and missing, defaults to `DEFAULT_WORKSPACE_ID` (prevents cross-tenant). Passes to `create_outreach_record`; preserves `workspace_id` in redirect URLs
+- **`company_outreach_edit`**: Same default; passes to `update_outreach_outcome`; preserves in redirects
+- **`company_outreach_delete`**: Same default; passes to `delete_outreach_record`; preserves in redirects
 - **`_company_redirect_url(company_id, params)`**: Builds redirect URLs with optional query params
+
+### Outreach (`app/services/outreach.py`)
+- **`generate_outreach`**: Preserves backward compat: `offer_type` fallback remains "fractional CTO" when pack unavailable (not "consultant")
 
 ### Template (`app/templates/companies/detail.html`)
 - Edit link, rescan form, outreach add form, outreach edit form, and outreach delete form append `?workspace_id={{ workspace_id }}` when `workspace_id` is present (multi-workspace mode)
 
 ### Tests (`tests/test_outreach_history.py`)
-- **`test_update_outreach_outcome_workspace_isolated`**: Verifies `update_outreach_outcome` with `workspace_id` only updates records in that workspace
-- **`test_delete_outreach_record_workspace_isolated`**: Verifies `delete_outreach_record` with `workspace_id` only deletes records in that workspace
+- **`test_update_outreach_outcome_workspace_isolated`**: Verifies `update_outreach_outcome` with `workspace_id` only updates records in that workspace; regression: cannot update record in other workspace when defaulting to `DEFAULT_WORKSPACE_ID`
+- **`test_delete_outreach_record_workspace_isolated`**: Verifies `delete_outreach_record` with `workspace_id` only deletes records in that workspace; regression: cannot delete record in other workspace when defaulting to `DEFAULT_WORKSPACE_ID`
+
+## Code review fixes (cross-tenant protection)
+
+- **workspace_id default**: When `multi_workspace_enabled` and request has no `workspace_id` (e.g. direct POST without query params), views now default to `DEFAULT_WORKSPACE_ID` instead of passing `None`. Prevents cross-tenant modify/delete when workspace_id is missing.
+- **offer_type fallback**: Restored "fractional CTO" as fallback when pack unavailable (preserves backward compat for fractional CTO flow).
 
 ## Verification
 

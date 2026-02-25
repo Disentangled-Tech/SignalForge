@@ -581,7 +581,10 @@ def company_outreach_add(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    workspace_id = _resolve_workspace_id(request) if get_settings().multi_workspace_enabled else None
+    # Phase 3: scope by workspace; default to default workspace when missing (prevents cross-tenant)
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
 
     errors: list[str] = []
     if not sent_at.strip():
@@ -655,7 +658,10 @@ def company_outreach_edit(
     outcome: str = Form(""),
 ):
     """Update the outcome of an outreach record."""
-    workspace_id = _resolve_workspace_id(request) if get_settings().multi_workspace_enabled else None
+    # Phase 3: default to default workspace when missing (prevents cross-tenant modify)
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
 
     outcome_val = outcome.strip() or None
     if outcome_val is not None and outcome_val not in _OUTREACH_OUTCOMES:
@@ -697,7 +703,10 @@ def company_outreach_delete(
     if company is None:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    workspace_id = _resolve_workspace_id(request) if get_settings().multi_workspace_enabled else None
+    # Phase 3: default to default workspace when missing (prevents cross-tenant delete)
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
 
     deleted = delete_outreach_record(
         db, company_id, outreach_id, workspace_id=workspace_id
