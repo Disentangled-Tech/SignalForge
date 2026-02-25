@@ -1,10 +1,12 @@
-# Validate and Implement Scan All — Phases 0–4
+# Validate and Implement Scan All — Phases 0–4 + Ingestion Adapters
 
 Closes https://github.com/Disentangled-Tech/SignalForge/issues/162
+Closes https://github.com/Disentangled-Tech/SignalForge/issues/134
+Closes https://github.com/Disentangled-Tech/SignalForge/issues/210
 
 ## Summary
 
-Implements the full Scan All validation and Pack Architecture migration roadmap from `.cursor/plans/validate_and_implement_scan_all_250f0fdc.plan.md`:
+Implements the full Scan All validation and Pack Architecture migration roadmap from `.cursor/plans/validate_and_implement_scan_all_250f0fdc.plan.md`, plus Crunchbase and Product Hunt ingestion adapters from `.cursor/plans/crunchbase_product_hunt_ingestion_adapters_85eab9c2.plan.md`:
 
 - **Phase 0**: Fix Issue #162 — validate Scan All, improve empty-state UX
 - **Phase 1**: Engine abstraction — `PackScoringInterface`, `PackAnalysisInterface`
@@ -34,16 +36,23 @@ Implements the full Scan All validation and Pack Architecture migration roadmap 
 - **JobRun**: `pack_id` and `workspace_id` set when creating scan and company_scan jobs (audit trail)
 - **scan_orchestrator**: `run_scan_all`, `run_scan_company_with_job` set `workspace_id=UUID(DEFAULT_WORKSPACE_ID)`
 - **views.py company_rescan**: Sets `pack_id` and `workspace_id` on JobRun for audit consistency
-- **Tests**: `test_run_scan_all_sets_pack_id_when_available`, `test_creates_job_run_with_pack_id_when_available`, `test_rescan_creates_job_run_with_pack_id_and_workspace_id`
+- **views.py**: `workspace_id` filtering in `companies_list`, `companies_scan_all`, `company_rescan` (multi-tenant readiness)
+- **Tests**: `test_run_scan_all_sets_pack_id_when_available`, `test_creates_job_run_with_pack_id_when_available`, `test_rescan_creates_job_run_with_pack_id_and_workspace_id`, `TestWorkspaceIdFiltering` (8 tests for workspace_id filtering)
 
 ### Phase 4 (Cleanup)
 - **views.py**: Company detail repair path passes `pack=pack` to `score_company`
 - **docs/pipeline.md**: New "Scan vs Ingest/Derive/Score" section
 - **Tests**: `test_detail_repair_path_calls_score_company_with_pack`
 
+### Ingestion Adapters (Issues #134, #210)
+- **app/ingestion/adapters/**: `CrunchbaseAdapter`, `ProductHuntAdapter` (env-gated)
+- **ingest_daily.py**: `_get_adapters()` returns Crunchbase when `INGEST_CRUNCHBASE_ENABLED=1` and `CRUNCHBASE_API_KEY` set; Product Hunt when `INGEST_PRODUCTHUNT_ENABLED=1` and `PRODUCTHUNT_API_TOKEN` set
+- **docs/pipeline.md**: "Ingestion Adapters" section; link to `ingestion-adapters.md`
+- **Tests**: `test_run_ingest_daily_uses_crunchbase_when_configured`, `test_run_ingest_daily_uses_producthunt_when_configured`, `test_run_ingest_daily_test_adapter_takes_precedence`, `test_run_ingest_daily_uses_both_adapters_when_both_configured`
+
 ## Verification
 
-- [x] `pytest tests/ -v -W error -m 'not integration'` — 211 passed
+- [x] `pytest tests/ -v -W error -m 'not integration'` — 1171 passed
 - [x] `ruff check` on modified files — clean
 - [x] Fractional CTO behavior unchanged (pack interfaces extract same weights)
 - [x] No new migrations (JobRun.pack_id already exists)
@@ -51,4 +60,4 @@ Implements the full Scan All validation and Pack Architecture migration roadmap 
 ## Risk
 
 - **Low**: All changes additive; pack parameter optional with fallback
-- **Pre-existing**: Alembic multiple heads may block integration tests until resolved
+- **Alembic**: Removed duplicate migration files (`* 2.py`) that caused multiple heads

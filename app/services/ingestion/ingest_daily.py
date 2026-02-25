@@ -13,9 +13,12 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.ingestion.adapters.crunchbase_adapter import CrunchbaseAdapter
+from app.ingestion.adapters.producthunt_adapter import ProductHuntAdapter
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.ingest import run_ingest
 from app.models import JobRun
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.pack_resolver import get_default_pack_id
 
 logger = logging.getLogger(__name__)
@@ -24,12 +27,27 @@ logger = logging.getLogger(__name__)
 def _get_adapters() -> list:
     """Return list of adapters for daily ingestion.
 
-    TestAdapter only when INGEST_USE_TEST_ADAPTER=1 (pytest sets this).
-    Production returns [] until real adapters (Crunchbase, etc.) are configured.
+    - INGEST_USE_TEST_ADAPTER=1: Returns [TestAdapter()] only (pytest).
+    - Else: Build from env:
+      - INGEST_CRUNCHBASE_ENABLED=1 and CRUNCHBASE_API_KEY set → CrunchbaseAdapter
+      - INGEST_PRODUCTHUNT_ENABLED=1 and PRODUCTHUNT_API_TOKEN set → ProductHuntAdapter
+    Returns combined list (may be empty).
     """
     if os.getenv("INGEST_USE_TEST_ADAPTER", "").lower() in ("1", "true"):
         return [TestAdapter()]
-    return []
+
+    adapters: list = []
+    if (
+        os.getenv("INGEST_CRUNCHBASE_ENABLED", "").lower() in ("1", "true")
+        and os.getenv("CRUNCHBASE_API_KEY", "").strip()
+    ):
+        adapters.append(CrunchbaseAdapter())
+    if (
+        os.getenv("INGEST_PRODUCTHUNT_ENABLED", "").lower() in ("1", "true")
+        and os.getenv("PRODUCTHUNT_API_TOKEN", "").strip()
+    ):
+        adapters.append(ProductHuntAdapter())
+    return adapters
 
 
 def run_ingest_daily(
@@ -46,11 +64,20 @@ def run_ingest_daily(
         dict with status, job_run_id, inserted, skipped_duplicate,
         skipped_invalid, errors_count, error
     """
-    job = JobRun(job_type="ingest", status="running")
-    if workspace_id is not None:
-        job.workspace_id = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
-    if pack_id is not None:
-        job.pack_id = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
+    # Audit: set pack_id and workspace_id for consistency with scan jobs
+    resolved_workspace = (
+        UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+    ) if workspace_id is not None else UUID(DEFAULT_WORKSPACE_ID)
+    resolved_job_pack_id = pack_id or get_default_pack_id(db)
+    if isinstance(resolved_job_pack_id, str):
+        resolved_job_pack_id = UUID(str(resolved_job_pack_id)) if resolved_job_pack_id else None
+
+    job = JobRun(
+        job_type="ingest",
+        status="running",
+        workspace_id=resolved_workspace,
+        pack_id=resolved_job_pack_id,
+    )
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -78,13 +105,9 @@ def run_ingest_daily(
         total_skipped_invalid = 0
         all_errors: list[str] = []
 
-        resolved_pack_id = pack_id or get_default_pack_id(db)
-        if isinstance(resolved_pack_id, str):
-            resolved_pack_id = UUID(str(resolved_pack_id)) if resolved_pack_id else None
-
         for adapter in adapters:
             try:
-                result = run_ingest(db, adapter, since, pack_id=resolved_pack_id)
+                result = run_ingest(db, adapter, since, pack_id=resolved_job_pack_id)
                 total_inserted += result["inserted"]
                 total_skipped_duplicate += result["skipped_duplicate"]
                 total_skipped_invalid += result["skipped_invalid"]
