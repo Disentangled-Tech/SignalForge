@@ -11,7 +11,7 @@ See [pipeline.md](pipeline.md) for the high-level adapter table and pipeline flo
 | Adapter | Env vars | Event types | Notes |
 |---------|----------|-------------|-------|
 | **Crunchbase** | `CRUNCHBASE_API_KEY`, `INGEST_CRUNCHBASE_ENABLED=1` | funding_raised | Requires Crunchbase API license |
-| **Product Hunt** | `PRODUCTHUNT_API_TOKEN`, `INGEST_PRODUCTHUNT_ENABLED=1` | launch_major | Planned; rate limits apply |
+| **Product Hunt** | `PRODUCTHUNT_API_TOKEN`, `INGEST_PRODUCTHUNT_ENABLED=1` | launch_major | Implemented; rate limits apply; retry on 429/5xx |
 | **TestAdapter** | `INGEST_USE_TEST_ADAPTER=1` | funding_raised, job_posted_engineering, cto_role_posted | Tests only; when set, only TestAdapter is used |
 
 When `INGEST_USE_TEST_ADAPTER=1`, only TestAdapter is returned. Otherwise, adapters are built from env: each adapter is included when its enable flag is set and its API key/token is present.
@@ -62,11 +62,11 @@ Funding rounds are mapped to `RawEvent` with:
 
 ---
 
-## Product Hunt (Planned)
+## Product Hunt (Implemented)
 
 ### API Token Acquisition
 
-The Product Hunt adapter will use the [Product Hunt API 2.0](https://api.producthunt.com/v2/docs) (GraphQL). To obtain a token:
+The Product Hunt adapter uses the [Product Hunt API 2.0](https://api.producthunt.com/v2/docs) (GraphQL). To obtain a token:
 
 1. Create an application at [Product Hunt OAuth Applications](https://www.producthunt.com/v2/oauth/applications).
 2. Use the **developer_token** from the dashboard for server-side scripts (does not expire, linked to your account).
@@ -74,22 +74,27 @@ The Product Hunt adapter will use the [Product Hunt API 2.0](https://api.product
 
 **Note**: The Product Hunt API must not be used for commercial purposes without contacting [hello@producthunt.com](mailto:hello@producthunt.com).
 
-### Configuration (when implemented)
+### Configuration
 
 ```bash
 export PRODUCTHUNT_API_TOKEN=your-token
 export INGEST_PRODUCTHUNT_ENABLED=1
 ```
 
-### Rate Limits
+When `PRODUCTHUNT_API_TOKEN` is unset or empty, the adapter returns `[]` and logs at debug. No exception is raised.
+
+### Rate Limits and Retry
 
 - Product Hunt reserves the right to rate-limit applications.
+- **429 Too Many Requests** and **5xx** responses: The adapter retries up to 3 times with exponential backoff (1s, 2s, 4s).
+- On final failure after retries: returns `[]` without raising.
 - Contact Product Hunt for faster access without rate limits.
-- Implement simple retry with backoff when the adapter is added.
 
-### Event Mapping (planned)
+### Event Mapping
 
-Product launches will map to `RawEvent` with `event_type_candidate`: `launch_major`.
+Product launches map to `RawEvent` with:
+- `event_type_candidate`: `launch_major`
+- `raw_payload`: includes `votesCount`, `commentsCount`, `makers` (list of `{name}`) when available from the API.
 
 ---
 
