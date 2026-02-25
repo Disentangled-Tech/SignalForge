@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tests.test_constants import TEST_USERNAME_VIEWS
 from app.api.deps import get_db, require_ui_auth
 from app.api.settings_views import router
 from app.models.job_run import JobRun
 from app.models.user import User
+from tests.test_constants import TEST_USERNAME_VIEWS
 
 
 def _make_user() -> MagicMock:
@@ -24,16 +24,16 @@ def _make_user() -> MagicMock:
 
 
 def _make_job_run(**overrides) -> MagicMock:
-    defaults = dict(
-        id=1,
-        job_type="briefing",
-        status="completed",
-        started_at=datetime.now(timezone.utc),
-        finished_at=datetime.now(timezone.utc),
-        companies_processed=3,
-        company_id=None,
-        error_message=None,
-    )
+    defaults = {
+        "id": 1,
+        "job_type": "briefing",
+        "status": "completed",
+        "started_at": datetime.now(UTC),
+        "finished_at": datetime.now(UTC),
+        "companies_processed": 3,
+        "company_id": None,
+        "error_message": None,
+    }
     defaults.update(overrides)
     mock = MagicMock(spec=JobRun)
     for k, v in defaults.items():
@@ -180,7 +180,7 @@ class TestSettingsPage:
     def test_settings_shows_no_scan_data_when_empty(
         self, mock_db, mock_user
     ):
-        """GET /settings shows empty state when no scan data (issue #61)."""
+        """GET /settings shows improved empty-state with actionable guidance (issue #61, #162)."""
         settings_rows = [
             MagicMock(key="briefing_time", value="08:00"),
             MagicMock(key="briefing_email", value=""),
@@ -202,6 +202,9 @@ class TestSettingsPage:
         assert resp.status_code == 200
         assert "Scan Change Rate (Last 30 Days)" in resp.text
         assert "No scan data in last 30 days" in resp.text
+        assert "Add a company with a website URL" in resp.text
+        assert "Scan All from the Companies page" in resp.text
+        assert "Check back here for scan metrics" in resp.text
 
 
 class TestSettingsSave:

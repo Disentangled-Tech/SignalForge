@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from app.llm.router import ModelRole, get_llm_provider
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
@@ -76,7 +80,11 @@ def _call_llm_json(llm, prompt: str, *, temperature: float = 0.3) -> tuple[dict 
     return None, raw_retry
 
 
-def analyze_company(db: Session, company_id: int) -> AnalysisRecord | None:
+def analyze_company(
+    db: Session,
+    company_id: int,
+    pack: Pack | None = None,
+) -> AnalysisRecord | None:
     """Run the full analysis pipeline for a single company.
 
     1. Load company and signals from DB.
@@ -85,7 +93,20 @@ def analyze_company(db: Session, company_id: int) -> AnalysisRecord | None:
     4. Generate explanation paragraph.
     5. Persist and return an ``AnalysisRecord``.
 
-    Returns ``None`` if the company is not found or has no signals.
+    Parameters
+    ----------
+    db : Session
+        Active database session.
+    company_id : int
+        Company to analyze.
+    pack : Pack | None
+        Optional pack for prompt selection (Phase 1: accepted but unused;
+        Phase 2: pack.get_stage_classification_prompt() etc.).
+
+    Returns
+    -------
+    AnalysisRecord | None
+        The analysis record, or None if company not found or has no signals.
     """
     company = db.query(Company).filter(Company.id == company_id).first()
     if company is None:

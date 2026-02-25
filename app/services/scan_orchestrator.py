@@ -271,22 +271,27 @@ async def run_scan_all(db: Session) -> JobRun:
     db.refresh(job)
 
     companies = db.query(Company).all()
+    companies_with_url = [c for c in companies if c.website_url]
     processed = 0
     changed_count = 0
     errors: list[str] = []
 
-    for company in companies:
-        if not company.website_url:
-            continue
-        try:
-            _, _, changed = await run_scan_company_full(db, company.id)
-            processed += 1
-            if changed:
-                changed_count += 1
-        except Exception as exc:  # noqa: BLE001
-            msg = f"Company {company.id} ({company.name}): {exc}"
-            logger.error("Scan failed – %s", msg)
-            errors.append(msg)
+    if companies_with_url:
+        for company in companies_with_url:
+            try:
+                _, _, changed = await run_scan_company_full(db, company.id)
+                processed += 1
+                if changed:
+                    changed_count += 1
+            except Exception as exc:  # noqa: BLE001
+                msg = f"Company {company.id} ({company.name}): {exc}"
+                logger.error("Scan failed – %s", msg)
+                errors.append(msg)
+    else:
+        # No companies with website URLs – nothing to scan (Issue #162)
+        job.error_message = (
+            "No companies with website URLs. Add companies with website URLs and run Scan All."
+        )
 
     # Finalise JobRun
     job.finished_at = datetime.now(UTC)
@@ -296,8 +301,7 @@ async def run_scan_all(db: Session) -> JobRun:
     if errors:
         job.error_message = "; ".join(errors)
 
-    # "failed" only when ALL companies with URLs failed
-    companies_with_url = [c for c in companies if c.website_url]
+    # "failed" only when companies_with_url non-empty but ALL failed
     if companies_with_url and processed == 0:
         job.status = "failed"
     else:

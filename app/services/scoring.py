@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.analysis_record import AnalysisRecord
 from app.models.app_settings import AppSettings
 from app.models.company import Company
+from app.packs.interfaces import PackScoringInterface, adapt_pack_for_scoring
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
@@ -53,11 +54,10 @@ def _get_pack_or_default(db: Session | None = None) -> Pack | None:
     return get_default_pack(db)
 
 
-def _get_weights_from_pack(pack: Pack) -> tuple[dict[str, int], dict[str, int]]:
-    """Extract pain_signal_weights and stage_bonuses from pack (Phase 2)."""
-    sc = pack.scoring if isinstance(pack.scoring, dict) else {}
-    weights = dict(sc.get("pain_signal_weights") or {})
-    stage_bonuses = dict(sc.get("stage_bonuses") or {})
+def _get_weights_from_pack(pack_interface: PackScoringInterface) -> tuple[dict[str, int], dict[str, int]]:
+    """Extract pain_signal_weights and stage_bonuses from pack interface (Phase 1)."""
+    weights = pack_interface.get_pain_signal_weights()
+    stage_bonuses = pack_interface.get_stage_bonuses()
     return weights, stage_bonuses
 
 
@@ -143,7 +143,8 @@ def calculate_score(
     if effective_pack is None:
         return 0
 
-    weights, stage_bonuses = _get_weights_from_pack(effective_pack)
+    pack_interface = adapt_pack_for_scoring(effective_pack)
+    weights, stage_bonuses = _get_weights_from_pack(pack_interface)
     if not weights:
         return 0
 
@@ -192,7 +193,8 @@ def get_known_pain_signal_keys(db: Session | None = None) -> set[str]:
     pack = _get_pack_or_default(db)
     if pack is None:
         return set()
-    weights, _ = _get_weights_from_pack(pack)
+    pack_interface = adapt_pack_for_scoring(pack)
+    weights, _ = _get_weights_from_pack(pack_interface)
     return set(weights)
 
 

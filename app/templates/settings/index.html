@@ -111,7 +111,7 @@
         <p><strong>{{ scan_change_pct }}%</strong> of companies had analysis changes ({{ scan_change_total }} of {{ scan_change_denom }})</p>
         <p class="text-muted">Use this to tune cron frequency. Low rate (&lt; 15%) suggests running scans less often; high rate (&gt; 40%) suggests daily or more.</p>
         {% else %}
-        <p class="text-muted">No scan data in last 30 days. Run a full scan to populate this metric.</p>
+        <p class="text-muted">No scan data in last 30 days. Add a company with a website URL, then run Scan All from the Companies page. Check back here for scan metrics.</p>
         {% endif %}
     </div>
 
