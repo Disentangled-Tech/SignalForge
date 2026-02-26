@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
+from app.ingestion.adapters.delaware_socrata_adapter import DelawareSocrataAdapter
 from app.ingestion.adapters.github_adapter import GitHubAdapter
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.ingest import run_ingest
@@ -165,3 +166,54 @@ def test_run_ingest_github_stores_signal_event_with_company_id(db: Session) -> N
     assert company is not None
     # Phase 3: org metadata populates website_url; company resolved by domain when blog present
     assert company.domain == _GITHUB_PHASE3_DOMAIN or company.name == "phase3org"
+
+
+def test_run_ingest_delaware_stores_signal_event(db: Session) -> None:
+    """Mock Delaware Socrata API → ingest → SignalEvent stored with company_id (Issue #250)."""
+    db.query(SignalEvent).filter(SignalEvent.source == "delaware_socrata").delete(
+        synchronize_session="fetch"
+    )
+    db.query(Company).filter(Company.name == "Incorporation Test LLC").delete(
+        synchronize_session="fetch"
+    )
+    db.commit()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [
+        {
+            "entity_name": "Incorporation Test LLC",
+            "file_date": "2026-02-20T00:00:00.000",
+            "entity_type": "LLC",
+        }
+    ]
+
+    mock_client = MagicMock()
+    mock_client.get.return_value = mock_response
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+
+    with patch.dict(
+        "os.environ",
+        {"INGEST_DELAWARE_SOCRATA_DATASET_ID": "test-incorp-ds"},
+        clear=False,
+    ):
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value = mock_client
+
+            adapter = DelawareSocrataAdapter()
+            since = datetime(2026, 2, 1, tzinfo=UTC)
+            result = run_ingest(db, adapter, since)
+
+    assert result["inserted"] == 1, f"Expected 1 inserted, got {result}"
+    assert result["skipped_duplicate"] == 0
+    assert len(result["errors"]) == 0
+
+    events = db.query(SignalEvent).filter(SignalEvent.source == "delaware_socrata").all()
+    assert len(events) == 1, f"Expected 1 SignalEvent, got {len(events)}"
+    assert events[0].company_id is not None
+    assert events[0].event_type == "incorporation"
+
+    company = db.get(Company, events[0].company_id)
+    assert company is not None
+    assert company.name == "Incorporation Test LLC"

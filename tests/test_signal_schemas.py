@@ -151,3 +151,17 @@ def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
     assert result is not None
     event_data, _ = result
     assert event_data["event_type"] == "repo_activity"
+
+
+def test_normalize_accepts_incorporation_without_pack() -> None:
+    """normalize_raw_event(raw_incorporation, pack=None) returns not None (Issue #250 Phase 1)."""
+    raw = RawEvent(
+        company_name="Acme LLC",
+        domain=None,
+        event_type_candidate="incorporation",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result = normalize_raw_event(raw, "delaware_socrata", pack=None)
+    assert result is not None
+    event_data, _ = result
+    assert event_data["event_type"] == "incorporation"
