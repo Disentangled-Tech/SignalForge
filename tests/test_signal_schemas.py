@@ -17,6 +17,13 @@ from app.schemas.signals import (
 )
 
 
+def _mock_pack(signal_ids: list[str]):
+    """Pack mock with configurable taxonomy signal_ids for normalize tests."""
+    class MockPack:
+        taxonomy = {"signal_ids": signal_ids}
+    return MockPack()
+
+
 def test_signal_event_to_company_signal_event_read(db: Session) -> None:
     """to_company_signal_event_read converts SignalEvent to CompanySignalEventRead."""
     company = Company(name="Acme", website_url="https://acme.example.com")
@@ -80,11 +87,7 @@ def test_signal_event_to_company_signal_event_read_with_pack_id(
 
 def test_normalize_validates_event_type_against_pack() -> None:
     """normalize_raw_event validates event_type_candidate against pack taxonomy."""
-    # Mock pack with limited signal_ids
-    class MockPack:
-        taxonomy = {"signal_ids": ["funding_raised", "launch_major"]}
-
-    pack = MockPack()
+    pack = _mock_pack(["funding_raised", "launch_major"])
 
     raw_valid = RawEvent(
         company_name="Acme",
@@ -140,3 +143,44 @@ def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
         assert result is not None, f"Core type {core_type} should be accepted when pack omits it"
         event_data, _ = result
         assert event_data["event_type"] == core_type
+def test_normalize_accepts_repo_activity_without_pack() -> None:
+    """normalize_raw_event(raw_repo_activity, pack=None) returns not None (Issue #244 Phase 1)."""
+    raw = RawEvent(
+        company_name="Acme",
+        domain="acme.com",
+        event_type_candidate="repo_activity",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result = normalize_raw_event(raw, "github", pack=None)
+    assert result is not None
+    event_data, _ = result
+    assert event_data["event_type"] == "repo_activity"
+
+
+def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
+    """Pack without repo_activity in taxonomy still accepts it (core type always accepted)."""
+    pack = _mock_pack(["funding_raised", "launch_major"])
+    raw = RawEvent(
+        company_name="Acme",
+        domain="acme.com",
+        event_type_candidate="repo_activity",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result = normalize_raw_event(raw, "github", pack=pack)
+    assert result is not None
+    event_data, _ = result
+    assert event_data["event_type"] == "repo_activity"
+
+
+def test_normalize_accepts_incorporation_without_pack() -> None:
+    """normalize_raw_event(raw_incorporation, pack=None) returns not None (Issue #250 Phase 1)."""
+    raw = RawEvent(
+        company_name="Acme LLC",
+        domain=None,
+        event_type_candidate="incorporation",
+        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+    )
+    result = normalize_raw_event(raw, "delaware_socrata", pack=None)
+    assert result is not None
+    event_data, _ = result
+    assert event_data["event_type"] == "incorporation"

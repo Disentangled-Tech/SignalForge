@@ -25,6 +25,10 @@ def _is_valid_event_type_for_pack(candidate: str, pack: Pack | None) -> bool:
     When pack is None, uses is_valid_event_type (core types only).
     """
     if candidate in SIGNAL_EVENT_TYPES:
+    Core types (event_types) are always accepted regardless of pack.
+    When pack is provided, pack taxonomy types are also accepted.
+    """
+    if is_valid_event_type(candidate):
         return True
     if pack is not None:
         ids = pack.taxonomy.get("signal_ids") if isinstance(pack.taxonomy, dict) else []

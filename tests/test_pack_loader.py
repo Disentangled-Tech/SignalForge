@@ -32,7 +32,13 @@ class TestPackLoader:
         assert pack.esl_policy is not None
 
     def test_pack_taxonomy_has_signal_ids(self) -> None:
-        """Pack taxonomy includes all 23 CTO event types from event_types.SIGNAL_EVENT_TYPES."""
+        """Pack taxonomy signal_ids are all valid event types.
+
+        Packs are not required to adopt all core types (e.g. repo_activity).
+        Core types are always accepted by normalization regardless of pack
+        taxonomy. This asserts pack taxonomy only references valid core types.
+        See Issue #244.
+        """
         from app.ingestion.event_types import SIGNAL_EVENT_TYPES
         from app.packs.loader import load_pack
 
@@ -43,8 +49,8 @@ class TestPackLoader:
             if isinstance(tax, dict)
             else (getattr(tax, "signal_ids", None) or [])
         )
-        for etype in SIGNAL_EVENT_TYPES:
-            assert etype in taxonomy_ids, f"Taxonomy missing event type: {etype}"
+        for sid in taxonomy_ids:
+            assert sid in SIGNAL_EVENT_TYPES, f"Taxonomy signal_id {sid} not in core event types"
 
     def test_load_nonexistent_pack_raises(self) -> None:
         """load_pack('nonexistent_pack', '1') raises PackNotFoundError or ValueError."""

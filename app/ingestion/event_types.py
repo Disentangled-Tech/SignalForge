@@ -29,6 +29,9 @@ SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     "cto_hired",  # suppressor
     # Core platform types (Issue #244, #250); packs may omit from taxonomy
     "repo_activity",
+    # Core (Issue #244): GitHub provider
+    "repo_activity",
+    # Core (Issue #250): Delaware incorporation provider
     "incorporation",
 })
 

@@ -39,3 +39,5 @@ derivers:
       signal_id: advisor_request
     - event_type: cto_hired
       signal_id: cto_hired
+    - event_type: repo_activity
+      signal_id: repo_activity

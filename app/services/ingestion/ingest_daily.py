@@ -14,6 +14,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.ingestion.adapters.crunchbase_adapter import CrunchbaseAdapter
+from app.ingestion.adapters.delaware_socrata_adapter import DelawareSocrataAdapter
+from app.ingestion.adapters.github_adapter import GitHubAdapter
+from app.ingestion.adapters.newsapi_adapter import NewsAPIAdapter
 from app.ingestion.adapters.producthunt_adapter import ProductHuntAdapter
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.ingest import run_ingest
@@ -31,6 +34,9 @@ def _get_adapters() -> list:
     - Else: Build from env:
       - INGEST_CRUNCHBASE_ENABLED=1 and CRUNCHBASE_API_KEY set → CrunchbaseAdapter
       - INGEST_PRODUCTHUNT_ENABLED=1 and PRODUCTHUNT_API_TOKEN set → ProductHuntAdapter
+      - INGEST_NEWSAPI_ENABLED=1 and NEWSAPI_API_KEY set → NewsAPIAdapter
+      - INGEST_GITHUB_ENABLED=1 and GITHUB_TOKEN set → GitHubAdapter
+      - INGEST_DELAWARE_SOCRATA_ENABLED=1 and INGEST_DELAWARE_SOCRATA_DATASET_ID set → DelawareSocrataAdapter
     Returns combined list (may be empty).
     """
     if os.getenv("INGEST_USE_TEST_ADAPTER", "").lower() in ("1", "true"):
@@ -47,6 +53,23 @@ def _get_adapters() -> list:
         and os.getenv("PRODUCTHUNT_API_TOKEN", "").strip()
     ):
         adapters.append(ProductHuntAdapter())
+    if (
+        os.getenv("INGEST_NEWSAPI_ENABLED", "").lower() in ("1", "true")
+        and os.getenv("NEWSAPI_API_KEY", "").strip()
+    ):
+        adapters.append(NewsAPIAdapter())
+    token = os.getenv("GITHUB_TOKEN", "").strip() or os.getenv("GITHUB_PAT", "").strip()
+    if (
+        os.getenv("INGEST_GITHUB_ENABLED", "").lower() in ("1", "true")
+        and token
+    ):
+        adapters.append(GitHubAdapter())
+    dataset_id = os.getenv("INGEST_DELAWARE_SOCRATA_DATASET_ID", "").strip()
+    if (
+        os.getenv("INGEST_DELAWARE_SOCRATA_ENABLED", "").lower() in ("1", "true")
+        and dataset_id
+    ):
+        adapters.append(DelawareSocrataAdapter())
     return adapters
 
 
