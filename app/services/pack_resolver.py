@@ -39,6 +39,21 @@ def resolve_pack(db: Session, pack_id: UUID) -> Pack | None:
         return None
 
 
+def get_core_pack_id(db: Session) -> UUID | None:
+    """Return the core pack UUID (pack_id='core', version='1'), or None if not installed.
+
+    Issue #287 M1: Used by derive/score to write or read SignalInstances with
+    a single canonical pack_id. Callers require core pack for derive/score when
+    using the refactored pipeline.
+    """
+    row = (
+        db.query(SignalPack.id)
+        .filter(SignalPack.pack_id == "core", SignalPack.version == "1")
+        .first()
+    )
+    return row[0] if row else None
+
+
 def get_default_pack_id(db: Session) -> UUID | None:
     """Return the fractional_cto_v1 pack UUID, or None if not installed."""
     row = (
