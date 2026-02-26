@@ -12,6 +12,7 @@ import pytest
 from app.models.signal_pack import SignalPack
 from app.models.workspace import Workspace
 from app.services.pack_resolver import (
+    get_core_pack_id,
     get_default_pack_id,
     get_pack_for_workspace,
     resolve_pack,
@@ -131,3 +132,33 @@ class TestGetPackForWorkspace:
         unknown_ws_id = uuid.uuid4()
         result = get_pack_for_workspace(db, unknown_ws_id)
         assert result == fractional_cto_pack_id
+
+
+class TestGetCorePackId:
+    """get_core_pack_id(db) returns UUID of core pack row or None (Issue #287, M1)."""
+
+    def test_get_core_pack_id_returns_uuid_when_core_installed(self, db) -> None:
+        """get_core_pack_id returns UUID when core pack row exists in signal_packs."""
+        core_id = get_core_pack_id(db)
+        if core_id is None:
+            pytest.skip("core pack not installed (run migration 20260226_core_pack_sentinel)")
+        assert core_id is not None
+        assert isinstance(core_id, uuid.UUID)
+        row = (
+            db.query(SignalPack)
+            .filter(SignalPack.pack_id == "core", SignalPack.version == "1")
+            .first()
+        )
+        assert row is not None
+        assert row.id == core_id
+
+    def test_get_core_pack_id_returns_none_when_core_not_present(self, db) -> None:
+        """get_core_pack_id returns None when no row with pack_id='core' version='1'."""
+        db.query(SignalPack).filter(
+            SignalPack.pack_id == "core",
+            SignalPack.version == "1",
+        ).delete(synchronize_session="fetch")
+        db.flush()
+        result = get_core_pack_id(db)
+        assert result is None
+        # Do not commit; db fixture rolls back to preserve core pack for other tests
