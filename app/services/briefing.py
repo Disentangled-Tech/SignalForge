@@ -18,7 +18,7 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_record import SignalRecord
-from app.prompts.loader import render_prompt
+from app.prompts.loader import resolve_prompt_content
 from app.services.email_service import send_briefing_email
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.esl.esl_gate_filter import is_suppressed_from_engagement
@@ -62,9 +62,7 @@ def select_top_companies(
     dedup_cutoff = now - timedelta(days=_DEDUP_WINDOW_DAYS)
 
     # Sub-query: company IDs with at least one analysis (needed for briefing).
-    companies_with_analysis = (
-        db.query(AnalysisRecord.company_id).distinct().subquery()
-    )
+    companies_with_analysis = db.query(AnalysisRecord.company_id).distinct().subquery()
 
     # Sub-query: company IDs with a signal created recently.
     recent_signal_ids = (
@@ -75,32 +73,23 @@ def select_top_companies(
     )
 
     # Sub-query: company IDs already briefed in the dedup window.
-    recently_briefed_q = (
-        db.query(BriefingItem.company_id)
-        .filter(BriefingItem.created_at >= dedup_cutoff)
+    recently_briefed_q = db.query(BriefingItem.company_id).filter(
+        BriefingItem.created_at >= dedup_cutoff
     )
     default_ws_uuid = uuid.UUID(DEFAULT_WORKSPACE_ID)
     if workspace_id is not None:
-        ws_uuid = (
-            uuid.UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
-        )
-        recently_briefed_q = recently_briefed_q.filter(
-            BriefingItem.workspace_id == ws_uuid
-        )
+        ws_uuid = uuid.UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
+        recently_briefed_q = recently_briefed_q.filter(BriefingItem.workspace_id == ws_uuid)
     else:
         recently_briefed_q = recently_briefed_q.filter(
-            (BriefingItem.workspace_id == default_ws_uuid)
-            | (BriefingItem.workspace_id.is_(None))
+            (BriefingItem.workspace_id == default_ws_uuid) | (BriefingItem.workspace_id.is_(None))
         )
     recently_briefed_ids = recently_briefed_q.distinct().subquery()
 
     companies = (
         db.query(Company)
         .filter(Company.id.in_(companies_with_analysis))
-        .filter(
-            (Company.last_scan_at >= activity_cutoff)
-            | (Company.id.in_(recent_signal_ids))
-        )
+        .filter((Company.last_scan_at >= activity_cutoff) | (Company.id.in_(recent_signal_ids)))
         .filter(~Company.id.in_(recently_briefed_ids))
         .order_by(Company.cto_need_score.desc().nullslast())
         .limit(limit)
@@ -129,9 +118,7 @@ class _EngagementView:
         self.esl_score = esl_score
         self.engagement_type = engagement_type
         self.cadence_blocked = cadence_blocked
-        self.explain = (
-            {"stability_cap_triggered": True} if stability_cap_triggered else {}
-        )
+        self.explain = {"stability_cap_triggered": True} if stability_cap_triggered else {}
 
 
 def get_emerging_companies_from_lead_feed(
@@ -232,7 +219,12 @@ def get_emerging_companies(
     )
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
-        .join(EngagementSnapshot, (ReadinessSnapshot.company_id == EngagementSnapshot.company_id) & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of) & pack_match)
+        .join(
+            EngagementSnapshot,
+            (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
+            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
+            & pack_match,
+        )
         .options(joinedload(ReadinessSnapshot.company))
         .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
         .all()
@@ -429,8 +421,7 @@ def _generate_for_company(
     )
     if ws_uuid == default_uuid:
         existing_q = existing_q.filter(
-            (BriefingItem.workspace_id == ws_uuid)
-            | (BriefingItem.workspace_id.is_(None))
+            (BriefingItem.workspace_id == ws_uuid) | (BriefingItem.workspace_id.is_(None))
         )
     else:
         existing_q = existing_q.filter(BriefingItem.workspace_id == ws_uuid)
@@ -470,8 +461,10 @@ def _generate_for_company(
     evidence_bullets = analysis.evidence_bullets or []
     evidence_text = "\n".join(f"- {b}" for b in evidence_bullets) if evidence_bullets else ""
 
-    prompt = render_prompt(
+    pack = resolve_pack(db, pack_id) if pack_id else None
+    prompt = resolve_prompt_content(
         "briefing_entry_v1",
+        pack,
         COMPANY_NAME=company.name or "",
         FOUNDER_NAME=company.founder_name or "",
         WEBSITE_URL=company.website_url or "",
@@ -494,7 +487,6 @@ def _generate_for_company(
     suggested_angle = parsed.get("suggested_angle", "") if parsed else ""
 
     # Outreach draft (Phase 3: pass pack for offer_type from workspace's active pack).
-    pack = resolve_pack(db, pack_id) if pack_id else None
     outreach = generate_outreach(db, company, analysis, pack=pack)
     item = BriefingItem(
         company_id=company.id,
@@ -511,4 +503,3 @@ def _generate_for_company(
     db.commit()
     db.refresh(item)
     return item
-

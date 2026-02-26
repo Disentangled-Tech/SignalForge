@@ -258,7 +258,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_briefing_items(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -306,7 +306,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_generate_briefing_sets_workspace_id_on_items(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -345,7 +345,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_company_without_analysis(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -371,7 +371,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_one_failure_does_not_stop_others(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -423,7 +423,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_all_companies_fail_stores_errors_in_job_run(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -464,7 +464,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_llm_called_with_correct_temperature(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -499,7 +499,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_empty_companies_returns_empty_list(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -518,7 +518,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_when_briefing_item_already_exists(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -550,7 +550,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_job_run_on_success(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -598,7 +598,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_generate_briefing_sets_workspace_id_and_pack_id_on_job_run(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved,
@@ -646,7 +646,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_creates_job_run_on_exception(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, *_args
@@ -680,7 +680,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_calls_send_briefing_email_when_enabled(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
@@ -741,7 +741,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_email_includes_failure_summary_when_partial_failures(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
@@ -816,7 +816,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_email_when_disabled(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
@@ -850,7 +850,7 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.generate_outreach")
     @patch("app.services.briefing.get_llm_provider")
-    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_email_exception_does_not_fail_job(
         self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
