@@ -43,6 +43,20 @@ class ValidationError(Exception):
     pass
 
 
+def get_schema_version(manifest: dict[str, Any]) -> str:
+    """Return pack schema version from manifest (Pack v2 contract).
+
+    When schema_version is missing or empty, returns "1". Used by validation
+    and loader to branch behavior for v2 (core signal_ids, optional taxonomy/derivers).
+    """
+    val = manifest.get("schema_version")
+    if val is None:
+        return "1"
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    return "1"
+
+
 def validate_pack_schema(
     manifest: dict[str, Any],
     taxonomy: dict[str, Any],
@@ -57,7 +71,7 @@ def validate_pack_schema(
     """Validate pack config for required fields and cross-references.
 
     Args:
-        manifest: pack.json content
+        manifest: pack.json content (schema_version optional; default "1").
         taxonomy: taxonomy.yaml content
         scoring: scoring.yaml content
         esl_policy: esl_policy.yaml content
@@ -84,16 +98,24 @@ def validate_pack_schema(
 
 
 def _validate_manifest(manifest: dict[str, Any]) -> None:
-    """Validate manifest has required fields: id, version, name, schema_version."""
+    """Validate manifest has required fields: id, version, name.
+
+    schema_version is optional (default "1", see get_schema_version). If present,
+    it must be a non-empty string.
+    """
     if not manifest:
         raise ValidationError("manifest is required and must not be empty")
-    required = ("id", "version", "name", "schema_version")
+    required = ("id", "version", "name")
     for key in required:
         if key not in manifest:
             raise ValidationError(f"manifest missing required field: {key}")
         val = manifest[key]
         if val is None or (isinstance(val, str) and not val.strip()):
             raise ValidationError(f"manifest field '{key}' must not be empty")
+    # schema_version optional; when present must be non-empty
+    sv = manifest.get("schema_version")
+    if sv is not None and (not isinstance(sv, str) or not sv.strip()):
+        raise ValidationError("manifest field 'schema_version' when present must be non-empty")
 
 
 def _get_allowed_signal_ids(manifest: dict[str, Any], taxonomy: dict[str, Any]) -> set[str]:

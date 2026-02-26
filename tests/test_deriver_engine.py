@@ -12,9 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, SignalEvent, SignalInstance
 from app.pipeline.deriver_engine import (
-    _build_passthrough_map,
-    _build_pattern_derivers,
     _evaluate_event_derivers,
+    _load_core_derivers,
     run_deriver,
 )
 
@@ -115,94 +114,17 @@ def _make_event(
     return ev
 
 
-class TestBuildPassthroughMap:
-    """Tests for _build_passthrough_map."""
+class TestLoadCoreDerivers:
+    """Tests for _load_core_derivers (Issue #285: core derivers only)."""
 
-    def test_empty_pack_returns_empty(self) -> None:
-        """None or empty pack returns empty map."""
-        assert _build_passthrough_map(None) == {}
-        from types import SimpleNamespace
-
-        empty = SimpleNamespace(derivers=None)
-        assert _build_passthrough_map(empty) == {}
-
-    def test_passthrough_from_pack(self) -> None:
-        """Pack with passthrough derivers produces event_type -> signal_id map."""
-        pack = SimpleNamespace(
-            derivers={
-                "passthrough": [
-                    {"event_type": "funding_raised", "signal_id": "funding_raised"},
-                    {"event_type": "cto_role_posted", "signal_id": "cto_role_posted"},
-                ]
-            }
-        )
-        m = _build_passthrough_map(pack)
-        assert m["funding_raised"] == "funding_raised"
-        assert m["cto_role_posted"] == "cto_role_posted"
-
-
-class TestBuildPatternDerivers:
-    """Tests for _build_pattern_derivers (Phase 1, Issue #173)."""
-
-    def test_empty_pack_returns_empty(self) -> None:
-        """None or empty pack returns empty list."""
-        assert _build_pattern_derivers(None) == []
-        assert _build_pattern_derivers(SimpleNamespace(derivers=None)) == []
-
-    def test_pattern_from_pack(self) -> None:
-        """Pack with pattern derivers produces list of configs with compiled regex."""
-        pack = SimpleNamespace(
-            derivers={
-                "derivers": {
-                    "pattern": [
-                        {
-                            "pattern": r"(?i)compliance",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["title", "summary"],
-                        },
-                    ],
-                }
-            }
-        )
-        result = _build_pattern_derivers(pack)
-        assert len(result) == 1
-        assert result[0]["signal_id"] == "compliance_mentioned"
-        assert result[0]["compiled"].search("We need SOC2 compliance")
-        assert result[0]["source_fields"] == ["title", "summary"]
-        assert result[0]["min_confidence"] is None
-
-    def test_pattern_source_fields_url_and_source_preserved(self) -> None:
-        """Pack source_fields url/source pass runtime filter (ALLOWED_PATTERN_SOURCE_FIELDS).
-
-        Schema validates url and source; deriver must not silently fall back to
-        title/summary when pack specifies valid url or source.
-        """
-        pack = SimpleNamespace(
-            derivers={
-                "derivers": {
-                    "pattern": [
-                        {
-                            "pattern": r"compliance",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["url"],
-                        },
-                        {
-                            "pattern": r"crunchbase",
-                            "signal_id": "funding_raised",
-                            "source_fields": ["title", "summary", "url", "source"],
-                        },
-                    ],
-                }
-            }
-        )
-        result = _build_pattern_derivers(pack)
-        assert len(result) == 2
-        assert result[0]["source_fields"] == ["url"], (
-            "url must be preserved; was silently filtered by _DEFAULT_PATTERN_SOURCE_FIELDS"
-        )
-        assert result[1]["source_fields"] == ["title", "summary", "url", "source"], (
-            "url and source must be preserved with title/summary"
-        )
+    def test_load_core_derivers_returns_passthrough_and_patterns(self) -> None:
+        """_load_core_derivers returns (passthrough_map, pattern_derivers)."""
+        passthrough, pattern_derivers = _load_core_derivers()
+        assert isinstance(passthrough, dict)
+        assert isinstance(pattern_derivers, list)
+        assert len(passthrough) > 0, "Core derivers must define passthrough mappings"
+        assert passthrough.get("funding_raised") == "funding_raised"
+        assert passthrough.get("cto_role_posted") == "cto_role_posted"
 
 
 class TestEvaluateEventDerivers:

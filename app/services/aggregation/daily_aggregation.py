@@ -125,6 +125,7 @@ def run_daily_aggregation(
             outreach_score_threshold=0,
             pack_id=resolved_pack,
             workspace_id=ws_id,
+            outreach_score_threshold=0,
         )
         for rs, es, company in emerging:
             band = (
@@ -134,7 +135,7 @@ def run_daily_aggregation(
             )
             ranked_companies.append(
                 {
-                    "company_name": company.name,
+                    "name": company.name,
                     "composite": rs.composite,
                     "band": band,
                 }
