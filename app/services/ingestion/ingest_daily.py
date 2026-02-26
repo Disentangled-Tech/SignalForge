@@ -70,6 +70,16 @@ def _get_adapters() -> list:
         and dataset_id
     ):
         adapters.append(DelawareSocrataAdapter())
+
+    # Dev fallback: when no adapters configured and DEBUG=true, use TestAdapter
+    # so "Run ingest" populates companies without API keys (Issue #90).
+    if not adapters and os.getenv("DEBUG", "false").lower() in ("1", "true"):
+        logger.info(
+            "No ingest adapters configured; using TestAdapter (DEBUG=true). "
+            "Set INGEST_CRUNCHBASE_ENABLED=1 and CRUNCHBASE_API_KEY (or other adapters) for production."
+        )
+        adapters = [TestAdapter()]
+
     return adapters
 
 
