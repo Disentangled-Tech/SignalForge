@@ -93,7 +93,8 @@ def load_pack(pack_id: str, version: str) -> Pack:
 
     For schema_version "2" (Pack v2, Issue #285 M5): taxonomy.yaml and derivers.yaml
     are optional; if absent, empty dicts are used and derive uses core derivers.
-    scoring.yaml and esl_policy.yaml are always required.
+    Validation for v2 uses core signal_ids (see app.packs.schemas). scoring.yaml
+    and esl_policy.yaml are always required for all schema versions.
 
     Args:
         pack_id: Pack identifier (e.g. 'fractional_cto_v1').

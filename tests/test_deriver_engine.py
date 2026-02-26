@@ -512,13 +512,10 @@ class TestRunDeriver:
     def test_deriver_pattern_produces_signal_instance(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Pattern deriver matches title/summary and produces SignalInstance (Phase 1).
+        """Core derivers passthrough produces SignalInstance (Issue #285 M6: core only).
 
-        Core derivers are mocked to be unavailable so the engine falls back to the
-        pack-specific pattern deriver, which is the code path under test here.
+        Derive uses core derivers only; no pack fallback. Passthrough yields one instance.
         """
-        from app.packs.loader import Pack
-
         company = Company(
             name="PatternTestCo",
             domain="pattern.example.com",
@@ -538,40 +535,9 @@ class TestRunDeriver:
         )
         db.commit()
 
-        mock_pack = Pack(
-            manifest={"id": "test", "version": "1", "name": "Test", "schema_version": "1"},
-            taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
-            scoring={},
-            esl_policy={},
-            playbooks={},
-            derivers={
-                "derivers": {
-                    "passthrough": [
-                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
-                    ],
-                    "pattern": [
-                        {
-                            "pattern": r"(?i)(soc2|compliance)",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["title", "summary"],
-                        },
-                    ],
-                }
-            },
-            config_checksum="",
-        )
-
-        with (
-            patch("app.pipeline.deriver_engine.resolve_pack", return_value=mock_pack),
-            patch(
-                "app.pipeline.deriver_engine._load_core_derivers",
-                side_effect=FileNotFoundError("core derivers unavailable in test"),
-            ),
-        ):
-            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
         assert result["status"] == "completed"
-        # Core overrides pack: only passthrough applies (no pattern in core), so 1 instance
         assert result["instances_upserted"] == 1
         assert result["events_processed"] == 1
 
@@ -584,7 +550,6 @@ class TestRunDeriver:
             .all()
         )
         signal_ids = {i.signal_id for i in instances}
-        # Core passthrough: funding_raised -> funding_raised; pack pattern ignored
         assert signal_ids == {"funding_raised"}
 
     def test_deriver_evidence_populated(self, db: Session, fractional_cto_pack_id) -> None:
@@ -923,17 +888,11 @@ class TestRunDeriver:
             config_checksum="",
         )
 
-        with (
-            patch(
-                "app.pipeline.deriver_engine.resolve_pack", side_effect=[pack_cto, pack_bookkeeping]
-            ),
-            # Core derivers unavailable: engine falls back to the mock pack derivers so that
-            # pack-isolation (different signal_ids per pack) can be verified (Issue #285, M3).
-            patch(
-                "app.pipeline.deriver_engine._load_core_derivers",
-                side_effect=FileNotFoundError("core derivers unavailable in test"),
-            ),
+        with patch(
+            "app.pipeline.deriver_engine.resolve_pack",
+            side_effect=[pack_cto, pack_bookkeeping],
         ):
+            # Core derivers only (Issue #285 M6): both packs get same signal_ids from core.
             # Run deriver with pack A (CTO)
             run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
             instances_cto = (
