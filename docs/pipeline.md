@@ -33,6 +33,7 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
   - `as_of` (date, YYYY-MM-DD): Snapshot date. Default: today.
 - **Validation**: Invalid UUIDs for `workspace_id` or `pack_id` return **422 Unprocessable Entity**.
 - **Pack resolution**: Same as run_score/run_derive. Writes only to `(workspace_id, pack_id, entity_id)`; no cross-tenant leakage.
+- **Issue #287 M5**: When the core pack is installed, `last_seen` on lead_feed rows is taken from core SignalInstances; projection key remains `(workspace_id, pack_id)`.
 
 ## Ingestion Adapters
 

@@ -39,24 +39,32 @@ def _top_signal_ids_from_explain(explain: dict | None, limit: int = 8) -> list[s
 
 
 def _batch_last_seen_for_entities(
-    db: Session, entity_ids: list[int], pack_id: UUID | None
+    db: Session,
+    entity_ids: list[int],
+    pack_id: UUID | None,
+    core_pack_id: UUID | None = None,
 ) -> dict[int, datetime | None]:
-    """Latest last_seen per entity from SignalInstance (pack-scoped). Batched to avoid N+1."""
+    """Latest last_seen per entity from SignalInstance. Batched to avoid N+1.
+
+    Issue #287 M5: When core_pack_id is set, uses core SignalInstances only
+    (pack_id == core_pack_id). When core_pack_id is None, uses pack-scoped
+    instances (pack_id == pack_id or pack_id is NULL). Projection key
+    (workspace_id, pack_id) is unchanged; only the source of last_seen switches.
+    """
     if not entity_ids:
         return {}
     from sqlalchemy import func
 
-    subq = (
-        db.query(
-            SignalInstance.entity_id,
-            func.max(SignalInstance.last_seen).label("last_seen"),
-        )
-        .filter(
-            SignalInstance.entity_id.in_(entity_ids),
-            SignalInstance.last_seen.isnot(None),
-        )
+    subq = db.query(
+        SignalInstance.entity_id,
+        func.max(SignalInstance.last_seen).label("last_seen"),
+    ).filter(
+        SignalInstance.entity_id.in_(entity_ids),
+        SignalInstance.last_seen.isnot(None),
     )
-    if pack_id is not None:
+    if core_pack_id is not None:
+        subq = subq.filter(SignalInstance.pack_id == core_pack_id)
+    elif pack_id is not None:
         subq = subq.filter(
             or_(
                 SignalInstance.pack_id == pack_id,
@@ -79,16 +87,11 @@ def _batch_outreach_summary_for_entities(
     """
     if not entity_ids:
         return {}
-    q = (
-        db.query(OutreachHistory)
-        .filter(OutreachHistory.company_id.in_(entity_ids))
-    )
+    q = db.query(OutreachHistory).filter(OutreachHistory.company_id.in_(entity_ids))
     if workspace_id is not None:
         ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
         q = q.filter(OutreachHistory.workspace_id == ws_uuid)
-    all_rows = q.order_by(
-        OutreachHistory.company_id, OutreachHistory.sent_at.desc()
-    ).all()
+    all_rows = q.order_by(OutreachHistory.company_id, OutreachHistory.sent_at.desc()).all()
     result: dict[int, dict | None] = dict.fromkeys(entity_ids, None)
     for oh in all_rows:
         if result[oh.company_id] is None:
@@ -169,15 +172,15 @@ def upsert_lead_feed_from_snapshots(
     as_of: date,
     readiness_snapshot: ReadinessSnapshot,
     engagement_snapshot: EngagementSnapshot,
+    core_pack_id: UUID | None = None,
 ) -> LeadFeed | None:
     """Upsert a single lead_feed row from ReadinessSnapshot + EngagementSnapshot.
 
     Used by score job for incremental updates (Phase 3). Skips suppressed entities.
-    Returns None when entity is suppressed.
+    Returns None when entity is suppressed. Issue #287 M5: when core_pack_id is
+    set, last_seen is taken from core SignalInstances.
     """
-    if is_suppressed_from_engagement(
-        engagement_snapshot.esl_decision, engagement_snapshot.explain
-    ):
+    if is_suppressed_from_engagement(engagement_snapshot.esl_decision, engagement_snapshot.explain):
         return None
     min_thresh = (readiness_snapshot.explain or {}).get("minimum_threshold", 0) or 0
     if min_thresh > 0 and readiness_snapshot.composite < min_thresh:
@@ -187,15 +190,15 @@ def upsert_lead_feed_from_snapshots(
     pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
 
     ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
-    last_seen_by = _batch_last_seen_for_entities(db, [entity_id], pack_uuid)
-    outreach_by = _batch_outreach_summary_for_entities(
-        db, [entity_id], workspace_id=ws_uuid
+    last_seen_by = _batch_last_seen_for_entities(
+        db, [entity_id], pack_uuid, core_pack_id=core_pack_id
     )
+    outreach_by = _batch_outreach_summary_for_entities(db, [entity_id], workspace_id=ws_uuid)
 
     top_signal_ids = _top_signal_ids_from_explain(readiness_snapshot.explain)
-    esl_decision = engagement_snapshot.esl_decision or (
-        engagement_snapshot.explain or {}
-    ).get("esl_decision")
+    esl_decision = engagement_snapshot.esl_decision or (engagement_snapshot.explain or {}).get(
+        "esl_decision"
+    )
     sensitivity_level = engagement_snapshot.sensitivity_level or (
         engagement_snapshot.explain or {}
     ).get("sensitivity_level")
@@ -246,9 +249,7 @@ def refresh_outreach_summary_for_entity(
             "workspace_id is required when MULTI_WORKSPACE_ENABLED=true "
             "to avoid cross-tenant outreach data mixing"
         )
-    outreach_by = _batch_outreach_summary_for_entities(
-        db, [entity_id], workspace_id=workspace_id
-    )
+    outreach_by = _batch_outreach_summary_for_entities(db, [entity_id], workspace_id=workspace_id)
     summary = outreach_by.get(entity_id)
 
     q = db.query(LeadFeed).filter(LeadFeed.entity_id == entity_id)
@@ -268,6 +269,7 @@ def build_lead_feed_from_snapshots(
     workspace_id: UUID | str,
     pack_id: UUID | None,
     as_of: date,
+    core_pack_id: UUID | None = None,
 ) -> int:
     """Build lead_feed projection from latest ReadinessSnapshot + EngagementSnapshot.
 
@@ -275,6 +277,8 @@ def build_lead_feed_from_snapshots(
     Upserts one row per entity. Returns count of rows upserted.
 
     Pack-scoped: when pack_id is set, filters snapshots by pack_id or NULL (legacy).
+    Issue #287 M5: when core_pack_id is set, last_seen is taken from core
+    SignalInstances; projection key (workspace_id, pack_id) is unchanged.
     """
     ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
 
@@ -313,10 +317,10 @@ def build_lead_feed_from_snapshots(
         return True
 
     entity_ids = [rs.company_id for rs, es in pairs if _should_include(rs, es)]
-    last_seen_by_entity = _batch_last_seen_for_entities(db, entity_ids, pack_uuid)
-    outreach_by_entity = _batch_outreach_summary_for_entities(
-        db, entity_ids, workspace_id=ws_uuid
+    last_seen_by_entity = _batch_last_seen_for_entities(
+        db, entity_ids, pack_uuid, core_pack_id=core_pack_id
     )
+    outreach_by_entity = _batch_outreach_summary_for_entities(db, entity_ids, workspace_id=ws_uuid)
 
     count = 0
     for rs, es in pairs:
@@ -326,9 +330,7 @@ def build_lead_feed_from_snapshots(
         entity_id = rs.company_id
         top_signal_ids = _top_signal_ids_from_explain(rs.explain)
         esl_decision = es.esl_decision or (es.explain or {}).get("esl_decision")
-        sensitivity_level = es.sensitivity_level or (es.explain or {}).get(
-            "sensitivity_level"
-        )
+        sensitivity_level = es.sensitivity_level or (es.explain or {}).get("sensitivity_level")
         last_seen = last_seen_by_entity.get(entity_id)
         if last_seen is None and rs.computed_at:
             last_seen = rs.computed_at

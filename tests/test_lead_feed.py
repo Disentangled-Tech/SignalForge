@@ -15,6 +15,7 @@ from app.models import (
     EngagementSnapshot,
     LeadFeed,
     ReadinessSnapshot,
+    SignalInstance,
     SignalPack,
     Workspace,
 )
@@ -435,11 +436,7 @@ class TestBuildLeadFeedFromSnapshots:
         db.commit()
 
         assert count == 0
-        row = (
-            db.query(LeadFeed)
-            .filter(LeadFeed.entity_id == lead_feed_company.id)
-            .first()
-        )
+        row = db.query(LeadFeed).filter(LeadFeed.entity_id == lead_feed_company.id).first()
         assert row is None
 
     def test_build_returns_zero_when_pack_id_none(self, db: Session) -> None:
@@ -451,6 +448,65 @@ class TestBuildLeadFeedFromSnapshots:
             as_of=date.today(),
         )
         assert count == 0
+
+    def test_build_last_seen_from_core_instances_when_core_pack_id_provided(
+        self,
+        db: Session,
+        lead_feed_company: Company,
+        lead_feed_snapshots: tuple[ReadinessSnapshot, EngagementSnapshot],
+        fractional_cto_pack_id: UUID,
+        core_pack_id: UUID,
+    ) -> None:
+        """When core_pack_id is provided, last_seen comes from core SignalInstances (Issue #287 M5).
+
+        Pack-scoped instances are ignored for last_seen; projection key (workspace_id, pack_id)
+        remains workspace pack.
+        """
+        rs, es = lead_feed_snapshots
+        as_of = rs.as_of
+        # Core instance: last_seen noon
+        t_core = datetime(2099, 2, 1, 12, 0, 0, tzinfo=UTC)
+        core_inst = SignalInstance(
+            entity_id=lead_feed_company.id,
+            signal_id="funding_raised",
+            pack_id=core_pack_id,
+            first_seen=t_core,
+            last_seen=t_core,
+        )
+        db.add(core_inst)
+        # Pack-scoped instance: last_seen later (6pm); without M5 would win
+        t_pack = datetime(2099, 2, 1, 18, 0, 0, tzinfo=UTC)
+        pack_inst = SignalInstance(
+            entity_id=lead_feed_company.id,
+            signal_id="job_posted_engineering",
+            pack_id=fractional_cto_pack_id,
+            first_seen=t_pack,
+            last_seen=t_pack,
+        )
+        db.add(pack_inst)
+        db.commit()
+
+        count = build_lead_feed_from_snapshots(
+            db,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            pack_id=fractional_cto_pack_id,
+            as_of=as_of,
+            core_pack_id=core_pack_id,
+        )
+        db.commit()
+
+        assert count == 1
+        row = (
+            db.query(LeadFeed)
+            .filter(
+                LeadFeed.workspace_id == UUID(DEFAULT_WORKSPACE_ID),
+                LeadFeed.pack_id == fractional_cto_pack_id,
+                LeadFeed.entity_id == lead_feed_company.id,
+            )
+            .first()
+        )
+        assert row is not None
+        assert row.last_seen == t_core, "last_seen must come from core instances, not pack-scoped"
 
     def test_build_isolates_by_workspace_and_pack(
         self,
@@ -468,7 +524,9 @@ class TestBuildLeadFeedFromSnapshots:
 
         # Create second workspace for isolation test (JobRun FK requires it)
         other_workspace_id = UUID("11111111-1111-1111-1111-111111111111")
-        other_ws = Workspace(id=other_workspace_id, name="Other WS", active_pack_id=fractional_cto_pack_id)
+        other_ws = Workspace(
+            id=other_workspace_id, name="Other WS", active_pack_id=fractional_cto_pack_id
+        )
         db.add(other_ws)
         db.commit()
 
@@ -770,7 +828,9 @@ class TestBuildLeadFeedFromSnapshots:
             )
             .count()
         )
-        assert count_after == count_before, "Rerun must not create duplicate rows (upsert idempotency)"
+        assert count_after == count_before, (
+            "Rerun must not create duplicate rows (upsert idempotency)"
+        )
 
     def test_outreach_event_refreshes_lead_feed_outreach_summary(
         self,
@@ -1168,9 +1228,9 @@ class TestLeadFeedIndices:
 
         assert len(leads) == 50
         assert elapsed < 2.0, f"Query took {elapsed:.2f}s; expected < 2s for 100 rows"
-def test_upsert_lead_feed_populates_from_snapshots(
-    db: Session, fractional_cto_pack_id
-) -> None:
+
+
+def test_upsert_lead_feed_populates_from_snapshots(db: Session, fractional_cto_pack_id) -> None:
     """upsert_lead_feed creates lead_feed rows from ReadinessSnapshot + EngagementSnapshot."""
     company = Company(name="Lead Co", website_url="https://lead.example.com")
     db.add(company)
@@ -1203,9 +1263,7 @@ def test_upsert_lead_feed_populates_from_snapshots(
     assert row.top_signal_ids is not None or row.composite_score == 80
 
 
-def test_upsert_lead_feed_idempotent_no_duplicates(
-    db: Session, fractional_cto_pack_id
-) -> None:
+def test_upsert_lead_feed_idempotent_no_duplicates(db: Session, fractional_cto_pack_id) -> None:
     """Re-running upsert_lead_feed produces same rows (upsert by natural key)."""
     company = Company(name="Idem Co", website_url="https://idem.example.com")
     db.add(company)
@@ -1213,14 +1271,22 @@ def test_upsert_lead_feed_idempotent_no_duplicates(
     db.refresh(company)
 
     as_of = date(2099, 1, 11)
-    _add_snapshots(db, company.id, as_of, composite=65, esl_score=0.9, pack_id=fractional_cto_pack_id)
+    _add_snapshots(
+        db, company.id, as_of, composite=65, esl_score=0.9, pack_id=fractional_cto_pack_id
+    )
 
-    count1 = upsert_lead_feed(db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of)
-    count2 = upsert_lead_feed(db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of)
+    count1 = upsert_lead_feed(
+        db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of
+    )
+    count2 = upsert_lead_feed(
+        db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of
+    )
 
     assert count1 == 1
     assert count2 == 1
-    total = db.query(LeadFeed).filter(LeadFeed.entity_id == company.id, LeadFeed.as_of == as_of).count()
+    total = (
+        db.query(LeadFeed).filter(LeadFeed.entity_id == company.id, LeadFeed.as_of == as_of).count()
+    )
     assert total == 1
 
 
@@ -1242,13 +1308,13 @@ def test_get_emerging_companies_from_lead_feed_returns_data_when_populated(
     db.refresh(company)
 
     as_of = date(2099, 1, 13)
-    _add_snapshots(db, company.id, as_of, composite=85, esl_score=0.8, pack_id=fractional_cto_pack_id)
+    _add_snapshots(
+        db, company.id, as_of, composite=85, esl_score=0.8, pack_id=fractional_cto_pack_id
+    )
 
     upsert_lead_feed(db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of)
 
-    result = get_emerging_companies_from_lead_feed(
-        db, as_of, limit=5, outreach_score_threshold=30
-    )
+    result = get_emerging_companies_from_lead_feed(db, as_of, limit=5, outreach_score_threshold=30)
     assert result is not None
     assert len(result) == 1
     rs_view, es_view, co = result[0]
@@ -1268,12 +1334,12 @@ def test_get_emerging_companies_for_briefing_fallback_when_lead_feed_empty(
     db.refresh(company)
 
     as_of = date(2099, 1, 14)
-    _add_snapshots(db, company.id, as_of, composite=75, esl_score=0.7, pack_id=fractional_cto_pack_id)
+    _add_snapshots(
+        db, company.id, as_of, composite=75, esl_score=0.7, pack_id=fractional_cto_pack_id
+    )
 
     # No lead_feed - should use get_emerging_companies
-    result = get_emerging_companies_for_briefing(
-        db, as_of, limit=5, outreach_score_threshold=30
-    )
+    result = get_emerging_companies_for_briefing(db, as_of, limit=5, outreach_score_threshold=30)
 
     assert len(result) == 1
     rs, es, co = result[0]
@@ -1291,13 +1357,13 @@ def test_get_emerging_companies_for_briefing_uses_lead_feed_when_populated(
     db.refresh(company)
 
     as_of = date(2099, 1, 15)
-    _add_snapshots(db, company.id, as_of, composite=90, esl_score=0.9, pack_id=fractional_cto_pack_id)
+    _add_snapshots(
+        db, company.id, as_of, composite=90, esl_score=0.9, pack_id=fractional_cto_pack_id
+    )
 
     upsert_lead_feed(db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of)
 
-    result = get_emerging_companies_for_briefing(
-        db, as_of, limit=5, outreach_score_threshold=30
-    )
+    result = get_emerging_companies_for_briefing(db, as_of, limit=5, outreach_score_threshold=30)
 
     assert len(result) == 1
     rs_view, es_view, co = result[0]
@@ -1336,9 +1402,7 @@ def test_get_emerging_companies_for_briefing_cadence_blocked_observe_only_via_le
 
     upsert_lead_feed(db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of)
 
-    result = get_emerging_companies_for_briefing(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies_for_briefing(db, as_of, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 1
     rs_view, es_view, co = result[0]
@@ -1361,13 +1425,13 @@ def test_get_emerging_companies_from_lead_feed_all_filtered_out_returns_empty(
     db.refresh(company)
 
     as_of = date(2099, 1, 17)
-    _add_snapshots(db, company.id, as_of, composite=50, esl_score=0.5, pack_id=fractional_cto_pack_id)  # outreach=25 < 30
+    _add_snapshots(
+        db, company.id, as_of, composite=50, esl_score=0.5, pack_id=fractional_cto_pack_id
+    )  # outreach=25 < 30
 
     upsert_lead_feed(db, "00000000-0000-0000-0000-000000000001", fractional_cto_pack_id, as_of)
 
-    result = get_emerging_companies_from_lead_feed(
-        db, as_of, limit=5, outreach_score_threshold=30
-    )
+    result = get_emerging_companies_from_lead_feed(db, as_of, limit=5, outreach_score_threshold=30)
 
     assert result is not None
     assert len(result) == 0

@@ -125,7 +125,7 @@ def run_score_nightly(
                         companies_engagement += 1
                         if eng_snap.esl_decision == "suppress":
                             companies_esl_suppressed += 1
-                        # Incremental lead_feed update (Phase 3, Issue #225)
+                        # Incremental lead_feed update (Phase 3, Issue #225); M5: last_seen from core
                         upsert_lead_feed_from_snapshots(
                             db,
                             workspace_id=ws_id,
@@ -133,6 +133,7 @@ def run_score_nightly(
                             as_of=as_of,
                             readiness_snapshot=snapshot,
                             engagement_snapshot=eng_snap,
+                            core_pack_id=core_pack_id,
                         )
                 else:
                     companies_skipped += 1
