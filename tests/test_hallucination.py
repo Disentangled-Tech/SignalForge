@@ -107,7 +107,7 @@ class TestValidateClaims:
 
 class TestOutreachHallucinationGuardrail:
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_valid_claims_no_retry(self, mock_render, mock_get_llm):
         """When all claims are valid, no retry is triggered."""
         mock_llm = MagicMock()
@@ -127,7 +127,7 @@ class TestOutreachHallucinationGuardrail:
         mock_llm.complete.assert_called_once()  # No retry
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_hallucinated_claims_triggers_retry(self, mock_render, mock_get_llm, caplog):
         """When claims are hallucinated, a retry is triggered."""
         mock_llm = MagicMock()
@@ -152,7 +152,7 @@ class TestOutreachHallucinationGuardrail:
         assert result["subject"] == "Hello v2"
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_retry_still_hallucinated_returns_safe_fallback(self, mock_render, mock_get_llm, caplog):
         """When retry also has hallucinated claims, return safe fallback (no hallucinated content)."""
         mock_llm = MagicMock()
@@ -187,7 +187,7 @@ class TestOutreachHallucinationGuardrail:
         assert any("Retry still has hallucinated" in r.message for r in caplog.records)
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_no_claims_skips_validation(self, mock_render, mock_get_llm):
         """When no operator_claims_used, no validation is done."""
         mock_llm = MagicMock()
@@ -205,7 +205,7 @@ class TestOutreachHallucinationGuardrail:
         mock_llm.complete.assert_called_once()
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_retry_prompt_contains_hallucinated_claims(self, mock_render, mock_get_llm):
         """The retry prompt appends the hallucinated claims warning."""
         mock_llm = MagicMock()
@@ -233,7 +233,7 @@ class TestOutreachHallucinationGuardrail:
         assert "must not be used" in retry_prompt
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_word_count_shorten_includes_actual_message_not_regenerate(self, mock_render, mock_get_llm):
         """Word-count shorten prompt includes the message so LLM shortens it, not regenerates.
 
@@ -283,7 +283,7 @@ class TestOutreachHallucinationGuardrail:
 
 class TestEmptyProfileHandling:
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_empty_profile_with_claims_uses_fallback(self, mock_render, mock_get_llm, caplog):
         """When profile is empty and LLM returns claims, use safe fallback."""
         mock_llm = MagicMock()
@@ -306,7 +306,7 @@ class TestEmptyProfileHandling:
         assert "Acme Corp" in result["subject"] or "your company" in result["subject"]
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_empty_profile_no_claims_returns_message(self, mock_render, mock_get_llm):
         """When profile is empty and LLM returns no claims, accept the message."""
         mock_llm = MagicMock()
@@ -352,7 +352,7 @@ class TestMessageHasSuspiciousClaims:
 
 class TestSuspiciousClaimsInMessageGuardrail:
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_suspicious_claims_empty_operator_claims_triggers_retry(
         self, mock_render, mock_get_llm, caplog
     ):
@@ -382,7 +382,7 @@ class TestSuspiciousClaimsInMessageGuardrail:
         assert mock_llm.complete.call_count == 2
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_suspicious_claims_retry_still_bad_uses_fallback(
         self, mock_render, mock_get_llm, caplog
     ):
@@ -413,7 +413,7 @@ class TestSuspiciousClaimsInMessageGuardrail:
         assert "Acme Corp" in result["subject"] or "your company" in result["subject"]
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_suspicious_claims_retry_has_valid_claims_uses_retry(
         self, mock_render, mock_get_llm, caplog
     ):
@@ -447,7 +447,7 @@ class TestSuspiciousClaimsInMessageGuardrail:
         assert result["subject"] == "Quick question"
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_suspicious_claims_retry_has_invalid_claims_uses_fallback(
         self, mock_render, mock_get_llm, caplog
     ):

@@ -1,5 +1,4 @@
-"""Tests for daily aggregation job (Issue #246, Phase 1)."""
-"""Tests for daily aggregation job (Issue #246, Phase 4)."""
+"""Tests for daily aggregation job (Issue #246, Phase 1, Phase 4)."""
 
 from __future__ import annotations
 
@@ -323,9 +322,9 @@ def test_daily_aggregation_full_run_with_test_adapter_asserts_ranked_output(
     assert len(ranked) >= 1, "Ranked output should be visible after full run"
 
     for item in ranked:
-        assert "name" in item
+        assert "company_name" in item
         assert "composite" in item
         assert "band" in item
-        assert isinstance(item["name"], str)
+        assert isinstance(item["company_name"], str)
         assert isinstance(item["composite"], (int, float))
         assert 0 <= item["composite"] <= 100

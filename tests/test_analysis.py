@@ -130,11 +130,11 @@ class TestParseJsonSafe:
 
 class TestAnalyzeCompanyHappyPath:
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_returns_analysis_record(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         # LLM calls: stage JSON, pain JSON, explanation text
         mock_llm.complete.side_effect = [
@@ -166,11 +166,11 @@ class TestAnalyzeCompanyHappyPath:
         db.refresh.assert_called_once()
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_render_prompt_called_with_correct_args(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -186,6 +186,7 @@ class TestAnalyzeCompanyHappyPath:
 
         # Stage classification prompt
         stage_call = mock_render.call_args_list[0]
+        # resolve_prompt_content(template_name, pack, **kwargs)
         assert stage_call[0][0] == "stage_classification_v1"
         assert stage_call[1]["COMPANY_NAME"] == "Acme Corp"
         assert stage_call[1]["WEBSITE_URL"] == "https://acme.example.com"
@@ -201,11 +202,11 @@ class TestAnalyzeCompanyHappyPath:
         assert pain_call[1]["SIGNALS_TEXT"] == "Signal text"
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_raw_llm_response_stored(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -224,11 +225,11 @@ class TestAnalyzeCompanyHappyPath:
         assert _VALID_PAIN_RESPONSE in record.raw_llm_response
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_no_operator_profile_uses_empty_string(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -255,12 +256,12 @@ class TestAnalyzeCompanyPackParameter:
     """Phase 1: analyze_company accepts pack parameter; no behavior change yet."""
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_accepts_pack_parameter_unchanged_behavior(self, mock_render, mock_get_llm) -> None:
         """Passing pack parameter does not change behavior; same prompts used."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -293,11 +294,11 @@ class TestAnalyzeCompanyEdgeCases:
         assert analyze_company(db, company_id=1) is None
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_invalid_stage_defaults_to_early_customers(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         bad_stage_response = json.dumps(
             {
@@ -324,11 +325,11 @@ class TestAnalyzeCompanyEdgeCases:
         assert record.stage == _DEFAULT_STAGE
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_invalid_json_retries_and_succeeds(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         # First call returns invalid JSON, retry returns valid
         mock_llm.complete.side_effect = [
@@ -351,11 +352,11 @@ class TestAnalyzeCompanyEdgeCases:
         assert mock_llm.complete.call_count == 4
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_invalid_json_retry_also_fails_uses_defaults(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         # Both stage attempts fail, pain succeeds
         mock_llm.complete.side_effect = [
@@ -378,11 +379,11 @@ class TestAnalyzeCompanyEdgeCases:
         assert record.evidence_bullets == []
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_pain_json_failure_uses_empty_dict(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,    # stage succeeds
@@ -402,11 +403,11 @@ class TestAnalyzeCompanyEdgeCases:
         assert record.pain_signals_json == {}
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_explanation_uses_temperature_07(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -425,11 +426,11 @@ class TestAnalyzeCompanyEdgeCases:
         assert explanation_call[1]["temperature"] == 0.7
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_multiple_signals_concatenated(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -458,12 +459,12 @@ class TestExplanationGeneratorIssue18:
     """Tests for Issue #18: explanation uses prompt template, anti-generic, 2-6 sentences."""
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_explanation_uses_prompt_template(self, mock_render, mock_get_llm):
         """render_prompt is called with explanation_v1 and correct placeholders."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -489,12 +490,12 @@ class TestExplanationGeneratorIssue18:
         assert "MOST_LIKELY_NEXT_PROBLEM" in kwargs
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_explanation_includes_pain_data_context(self, mock_render, mock_get_llm):
         """Explanation prompt receives top_risks and most_likely_next_problem from pain_data."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             _VALID_PAIN_RESPONSE,
@@ -514,12 +515,12 @@ class TestExplanationGeneratorIssue18:
         assert "Scaling the engineering team" in kwargs["MOST_LIKELY_NEXT_PROBLEM"]
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_explanation_handles_empty_pain_data(self, mock_render, mock_get_llm):
         """When pain_data has empty top_risks/most_likely_next_problem, placeholders get empty."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         pain_no_risks = json.dumps({
             "signals": {"hiring_engineers": {"value": True, "why": "3 roles"}},
@@ -574,14 +575,14 @@ class TestStageClassificationIssue16:
 
     @pytest.mark.parametrize("stage", sorted(ALLOWED_STAGES))
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_each_allowed_stage_stored_in_analysis_record(
         self, mock_render, mock_get_llm, stage
     ):
         """LLM returning each allowed stage results in correct stage in AnalysisRecord."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         stage_response = json.dumps(
             {
@@ -612,12 +613,12 @@ class TestStageClassificationIssue16:
         db.commit.assert_called_once()
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_mixed_case_stage_normalized_to_lowercase(self, mock_render, mock_get_llm):
         """LLM returning 'Scaling_Team' (mixed case) results in stored 'scaling_team'."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         mixed_case_response = json.dumps(
             {
@@ -646,12 +647,12 @@ class TestStageClassificationIssue16:
         assert add_call_args.stage == "scaling_team"
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_non_string_stage_defaults_to_early_customers(self, mock_render, mock_get_llm):
         """LLM returning non-string stage (e.g. 123) defaults to early_customers."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         non_string_response = json.dumps(
             {
@@ -696,14 +697,14 @@ class TestPainSignalDetectionIssue17:
     """Tests for Issue #17: four boolean signals detected and structured JSON stored."""
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_four_issue_17_signals_stored_in_pain_signals_json(
         self, mock_render, mock_get_llm
     ):
         """LLM returning four Issue #17 signals results in structured JSON in pain_signals_json."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         pain_response = json.dumps({
             "signals": {
@@ -751,12 +752,12 @@ class TestPainSignalDetectionIssue17:
         assert pain["most_likely_next_problem"] == "Scaling the team"
 
     @patch("app.services.analysis.get_llm_provider")
-    @patch("app.services.analysis.render_prompt")
+    @patch("app.services.analysis.resolve_prompt_content")
     def test_pain_signals_json_structure_persisted(self, mock_render, mock_get_llm):
         """Full pain signals JSON structure (signals, top_risks, etc.) is persisted."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        mock_render.side_effect = lambda name, **kw: f"prompt:{name}"
+        mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         pain_response = json.dumps({
             "signals": {
