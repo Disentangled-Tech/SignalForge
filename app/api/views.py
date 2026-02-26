@@ -506,6 +506,7 @@ def company_detail(
 
     pack_id = get_pack_for_workspace(db, workspace_id) or get_default_pack_id(db)
     default_pack_id = get_default_pack_id(db)
+    pack = resolve_pack(db, pack_id) if pack_id else None
     analysis_q = (
         db.query(AnalysisRecord)
         .filter(AnalysisRecord.company_id == company_id)
@@ -540,6 +541,13 @@ def company_detail(
             briefing_q = briefing_q.filter(BriefingItem.workspace_id == ws_uuid)
     briefing = briefing_q.first()
 
+    # Phase 2: evidence_only pack — show "Evidence only — no draft" in UI
+    evidence_only = False
+    if pack is not None:
+        from app.packs.interfaces import adapt_pack_for_outreach
+
+        evidence_only = adapt_pack_for_outreach(pack).get_evidence_only()
+
     # Outreach history and draft for pre-fill (Phase 3: scope by workspace)
     outreach_history = list_outreach_for_company(
         db, company_id, workspace_id=workspace_id
@@ -554,7 +562,6 @@ def company_detail(
         from app.services.scoring import calculate_score, get_custom_weights, score_company
 
         custom_weights = get_custom_weights(db)
-        pack = resolve_pack(db, pack_id) if pack_id else None
         pain_signals = (
             analysis.pain_signals_json if isinstance(analysis.pain_signals_json, dict) else {}
         )
@@ -606,6 +613,7 @@ def company_detail(
             "outreach_error": outreach_error,
             "now_for_datetime_local": now_for_datetime_local,
             "workspace_id": workspace_id if get_settings().multi_workspace_enabled else None,
+            "evidence_only": evidence_only,
         },
     )
 

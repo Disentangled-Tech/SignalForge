@@ -20,6 +20,7 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.user import User
+from app.packs.interfaces import adapt_pack_for_outreach
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.briefing import get_emerging_companies_for_briefing
 from app.services.esl.esl_engine import compute_outreach_score
@@ -280,11 +281,16 @@ def get_briefing_data(
             "recommendation_band": recommendation_band,
         })
 
+    evidence_only = False
+    if pack is not None:
+        evidence_only = adapt_pack_for_outreach(pack).get_evidence_only()
+
     return {
         "items": items,
         "emerging_companies": emerging_companies,
         "display_scores": display_scores,
         "esl_by_company": esl_by_company,
+        "evidence_only": evidence_only,
     }
 
 
@@ -309,6 +315,7 @@ def _render_briefing(
     emerging_companies = data["emerging_companies"]
     display_scores = data["display_scores"]
     esl_by_company = data["esl_by_company"]
+    evidence_only = data.get("evidence_only", False)
 
     today = date.today()
     prev_date = (briefing_date - timedelta(days=1)).isoformat()
@@ -356,8 +363,9 @@ def _render_briefing(
             "briefing_path": briefing_path,
             "job_has_failures": job_has_failures,
             "emerging_companies": emerging_companies,
-            "esl_by_company": esl_by_company,
-            "generate_action": generate_action,
-        },
-    )
+        "esl_by_company": esl_by_company,
+        "generate_action": generate_action,
+        "evidence_only": evidence_only,
+    },
+)
 

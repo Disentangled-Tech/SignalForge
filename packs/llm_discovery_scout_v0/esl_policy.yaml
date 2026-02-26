@@ -1,0 +1,44 @@
+# ESL policy for fractional_cto_v1 (Issue #189)
+# Extracted from app/services/esl/esl_constants
+
+cadence_cooldown_days: 60
+declined_cooldown_days: 180
+
+stability:
+  svi_window_days: 14
+  spi_pressure_threshold: 60
+  spi_sustained_days: 60
+  spi_high_value: 0.7
+  csi_silence_gap_days: 30
+  csi_gap_penalty: 0.3
+  weights:
+    svi: 0.4
+    spi: 0.35
+    csi: 0.25
+
+alignment:
+  ok_modifier: 1.0
+  not_ok_modifier: 0.5
+  null_modifier: 1.0
+
+stability_cap_threshold: 0.7
+
+recommendation_boundaries:
+  - [0.0, "Observe Only"]
+  - [0.2, "Soft Value Share"]
+  - [0.4, "Low-Pressure Intro"]
+  - [0.7, "Standard Outreach"]
+  - [0.9, "Direct Strategic Outreach"]
+
+svi_event_types:
+  - founder_urgency_language
+  - regulatory_deadline
+  - enterprise_customer
+  - revenue_milestone
+  - funding_raised
+  - repo_activity  # Issue #244; GitHub provider contributes to volatility
+
+# Issue #175 — ESL pack policy binding (Phase 1)
+# Empty/minimal for parity: all entities get allow
+blocked_signals: []
+prohibited_combinations: []

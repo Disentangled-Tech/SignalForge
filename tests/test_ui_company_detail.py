@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -81,6 +81,54 @@ def test_company_detail_has_outreach_section(
     text_lower = resp.text.lower()
     has_outreach = "outreach" in text_lower or "record" in text_lower or "contact" in text_lower
     assert has_outreach, "Expected outreach-related content on company detail page"
+
+
+@pytest.mark.integration
+@patch("app.api.views.resolve_pack")
+def test_company_detail_shows_evidence_only_when_pack_evidence_only(
+    mock_resolve_pack, company_detail_client: TestClient, db
+) -> None:
+    """When workspace pack has evidence_only=True, company detail shows 'Evidence only — no draft'."""
+    from app.models import BriefingItem
+    from app.models.analysis_record import AnalysisRecord
+
+    company = Company(
+        name="Evidence Only Co",
+        website_url="https://evidence.example.com",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    analysis = AnalysisRecord(
+        company_id=company.id,
+        stage="early_customers",
+        stage_confidence=80,
+        pain_signals_json={},
+    )
+    db.add(analysis)
+    db.commit()
+    db.refresh(analysis)
+
+    briefing = BriefingItem(
+        company_id=company.id,
+        analysis_id=analysis.id,
+        briefing_date=datetime.now(UTC).date(),
+        why_now="Test",
+        risk_summary="Test",
+        outreach_subject="",
+        outreach_message="",
+    )
+    db.add(briefing)
+    db.commit()
+
+    mock_pack = MagicMock()
+    mock_pack.manifest = {"id": "llm_discovery_scout_v0", "version": "1", "evidence_only": True}
+    mock_resolve_pack.return_value = mock_pack
+
+    resp = company_detail_client.get(f"/companies/{company.id}")
+    assert resp.status_code == 200
+    assert "Evidence only — no draft" in resp.text
 
 
 @pytest.mark.integration

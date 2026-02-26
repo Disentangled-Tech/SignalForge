@@ -7,11 +7,12 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot
+from app.packs.interfaces import adapt_pack_for_outreach
 from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
 from app.services.ore.draft_generator import generate_ore_draft, get_ore_playbook
-from app.services.ore.policy_gate import check_policy_gate
+from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 
@@ -79,6 +80,17 @@ def generate_ore_recommendation(
         alignment_high=align,
         pack=pack,
     )
+
+    # Phase 2: evidence_only pack skips draft; surface evidence only
+    outreach_iface = adapt_pack_for_outreach(pack)
+    evidence_only = outreach_iface.get_evidence_only()
+    if evidence_only:
+        gate = PolicyGateResult(
+            recommendation_type="Observe Only",
+            should_generate_draft=False,
+            safeguards_triggered=(gate.safeguards_triggered or [])
+            + ["Evidence-only pack — no draft"],
+        )
 
     draft_variants: list[dict] = []
     if gate.should_generate_draft:

@@ -19,7 +19,12 @@ from app.models.job_run import JobRun
 from app.models.signal_pack import SignalPack
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.analysis import analyze_company
-from app.services.pack_resolver import get_default_pack, get_default_pack_id, resolve_pack
+from app.services.pack_resolver import (
+    get_default_pack,
+    get_default_pack_id,
+    get_discovery_pack_id,
+    resolve_pack,
+)
 from app.services.page_discovery import discover_pages
 from app.services.scoring import (
     _get_signal_value,
@@ -300,7 +305,9 @@ async def run_scan_company_with_job(
 
 
 async def run_scan_all(
-    db: Session, workspace_id: str | UUID | None = None
+    db: Session,
+    workspace_id: str | UUID | None = None,
+    evidence_only: bool = False,
 ) -> JobRun:
     """Run a scan across **all** companies.
 
@@ -310,6 +317,8 @@ async def run_scan_all(
 
     When workspace_id is provided (Phase 3), uses that workspace's active
     pack for analysis/scoring. Otherwise uses default pack and workspace.
+    When evidence_only=True (Phase 3), uses discovery pack (llm_discovery_scout_v0)
+    if installed; otherwise falls back to workspace/default pack.
 
     Returns
     -------
@@ -320,11 +329,18 @@ async def run_scan_all(
 
     ws_id = workspace_id or DEFAULT_WORKSPACE_ID
     ws_uuid = UUID(str(ws_id)) if isinstance(ws_id, str) else ws_id
-    pack_id = (
-        get_pack_for_workspace(db, ws_id)
-        if workspace_id is not None
-        else get_default_pack_id(db)
-    ) or get_default_pack_id(db)
+    if evidence_only:
+        pack_id = get_discovery_pack_id(db) or (
+            get_pack_for_workspace(db, ws_id)
+            if workspace_id is not None
+            else get_default_pack_id(db)
+        ) or get_default_pack_id(db)
+    else:
+        pack_id = (
+            get_pack_for_workspace(db, ws_id)
+            if workspace_id is not None
+            else get_default_pack_id(db)
+        ) or get_default_pack_id(db)
 
     job = JobRun(
         job_type="scan",

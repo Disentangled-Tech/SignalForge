@@ -125,12 +125,16 @@
         <p style="font-size: 0.9rem; color: #334155; line-height: 1.6; margin: 0;">{{ briefing.risk_summary }}</p>
     </div>
     {% endif %}
+    {% if evidence_only %}
+    <p class="text-muted">Evidence only — no draft</p>
+    {% else %}
     {% if briefing.outreach_subject %}
     <div style="margin-bottom: 0.5rem;"><strong>Subject:</strong> {{ briefing.outreach_subject }}</div>
     {% endif %}
     {% if briefing.outreach_message %}
     <div id="outreach-message" style="background: #f8fafc; padding: 1rem; border-radius: 6px; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.6; margin-bottom: 0.75rem;">{{ briefing.outreach_message }}</div>
     <button class="btn btn-secondary" onclick="copyOutreach()">📋 Copy Message</button>
+    {% endif %}
     {% endif %}
     {% else %}
     <p class="text-muted">No outreach draft yet. Run a daily briefing to generate an outreach draft.</p>

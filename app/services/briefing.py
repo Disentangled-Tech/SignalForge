@@ -18,6 +18,7 @@ from app.models.engagement_snapshot import EngagementSnapshot
 from app.models.job_run import JobRun
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.signal_record import SignalRecord
+from app.packs.interfaces import adapt_pack_for_outreach
 from app.prompts.loader import render_prompt
 from app.services.email_service import send_briefing_email
 from app.services.esl.esl_engine import compute_outreach_score
@@ -494,8 +495,12 @@ def _generate_for_company(
     suggested_angle = parsed.get("suggested_angle", "") if parsed else ""
 
     # Outreach draft (Phase 3: pass pack for offer_type from workspace's active pack).
+    # Phase 2: evidence_only pack skips draft; surface evidence only.
     pack = resolve_pack(db, pack_id) if pack_id else None
-    outreach = generate_outreach(db, company, analysis, pack=pack)
+    if pack is not None and adapt_pack_for_outreach(pack).get_evidence_only():
+        outreach = {"subject": "", "message": ""}
+    else:
+        outreach = generate_outreach(db, company, analysis, pack=pack)
     item = BriefingItem(
         company_id=company.id,
         analysis_id=analysis.id,

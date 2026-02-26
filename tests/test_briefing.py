@@ -900,6 +900,53 @@ class TestGenerateBriefing:
         assert len(result) == 1
         mock_send.assert_called_once()
 
+    @patch("app.services.briefing.get_pack_for_workspace")
+    @patch("app.services.briefing.get_default_pack_id")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.get_llm_provider")
+    @patch("app.services.briefing.render_prompt")
+    @patch("app.services.briefing.select_top_companies")
+    def test_evidence_only_pack_skips_outreach_draft(
+        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved,
+        mock_get_default_pack_id, mock_get_pack_for_workspace, *_args
+    ):
+        """Phase 3: When pack has evidence_only=True, briefing item has empty outreach."""
+        import uuid
+
+        mock_resolved.return_value = _default_resolved()
+        mock_get_pack_for_workspace.return_value = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        mock_get_default_pack_id.return_value = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+        mock_llm = MagicMock()
+        mock_get_llm.return_value = mock_llm
+        mock_llm.complete.return_value = _VALID_BRIEFING_RESPONSE
+
+        # Mock pack with evidence_only=True (via resolve_pack)
+        mock_pack = MagicMock()
+        mock_pack.manifest = {"id": "llm_discovery_scout_v0", "version": "1", "evidence_only": True}
+        with patch("app.services.briefing.resolve_pack", return_value=mock_pack):
+            db = MagicMock()
+            query_mock = db.query.return_value
+            query_mock.filter.return_value = query_mock
+            query_mock.order_by.return_value = query_mock
+            query_mock.first.side_effect = [None, analysis]
+
+            result = generate_briefing(db)
+
+        assert len(result) == 1
+        items_added = [c.args[0] for c in db.add.call_args_list]
+        briefing_items = [a for a in items_added if isinstance(a, BriefingItem)]
+        assert len(briefing_items) == 1
+        item = briefing_items[0]
+        assert item.outreach_subject == ""
+        assert item.outreach_message == ""
+        mock_outreach.assert_not_called()
+
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.select_top_companies")
     def test_weekly_frequency_skips_when_wrong_day(

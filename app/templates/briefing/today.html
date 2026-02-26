@@ -200,7 +200,11 @@
     <div class="section-text">{{ item.suggested_angle }}</div>
     {% endif %}
 
-    {% if item.outreach_subject or item.outreach_message %}
+    {% if evidence_only %}
+    <div class="outreach-block">
+        <div class="evidence-only-message">Evidence only — no draft</div>
+    </div>
+    {% elif item.outreach_subject or item.outreach_message %}
     <div class="outreach-block">
         {% if item.outreach_subject %}
         <div class="outreach-subject">Subject: {{ item.outreach_subject }}</div>

@@ -67,6 +67,23 @@ def get_default_pack(db: Session | None = None) -> Pack | None:
         return None
 
 
+def get_discovery_pack_id(db: Session) -> UUID | None:
+    """Return the llm_discovery_scout_v0 pack UUID if installed, else None.
+
+    Phase 3: Used when evidence_only=True on run_scan; discovery pack
+    surfaces evidence without outreach drafts.
+    """
+    row = (
+        db.query(SignalPack.id)
+        .filter(
+            SignalPack.pack_id == "llm_discovery_scout_v0",
+            SignalPack.version == "1",
+        )
+        .first()
+    )
+    return row[0] if row else None
+
+
 def get_pack_for_workspace(
     db: Session, workspace_id: str | UUID | None
 ) -> UUID | None:

@@ -4,12 +4,20 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 
 | Stage | Endpoint | Description | Idempotency |
 |-------|----------|-------------|-------------|
+| **scan** | `POST /internal/run_scan` | Web scrape companies, run LLM analysis, score (Phase 3: `evidence_only` param) | Per-company scan |
 | **ingest** | `POST /internal/run_ingest` | Fetch raw events, normalize, resolve companies, store `signal_events` | Dedup by `(source, source_event_id)` |
 | **derive** | `POST /internal/run_derive` | Populate `signal_instances` from `SignalEvents` using pack derivers | Upsert by `(entity_id, signal_id, pack_id)` |
 | **score** | `POST /internal/run_score` | Compute TRS + ESL, write `ReadinessSnapshot` + `EngagementSnapshot` | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
 ## API Behavior
+
+### POST /internal/run_scan
+
+- **Optional query params** (Phase 3):
+  - `workspace_id` (UUID): Workspace for pack resolution. When omitted, uses default workspace.
+  - `evidence_only` (bool, default `false`): When `true`, uses discovery pack (`llm_discovery_scout_v0`) if installed; downstream briefing surfaces evidence without outreach drafts. Falls back to workspace/default pack when discovery pack not installed.
+- **Pack resolution**: When `evidence_only=true`, `get_discovery_pack_id(db)` first; else `get_pack_for_workspace(db, workspace_id)` or default pack.
 
 ### POST /internal/run_score
 
@@ -108,6 +116,23 @@ Two pipelines feed the fractional CTO use case; they use different data models a
 - **Scan**: For companies with `website_url`. Discovers pages, extracts text, stores `SignalRecord`. Runs LLM analysis (stage, pain signals) and deterministic scoring. Updates `company.cto_need_score` and `company.current_stage`. Pack is resolved via `get_default_pack(db)` and passed to `analyze_company` / `score_company`.
 - **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via pack derivers, computes TRS + ESL, writes snapshots. Pack-scoped; workspace-scoped when multi-tenant.
 - **Briefing**: Uses both. `select_top_companies` (legacy) and `get_emerging_companies` (pack) can surface companies. Pack path reads from `lead_feed` when populated, else join of ReadinessSnapshot + EngagementSnapshot.
+
+## Evidence-Only Mode (Phase 3)
+
+**Evidence-Only** is a pack-level mode that surfaces discovery evidence without generating outreach drafts. Use it when you want to collect and review signals without committing to outreach content.
+
+| Component | Behavior |
+|-----------|----------|
+| **Pack** | Set `evidence_only: true` in `pack.json` (e.g. `llm_discovery_scout_v0`). |
+| **Scan** | `POST /internal/run_scan?evidence_only=true` uses the discovery pack (`llm_discovery_scout_v0`) if installed; otherwise falls back to workspace/default pack. |
+| **Briefing** | When the workspace's active pack has `evidence_only=true`, briefing items show "Evidence only — no draft" instead of subject/message. |
+| **ORE** | Evidence-only packs skip draft generation; `recommendation_type` is "Observe Only". |
+
+**When to use**
+
+- Discovery-focused workflows: collect signals, classify companies, review evidence.
+- Avoid LLM outreach drafts until you are ready to engage.
+- Fractional CTO pack keeps `evidence_only: false` for full outreach flow.
 
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 

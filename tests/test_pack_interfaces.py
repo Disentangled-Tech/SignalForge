@@ -8,8 +8,10 @@ import pytest
 
 from app.packs.interfaces import (
     PackAnalysisInterface,
+    PackOutreachInterface,
     PackScoringInterface,
     adapt_pack_for_analysis,
+    adapt_pack_for_outreach,
     adapt_pack_for_scoring,
 )
 
@@ -55,6 +57,35 @@ class TestPackScoringInterface:
         adapter = adapt_pack_for_scoring(pack)
         assert adapter.get_pain_signal_weights() == {}
         assert adapter.get_stage_bonuses() == {}
+
+
+class TestPackOutreachInterface:
+    """Tests for PackOutreachInterface and adapt_pack_for_outreach (Phase 2/3)."""
+
+    def test_evidence_only_true_when_in_manifest(self) -> None:
+        pack = MagicMock()
+        pack.manifest = {"id": "llm_discovery_scout_v0", "version": "1", "evidence_only": True}
+        adapter = adapt_pack_for_outreach(pack)
+        assert isinstance(adapter, PackOutreachInterface)
+        assert adapter.get_evidence_only() is True
+
+    def test_evidence_only_false_when_in_manifest(self) -> None:
+        pack = MagicMock()
+        pack.manifest = {"id": "fractional_cto_v1", "version": "1", "evidence_only": False}
+        adapter = adapt_pack_for_outreach(pack)
+        assert adapter.get_evidence_only() is False
+
+    def test_evidence_only_defaults_false_when_absent(self) -> None:
+        pack = MagicMock()
+        pack.manifest = {"id": "legacy_pack", "version": "1"}
+        adapter = adapt_pack_for_outreach(pack)
+        assert adapter.get_evidence_only() is False
+
+    def test_evidence_only_handles_non_dict_manifest(self) -> None:
+        pack = MagicMock()
+        pack.manifest = None
+        adapter = adapt_pack_for_outreach(pack)
+        assert adapter.get_evidence_only() is False
 
 
 class TestPackAnalysisInterface:

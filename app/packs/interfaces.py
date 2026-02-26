@@ -71,6 +71,23 @@ def adapt_pack_for_analysis(pack: Pack) -> PackAnalysisInterface:
     return _PackAnalysisAdapter(pack)
 
 
+class PackOutreachInterface(ABC):
+    """Abstract interface for pack-provided outreach config (Phase 2).
+
+    When evidence_only is True, skip LLM draft generation; surface evidence only.
+    """
+
+    @abstractmethod
+    def get_evidence_only(self) -> bool:
+        """Return True when pack is evidence-only (no outreach drafts)."""
+        ...
+
+
+def adapt_pack_for_outreach(pack: Pack) -> PackOutreachInterface:
+    """Adapt a Pack to PackOutreachInterface."""
+    return _PackOutreachAdapter(pack)
+
+
 class _PackScoringAdapter(PackScoringInterface):
     """Adapter from Pack to PackScoringInterface."""
 
@@ -104,3 +121,17 @@ class _PackAnalysisAdapter(PackAnalysisInterface):
 
     def get_explanation_prompt(self) -> str:
         return "explanation_v1"
+
+
+class _PackOutreachAdapter(PackOutreachInterface):
+    """Adapter from Pack to PackOutreachInterface.
+
+    Reads evidence_only from manifest; defaults to False when absent.
+    """
+
+    def __init__(self, pack: Pack) -> None:
+        self._pack = pack
+
+    def get_evidence_only(self) -> bool:
+        manifest = self._pack.manifest if isinstance(self._pack.manifest, dict) else {}
+        return bool(manifest.get("evidence_only", False))

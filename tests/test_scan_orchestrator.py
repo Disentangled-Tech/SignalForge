@@ -431,6 +431,64 @@ class TestRunScanAll:
             db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
         )
 
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_discovery_pack_id")
+    @patch("app.services.pack_resolver.get_pack_for_workspace")
+    @patch("app.services.scan_orchestrator.resolve_pack")
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_evidence_only_uses_discovery_pack_when_available(
+        self, mock_scan_full, mock_resolve_pack, mock_get_pack_for_workspace, mock_get_discovery
+    ):
+        """Phase 3: run_scan_all with evidence_only=True uses discovery pack when installed."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        discovery_pack_uuid = uuid4()
+        mock_get_discovery.return_value = discovery_pack_uuid
+        mock_pack = MagicMock()
+        mock_resolve_pack.return_value = mock_pack
+
+        c1 = _company(1, "WithURL", website_url="https://example.com")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1]
+        mock_scan_full.return_value = (2, MagicMock(), False)
+
+        job = await run_scan_all(db, evidence_only=True)
+
+        mock_get_discovery.assert_called_once_with(db)
+        mock_get_pack_for_workspace.assert_not_called()
+        mock_scan_full.assert_awaited_once_with(
+            db, 1, pack=mock_pack, pack_id=discovery_pack_uuid
+        )
+
+    @pytest.mark.asyncio
+    @patch("app.services.scan_orchestrator.get_discovery_pack_id", return_value=None)
+    @patch("app.services.scan_orchestrator.get_default_pack_id")
+    @patch("app.services.scan_orchestrator.resolve_pack")
+    @patch("app.services.scan_orchestrator.run_scan_company_full", new_callable=AsyncMock)
+    async def test_run_scan_all_evidence_only_falls_back_when_no_discovery_pack(
+        self, mock_scan_full, mock_resolve_pack, mock_get_default_pack_id, mock_get_discovery
+    ):
+        """Phase 3: run_scan_all with evidence_only=True falls back to default when no discovery pack."""
+        from app.services.scan_orchestrator import run_scan_all
+
+        default_pack_uuid = uuid4()
+        mock_get_default_pack_id.return_value = default_pack_uuid
+        mock_pack = MagicMock()
+        mock_resolve_pack.return_value = mock_pack
+
+        c1 = _company(1, "WithURL", website_url="https://example.com")
+        db = MagicMock()
+        db.query.return_value.all.return_value = [c1]
+        mock_scan_full.return_value = (2, MagicMock(), False)
+
+        job = await run_scan_all(db, evidence_only=True)
+
+        mock_get_discovery.assert_called_once_with(db)
+        mock_get_default_pack_id.assert_called_with(db)
+        mock_scan_full.assert_awaited_once_with(
+            db, 1, pack=mock_pack, pack_id=default_pack_uuid
+        )
+
     @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("app.services.analysis.get_llm_provider")

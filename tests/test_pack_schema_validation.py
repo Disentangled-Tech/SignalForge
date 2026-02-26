@@ -147,6 +147,36 @@ class TestValidatePackSchemaManifest:
                 playbooks={},
             )
 
+    def test_evidence_only_non_bool_raises(self) -> None:
+        """Manifest with evidence_only not a boolean raises ValidationError (Phase 2/3)."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        manifest = {**_valid_manifest(), "evidence_only": "true"}
+        with pytest.raises(ValidationError, match="evidence_only|boolean"):
+            validate_pack_schema(
+                manifest=manifest,
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
+    def test_evidence_only_bool_passes(self) -> None:
+        """Manifest with evidence_only=True or False passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        for val in (True, False):
+            manifest = {**_valid_manifest(), "evidence_only": val}
+            validate_pack_schema(
+                manifest=manifest,
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks={},
+            )
+
 
 class TestValidatePackSchemaTaxonomy:
     """Taxonomy structure and signal_ids."""

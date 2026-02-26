@@ -81,6 +81,27 @@ class TestRunScan:
         assert call_kwargs["workspace_id"] == "00000000-0000-0000-0000-000000000001"
 
     @patch("app.services.scan_orchestrator.run_scan_all", new_callable=AsyncMock)
+    def test_run_scan_with_evidence_only_passes_to_run_scan_all(
+        self, mock_scan, client: TestClient
+    ):
+        """POST /internal/run_scan with evidence_only=true forwards it (Phase 3)."""
+        job = JobRun(job_type="scan", status="completed")
+        job.id = 44
+        job.companies_processed = 3
+        mock_scan.return_value = job
+
+        response = client.post(
+            "/internal/run_scan",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"evidence_only": "true"},
+        )
+
+        assert response.status_code == 200
+        mock_scan.assert_called_once()
+        call_kwargs = mock_scan.call_args[1]
+        assert call_kwargs["evidence_only"] is True
+
+    @patch("app.services.scan_orchestrator.run_scan_all", new_callable=AsyncMock)
     def test_scan_error_returns_failed(self, mock_scan, client: TestClient):
         """POST /internal/run_scan returns failed status on exception."""
         mock_scan.side_effect = RuntimeError("DB exploded")

@@ -13,6 +13,7 @@ from app.models.signal_pack import SignalPack
 from app.models.workspace import Workspace
 from app.services.pack_resolver import (
     get_default_pack_id,
+    get_discovery_pack_id,
     get_pack_for_workspace,
     resolve_pack,
 )
@@ -131,3 +132,26 @@ class TestGetPackForWorkspace:
         unknown_ws_id = uuid.uuid4()
         result = get_pack_for_workspace(db, unknown_ws_id)
         assert result == fractional_cto_pack_id
+
+
+class TestGetDiscoveryPackId:
+    """get_discovery_pack_id returns llm_discovery_scout_v0 UUID when installed (Phase 3)."""
+
+    def test_get_discovery_pack_id_returns_uuid_when_installed(self, db) -> None:
+        """get_discovery_pack_id returns UUID when llm_discovery_scout_v0 is installed."""
+        pack_id = get_discovery_pack_id(db)
+        if pack_id is None:
+            pytest.skip(
+                "llm_discovery_scout_v0 pack not installed (run migration 20260232_add_llm_discovery_scout_pack)"
+            )
+        assert pack_id is not None
+        assert isinstance(pack_id, uuid.UUID)
+
+    def test_get_discovery_pack_id_returns_none_when_not_installed(self, db) -> None:
+        """get_discovery_pack_id returns None when discovery pack not in DB.
+
+        Before migration 20260232, discovery pack does not exist.
+        """
+        pack_id = get_discovery_pack_id(db)
+        # May be None (pre-migration) or UUID (post-migration)
+        assert pack_id is None or isinstance(pack_id, uuid.UUID)

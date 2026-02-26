@@ -48,11 +48,17 @@ async def run_scan(
         None,
         description="Workspace ID; uses default if omitted (Phase 3)",
     ),
+    evidence_only: bool = Query(
+        False,
+        description="When true, use discovery pack (llm_discovery_scout_v0) if configured; skips outreach in downstream briefing (Phase 3)",
+    ),
 ):
     """Trigger a full scan across all companies.
 
     When workspace_id provided (Phase 3), uses that workspace's active pack
     for analysis attribution. Omit for default workspace.
+    When evidence_only=true, uses discovery pack if installed; downstream
+    briefing surfaces evidence without outreach drafts.
     Returns the completed JobRun summary.
     """
     from app.services.scan_orchestrator import run_scan_all
@@ -61,7 +67,7 @@ async def run_scan(
     ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
 
     try:
-        job = await run_scan_all(db, workspace_id=ws_id)
+        job = await run_scan_all(db, workspace_id=ws_id, evidence_only=evidence_only)
         return {
             "status": job.status,
             "job_run_id": job.id,

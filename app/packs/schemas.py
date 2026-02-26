@@ -90,6 +90,10 @@ def _validate_manifest(manifest: dict[str, Any]) -> None:
         if val is None or (isinstance(val, str) and not val.strip()):
             raise ValidationError(f"manifest field '{key}' must not be empty")
 
+    # Optional: evidence_only must be bool when present (Phase 2/3)
+    if "evidence_only" in manifest and not isinstance(manifest.get("evidence_only"), bool):
+        raise ValidationError("manifest field 'evidence_only' must be a boolean when present")
+
 
 def _validate_taxonomy(taxonomy: dict[str, Any]) -> set[str]:
     """Validate taxonomy has non-empty signal_ids. Returns signal_ids set."""
