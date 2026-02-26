@@ -124,6 +124,25 @@ def test_normalize_without_pack_uses_legacy_event_types() -> None:
     assert event_data["event_type"] == "cto_role_posted"
 
 
+def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
+    """Core types (e.g. incorporation, repo_activity) are accepted even when pack taxonomy omits them."""
+    # Mock pack that does NOT include incorporation or repo_activity
+    class MockPack:
+        taxonomy = {"signal_ids": ["funding_raised", "launch_major"]}
+
+    pack = MockPack()
+
+    for core_type in ("incorporation", "repo_activity"):
+        raw = RawEvent(
+            company_name="Acme Inc",
+            domain=None,
+            event_type_candidate=core_type,
+            event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
+        )
+        result = normalize_raw_event(raw, "delaware_socrata", pack=pack)
+        assert result is not None, f"Core type {core_type} should be accepted when pack omits it"
+        event_data, _ = result
+        assert event_data["event_type"] == core_type
 def test_normalize_accepts_repo_activity_without_pack() -> None:
     """normalize_raw_event(raw_repo_activity, pack=None) returns not None (Issue #244 Phase 1)."""
     raw = RawEvent(

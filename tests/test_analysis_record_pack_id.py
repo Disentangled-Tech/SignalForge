@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -31,6 +33,9 @@ def test_analysis_record_has_pack_id_column(db: Session) -> None:
 def test_analyze_company_sets_pack_id_when_pack_provided(db: Session) -> None:
     """analyze_company sets pack_id when pack is provided and default pack exists."""
     from app.services.pack_resolver import get_default_pack, get_default_pack_id
+
+    if not os.getenv("LLM_API_KEY", "").strip():
+        pytest.skip("LLM_API_KEY not set (required for analyze_company)")
 
     pack_id = get_default_pack_id(db)
     if pack_id is None:

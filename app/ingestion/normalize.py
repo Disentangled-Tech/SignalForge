@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from app.ingestion.event_types import is_valid_event_type
+from app.ingestion.event_types import SIGNAL_EVENT_TYPES
 from app.schemas.company import CompanyCreate, CompanySource
 from app.schemas.signal import RawEvent
 
@@ -20,6 +20,11 @@ DEFAULT_CONFIDENCE: float = 0.7
 def _is_valid_event_type_for_pack(candidate: str, pack: Pack | None) -> bool:
     """Return True if candidate is valid.
 
+    Core types (SIGNAL_EVENT_TYPES) are always accepted regardless of pack taxonomy.
+    When pack is provided, pack taxonomy types are also accepted.
+    When pack is None, uses is_valid_event_type (core types only).
+    """
+    if candidate in SIGNAL_EVENT_TYPES:
     Core types (event_types) are always accepted regardless of pack.
     When pack is provided, pack taxonomy types are also accepted.
     """

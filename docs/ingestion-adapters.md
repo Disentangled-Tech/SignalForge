@@ -103,6 +103,10 @@ Product launches map to `RawEvent` with:
 
 ## NewsAPI {#newsapi}
 
+### Security: API key in URL
+
+NewsAPI passes the API key as a query parameter in the request URL. **Do not log full request URLs** (e.g. in error handlers or debug logs), as this would expose the key. Ensure error messages and exception handlers never include the API key. Prefer logging only the path or a redacted URL (e.g. `https://newsapi.org/v2/...?apiKey=***`).
+
 ### API Key Acquisition
 
 The NewsAPI adapter uses the [NewsAPI.org](https://newsapi.org/) Everything endpoint. To obtain a key:
@@ -305,3 +309,23 @@ One adapter failure does not stop the daily ingest. When an adapter raises durin
 4. The job completes with `status="completed"`; `errors_count` and `error` reflect failures.
 
 This ensures that a Crunchbase API outage, for example, does not prevent other adapters from running.
+
+---
+
+## GitHub (when configured)
+
+### Cache path for multi-tenant / containerized setups
+
+The GitHub adapter caches owner metadata to reduce API calls. Default cache directory: `~/.cache/signalforge`. For multi-tenant or containerized deployments:
+
+- Set `INGEST_GITHUB_CACHE_DIR` to a tenant-specific or writable path (e.g. `/var/cache/signalforge/{tenant_id}`).
+- Ensure the process has write access to the directory.
+- Set `INGEST_GITHUB_METADATA_CACHE_TTL_SECS=0` to disable caching if a shared cache is not appropriate.
+
+---
+
+## Delaware Socrata / Incorporation (when configured)
+
+### Company resolution and duplicates
+
+Incorporation events from Delaware Open Data often lack `domain` and `website_url`; resolution falls back to name-only matching via `normalize_name`. This can create duplicate company records when the same entity appears with slight name variations (e.g. "Acme Inc" vs "Acme, Inc."). Future improvements may include fuzzy matching, manual merge workflows, or domain enrichment from external sources.
