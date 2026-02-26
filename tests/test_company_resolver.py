@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
-
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
 from app.models.company_alias import CompanyAlias
-from app.schemas.company import CompanyCreate, CompanySource
+from app.schemas.company import CompanyCreate
 from app.services.company_resolver import (
     extract_domain,
+    normalize_company_input,
     normalize_name,
     resolve_or_create_company,
 )
-
 
 # ── normalize_name tests ─────────────────────────────────────────────
 
@@ -83,6 +80,71 @@ class TestExtractDomain:
         # Standard ports (443, 80) are stripped for domain matching
         result = extract_domain("https://foo.com:443/path")
         assert result == "foo.com"
+
+
+# ── normalize_company_input tests (pure, no DB) ───────────────────────
+
+
+class TestNormalizeCompanyInput:
+    """Pure unit tests for normalize_company_input — no DB dependency."""
+
+    def test_returns_domain_from_website_url(self) -> None:
+        data = CompanyCreate(
+            company_name="Acme Inc",
+            website_url="https://www.acme.com/about",
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] == "acme.com"
+        assert result["norm_name"] == "acme"
+        assert result["linkedin"] is None
+
+    def test_returns_norm_name_from_company_name(self) -> None:
+        data = CompanyCreate(
+            company_name="Beta Corp, LLC",
+            website_url=None,
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] is None
+        assert result["norm_name"] == "beta"
+        assert result["linkedin"] is None
+
+    def test_returns_linkedin_stripped(self) -> None:
+        data = CompanyCreate(
+            company_name="LinkedIn Co",
+            website_url=None,
+            company_linkedin_url="  https://linkedin.com/company/foo  ",
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] is None
+        assert result["norm_name"] == "linkedin"  # "Co" suffix stripped
+        assert result["linkedin"] == "https://linkedin.com/company/foo"
+
+    def test_empty_linkedin_becomes_none(self) -> None:
+        data = CompanyCreate(
+            company_name="Foo",
+            company_linkedin_url="   ",
+        )
+        result = normalize_company_input(data)
+        assert result["linkedin"] is None
+
+    def test_all_fields_populated(self) -> None:
+        data = CompanyCreate(
+            company_name="Gamma Inc",
+            website_url="https://gamma.io",
+            company_linkedin_url="https://linkedin.com/company/gamma",
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] == "gamma.io"
+        assert result["norm_name"] == "gamma"
+        assert result["linkedin"] == "https://linkedin.com/company/gamma"
+
+    def test_whitespace_only_company_name_yields_empty_norm_name(self) -> None:
+        data = CompanyCreate(
+            company_name="   ",
+            website_url=None,
+        )
+        result = normalize_company_input(data)
+        assert result["norm_name"] == ""
 
 
 # ── resolve_or_create_company tests ──────────────────────────────────
