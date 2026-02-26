@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models import Company, SignalEvent
+from app.models import Company, SignalEvent, SignalInstance, SignalPack
 from app.services.readiness.readiness_engine import (
     apply_global_suppressors,
     build_explain_payload,
@@ -82,7 +82,12 @@ class TestComputeComposite:
 
     def test_weights_sum_to_one(self) -> None:
         """Composite weights sum to 1.0 (Issue #95)."""
-        total = COMPOSITE_WEIGHTS["M"] + COMPOSITE_WEIGHTS["C"] + COMPOSITE_WEIGHTS["P"] + COMPOSITE_WEIGHTS["G"]
+        total = (
+            COMPOSITE_WEIGHTS["M"]
+            + COMPOSITE_WEIGHTS["C"]
+            + COMPOSITE_WEIGHTS["P"]
+            + COMPOSITE_WEIGHTS["G"]
+        )
         assert abs(total - 1.0) < 1e-9
 
     def test_single_dimension_dominance(self) -> None:
@@ -158,16 +163,12 @@ class TestBuildExplainPayload:
 
     def test_minimum_threshold_included_when_pack_defines_nonzero(self) -> None:
         """minimum_threshold in explain when pack defines it (Issue #174)."""
-        payload = build_explain_payload(
-            70, 60, 55, 40, 59, [], [], _cfg={"minimum_threshold": 60}
-        )
+        payload = build_explain_payload(70, 60, 55, 40, 59, [], [], _cfg={"minimum_threshold": 60})
         assert payload["minimum_threshold"] == 60
 
     def test_minimum_threshold_omitted_when_zero_or_default(self) -> None:
         """minimum_threshold not in payload when 0 (default)."""
-        payload = build_explain_payload(
-            70, 60, 55, 40, 59, [], [], _cfg={"minimum_threshold": 0}
-        )
+        payload = build_explain_payload(70, 60, 55, 40, 59, [], [], _cfg={"minimum_threshold": 0})
         assert "minimum_threshold" not in payload
         payload_none = build_explain_payload(70, 60, 55, 40, 59, [], [])
         assert "minimum_threshold" not in payload_none
@@ -278,7 +279,13 @@ class TestComputeEventContributions:
         """Events with no contribution (unknown types, out of window) → partial result (Issue #95)."""
         # Only unknown/irrelevant events
         events = [
-            MockEvent(event_type="unknown_type", event_time=_days_ago(5), confidence=1.0, source="test", url=None),
+            MockEvent(
+                event_type="unknown_type",
+                event_time=_days_ago(5),
+                confidence=1.0,
+                source="test",
+                url=None,
+            ),
         ]
         top = compute_event_contributions(events, date.today(), limit=8)
         assert top == []
@@ -369,3 +376,50 @@ class TestWriteReadinessSnapshotPersists:
         assert "delta_1d" in snap2.explain
         expected_delta = snap2.composite - composite_1
         assert snap2.explain["delta_1d"] == expected_delta
+
+    def test_write_readiness_snapshot_from_core_instances_when_core_pack_id_set(
+        self, db: Session
+    ) -> None:
+        """When core_pack_id is set, event list comes from core instances; snapshot.pack_id is workspace pack (Issue #287 M3)."""
+        import pytest
+
+        from app.services.pack_resolver import get_core_pack_id
+
+        core_id = get_core_pack_id(db)
+        if core_id is None:
+            pytest.skip("core pack not installed (run migration 20260226_core_pack_sentinel)")
+        pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+        if pack is None:
+            pytest.skip("fractional_cto_v1 pack not found")
+        fractional_cto_pack_id = pack.id
+
+        company = Company(name="CoreInstCo", website_url="https://coreinst.example.com")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        # Core instance only (no SignalEvents); fallback will use signal_id + last_seen
+        inst = SignalInstance(
+            entity_id=company.id,
+            signal_id="funding_raised",
+            pack_id=core_id,
+            last_seen=datetime.now(UTC) - timedelta(days=5),
+            confidence=0.9,
+            evidence_event_ids=None,
+        )
+        db.add(inst)
+        db.commit()
+
+        as_of = date.today()
+        snapshot = write_readiness_snapshot(
+            db,
+            company.id,
+            as_of,
+            pack_id=fractional_cto_pack_id,
+            core_pack_id=core_id,
+        )
+        assert snapshot is not None
+        assert snapshot.company_id == company.id
+        assert snapshot.pack_id == fractional_cto_pack_id
+        assert snapshot.composite >= 0
+        assert snapshot.explain is not None

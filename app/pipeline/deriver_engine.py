@@ -26,7 +26,7 @@ from app.models.job_run import JobRun
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
 from app.packs.schemas import ALLOWED_PATTERN_SOURCE_FIELDS
-from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.services.pack_resolver import get_core_pack_id
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
@@ -166,45 +166,52 @@ def run_deriver(
     pack_id: str | UUID | None = None,
     company_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Run deriver: read SignalEvents, apply pack passthrough, upsert signal_instances.
+    """Run deriver: read SignalEvents, apply core derivers, upsert signal_instances to core pack.
 
-    Scopes to pack_id (or default pack). Events with company_id is None are skipped.
-    Idempotent: re-run produces same signal_instances (upsert by natural key).
-    Creates JobRun record for audit.
+    Issue #287 M2: Does not require a workspace pack. When pack_id is None, uses core pack
+    only. When pack_id is provided, still writes to core pack (passed pack used for JobRun
+    audit only). Events with company_id is None are skipped. No filter on SignalEvent.pack_id
+    (processes all events). Idempotent: re-run produces same signal_instances (upsert by
+    natural key). Creates JobRun record for audit.
 
     Args:
         company_ids: Optional list of company IDs to scope events (test-only; not
-            exposed via API). When None, processes all events for the pack.
+            exposed via API). When None, processes all events.
 
     Returns:
         dict with status, job_run_id, instances_upserted, events_processed, events_skipped
     """
-    pack_uuid = pack_id or get_default_pack_id(db)
-    if not pack_uuid:
-        logger.warning("No pack_id available; deriver skipped")
+    core_uuid = get_core_pack_id(db)
+    if not core_uuid:
+        logger.warning("Core pack not installed; deriver skipped")
         return {
             "status": "skipped",
             "job_run_id": None,
             "instances_upserted": 0,
             "events_processed": 0,
             "events_skipped": 0,
-            "error": "No pack available",
+            "error": "Core pack not installed",
         }
 
-    pack_uuid = UUID(str(pack_uuid)) if isinstance(pack_uuid, str) else pack_uuid
+    # JobRun.pack_id: audit only; use passed pack when provided, else core
+    audit_pack_uuid: UUID | None = None
+    if pack_id is not None:
+        audit_pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
+    else:
+        audit_pack_uuid = core_uuid
 
     job = JobRun(job_type="derive", status="running")
     if workspace_id is not None:
         job.workspace_id = (
             UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
         )
-    job.pack_id = pack_uuid
+    job.pack_id = audit_pack_uuid
     db.add(job)
     db.commit()
     db.refresh(job)
 
     try:
-        return _run_deriver_core(db, job, pack_uuid, company_ids=company_ids)
+        return _run_deriver_core(db, job, core_uuid, company_ids=company_ids)
     except Exception as exc:
         logger.exception("Deriver job failed")
         job.finished_at = datetime.now(UTC)
@@ -229,12 +236,11 @@ def _run_deriver_core(
 ) -> dict[str, Any]:
     """Core deriver logic. Updates job in-place, commits, returns result dict.
 
-    Uses core derivers only (Issue #285, Milestone 6). If core derivers fail to
+    Uses core derivers only (Issue #285, Milestone 6). pack_uuid is the core pack
+    (from get_core_pack_id); no pack manifest is loaded. If core derivers fail to
     load (FileNotFoundError, ValueError), the exception propagates and the job
     is marked failed by run_deriver.
     """
-    resolve_pack(db, pack_uuid)  # ensure pack exists for job/scoping
-
     passthrough, pattern_derivers = _load_core_derivers()
     logger.debug(
         "Using core derivers: passthrough=%d patterns=%d",
@@ -257,8 +263,8 @@ def _run_deriver_core(
             "error": "No passthrough or pattern derivers available",
         }
 
-    # Query SignalEvents: pack_id matches; optionally scope to company_ids (for tests)
-    q = db.query(SignalEvent).filter(SignalEvent.pack_id == pack_uuid)
+    # Query SignalEvents: no pack filter (Issue #287 M2); company_id required; optional company_ids scope
+    q = db.query(SignalEvent).filter(SignalEvent.company_id.isnot(None))
     if company_ids is not None:
         q = q.filter(SignalEvent.company_id.in_(company_ids))
     events = q.all()
@@ -279,7 +285,7 @@ def _run_deriver_core(
         for signal_id, deriver_type in evaluated:
             logger.info(
                 "deriver_triggered pack_id=%s signal_id=%s event_id=%s deriver_type=%s",
-                pack_uuid,
+                pack_uuid,  # core pack (write target)
                 signal_id,
                 ev.id,
                 deriver_type,
@@ -371,7 +377,7 @@ def _run_deriver_core(
     db.commit()
     logger.info(
         "Deriver completed: pack_id=%s instances_upserted=%d events_processed=%d events_skipped=%d",
-        pack_uuid,
+        pack_uuid,  # core pack
         upserted,
         events_processed,
         events_skipped,

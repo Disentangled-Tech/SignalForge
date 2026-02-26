@@ -41,19 +41,26 @@ from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 
 def _get_signal_ids_for_company(
-    db: Session, company_id: int, pack_id: str | UUID | None
+    db: Session,
+    company_id: int,
+    pack_id: str | UUID | None,
+    core_pack_id: UUID | None = None,
 ) -> set[str]:
     """Fetch signal_ids for company from SignalInstance (Issue #175).
 
+    Issue #287 M4: When core_pack_id is set, uses core pack instances for the
+    signal set; pack_id is still used for ESL policy via callers. When
+    core_pack_id is None, uses pack_id for the query (legacy behavior).
     Returns empty set when no SignalInstances (e.g. watchlist company).
     """
-    if pack_id is None:
+    query_pack_id = core_pack_id if core_pack_id is not None else pack_id
+    if query_pack_id is None:
         return set()
     instances = (
         db.query(SignalInstance.signal_id)
         .filter(
             SignalInstance.entity_id == company_id,
-            SignalInstance.pack_id == pack_id,
+            SignalInstance.pack_id == query_pack_id,
         )
         .distinct()
         .all()
@@ -66,6 +73,7 @@ def compute_esl_from_context(
     company_id: int,
     as_of: date,
     pack_id=None,
+    core_pack_id: UUID | None = None,
 ) -> dict[str, Any] | None:
     """Compute ESL from DB context without persisting (Issue #106).
 
@@ -176,7 +184,8 @@ def compute_esl_from_context(
     )
 
     # Issue #175: ESL decision gate (Phase 2); Phase 4: also in dedicated columns
-    signal_ids = _get_signal_ids_for_company(db, company_id, pack_id)
+    # Issue #287 M4: signal set from core instances when core_pack_id set
+    signal_ids = _get_signal_ids_for_company(db, company_id, pack_id, core_pack_id=core_pack_id)
     esl_result = evaluate_esl_decision(signal_ids, pack)
     explain["esl_decision"] = esl_result.decision
     explain["esl_reason_code"] = esl_result.reason_code
@@ -203,13 +212,18 @@ def write_engagement_snapshot(
     company_id: int,
     as_of: date,
     pack_id=None,
+    core_pack_id: UUID | None = None,
 ) -> EngagementSnapshot | None:
     """Compute ESL from context and persist EngagementSnapshot (Issue #189).
 
     Requires ReadinessSnapshot for company/as_of/pack_id. Fetches SignalEvents (365d),
-    OutreachHistory (last sent), Company alignment. Upserts EngagementSnapshot.
+    OutreachHistory (last sent), Company alignment. Issue #287 M4: when core_pack_id
+    is set, ESL signal set comes from core SignalInstances; pack still used for rubric.
+    Upserts EngagementSnapshot.
     """
-    ctx = compute_esl_from_context(db, company_id, as_of, pack_id=pack_id)
+    ctx = compute_esl_from_context(
+        db, company_id, as_of, pack_id=pack_id, core_pack_id=core_pack_id
+    )
     if not ctx:
         return None
 

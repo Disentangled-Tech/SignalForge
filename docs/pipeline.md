@@ -5,7 +5,7 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 | Stage | Endpoint | Description | Idempotency |
 |-------|----------|-------------|-------------|
 | **ingest** | `POST /internal/run_ingest` | Fetch raw events, normalize, resolve companies, store `signal_events` | Dedup by `(source, source_event_id)` |
-| **derive** | `POST /internal/run_derive` | Populate `signal_instances` from `SignalEvents` using pack derivers | Upsert by `(entity_id, signal_id, pack_id)` |
+| **derive** | `POST /internal/run_derive` | Populate `signal_instances` from `SignalEvents` using core derivers (writes to core pack) | Upsert by `(entity_id, signal_id, pack_id)` |
 | **score** | `POST /internal/run_score` | Compute TRS + ESL, write `ReadinessSnapshot` + `EngagementSnapshot` | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
@@ -21,8 +21,9 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 
 ### POST /internal/run_derive
 
-- **Requires a pack**: The derive stage requires a pack to be available (default pack or explicit `pack_id`). If no pack is installed or resolvable, the endpoint returns **400 Bad Request** with detail `"Derive stage requires a pack; no pack available"`.
-- **Cron/script impact**: Callers that previously received 200 with `status: "skipped"` when no pack existed will now receive 400. Ensure migrations have run and the fractional_cto_v1 pack is installed before invoking derive.
+- **Does not require a pack** (Issue #287 M2): Derive runs without a pack. It uses core derivers only and writes to core signal instances (core pack sentinel). When `pack_id` is omitted, the stage runs with no workspace pack; when provided, it is used for JobRun audit only. If the core pack is not installed (migration `20260226_core_pack_sentinel`), the endpoint returns **200** with `status: "skipped"` and an error message. No 400 for missing pack.
+- **Post-deploy (Issue #287)**: After deploying the core-pack refactor, **run derive** (e.g. once or on the next nightly) so core signal instances exist. Score reads from core instances; until derive has run, companies that only had pre-deploy (pack-scoped) instances may have no readiness snapshot unless the snapshot writer fallback (pack-scoped events) applies. The daily aggregation job (ingest → derive → score) ensures correct order.
+- **ORE pipeline**: Outreach recommendation generation uses the legacy ESL path (pack-scoped signal set) and does not pass `core_pack_id` (Issue #287).
 
 ### POST /internal/run_update_lead_feed
 

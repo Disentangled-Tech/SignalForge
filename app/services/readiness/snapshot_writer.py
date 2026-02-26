@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Company, ReadinessSnapshot, SignalEvent
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.services.readiness.event_resolver import get_event_like_list_from_core_instances
 from app.services.readiness.readiness_engine import compute_readiness
 from app.services.signal_scorer import resolve_band
 
@@ -19,11 +21,14 @@ def write_readiness_snapshot(
     as_of: date,
     company_status: str | None = None,
     pack_id=None,
+    core_pack_id: UUID | None = None,
 ) -> ReadinessSnapshot | None:
-    """Compute readiness from SignalEvents and persist ReadinessSnapshot.
+    """Compute readiness and persist ReadinessSnapshot.
 
-    Queries SignalEvents for company in last 365 days. If no events, returns None.
-    Upserts snapshot (unique on company_id, as_of, pack_id). Issue #189.
+    When core_pack_id is set (Issue #287 M3): event list comes from core
+    SignalInstances (evidence_event_ids or last_seen fallback). Otherwise queries
+    SignalEvents for company in last 365 days (pack-scoped or legacy NULL).
+    If no events, returns None. Upserts snapshot (unique on company_id, as_of, pack_id).
     """
     pack_id = pack_id or get_default_pack_id(db)
     if pack_id is None:
@@ -35,21 +40,37 @@ def write_readiness_snapshot(
 
     cutoff_dt = datetime.combine(as_of - timedelta(days=365), datetime.min.time())
     cutoff_dt = cutoff_dt.replace(tzinfo=UTC)
-    # Pack-scoped: only use events for this pack or legacy NULL (Issue #189)
     event_pack_filter = or_(
         SignalEvent.pack_id == pack_id,
         SignalEvent.pack_id.is_(None),
     )
-    events = (
-        db.query(SignalEvent)
-        .filter(
-            SignalEvent.company_id == company_id,
-            SignalEvent.event_time >= cutoff_dt,
-            event_pack_filter,
+
+    if core_pack_id is not None:
+        events = get_event_like_list_from_core_instances(db, company_id, as_of, core_pack_id)
+        # TODO(Issue #287): Remove fallback after backfill. When core instances exist
+        # for all scored companies, delete this block so empty core => no snapshot.
+        if not events:
+            events = (
+                db.query(SignalEvent)
+                .filter(
+                    SignalEvent.company_id == company_id,
+                    SignalEvent.event_time >= cutoff_dt,
+                    event_pack_filter,
+                )
+                .order_by(SignalEvent.event_time.desc())
+                .all()
+            )
+    else:
+        events = (
+            db.query(SignalEvent)
+            .filter(
+                SignalEvent.company_id == company_id,
+                SignalEvent.event_time >= cutoff_dt,
+                event_pack_filter,
+            )
+            .order_by(SignalEvent.event_time.desc())
+            .all()
         )
-        .order_by(SignalEvent.event_time.desc())
-        .all()
-    )
 
     if not events:
         return None

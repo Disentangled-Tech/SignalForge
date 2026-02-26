@@ -36,8 +36,12 @@ def run_stage(
     collisions when the same key may be used across workspaces.
     """
     ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
-    pack = pack_id or get_pack_for_workspace(db, ws_id)
-    pack_str = str(pack) if pack else None
+    # Issue #287 M2: derive runs without pack; pass pack_id=None when not supplied
+    if job_type == "derive" and pack_id is None:
+        pack_str = None
+    else:
+        pack = pack_id or get_pack_for_workspace(db, ws_id)
+        pack_str = str(pack) if pack else None
 
     if idempotency_key:
         ws_uuid = UUID(ws_id) if ws_id else None

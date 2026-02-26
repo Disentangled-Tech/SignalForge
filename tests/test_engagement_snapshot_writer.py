@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import Company, OutreachHistory, ReadinessSnapshot, SignalEvent
+from app.models import (
+    Company,
+    OutreachHistory,
+    ReadinessSnapshot,
+    SignalEvent,
+    SignalInstance,
+)
 from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
 
 
@@ -157,7 +164,9 @@ def test_stability_cap_under_pressure_spike(db: Session) -> None:
     db.commit()
 
     # SignalEvents with SVI types in last 14 days to drive SVI high
-    for i, etype in enumerate(["founder_urgency_language", "funding_raised", "enterprise_customer"]):
+    for i, etype in enumerate(
+        ["founder_urgency_language", "funding_raised", "enterprise_customer"]
+    ):
         ev = SignalEvent(
             company_id=company.id,
             source="test",
@@ -175,3 +184,58 @@ def test_stability_cap_under_pressure_spike(db: Session) -> None:
     assert result.engagement_type == "Soft Value Share"
     assert result.explain.get("stability_cap_triggered") is True
     assert result.explain.get("stability_modifier") < 0.7
+
+
+def test_esl_signal_set_from_core_instances_when_core_pack_id_provided(
+    db: Session,
+    core_pack_id: UUID,
+    bookkeeping_pack_id: UUID,
+) -> None:
+    """ESL signal set comes from core SignalInstances when core_pack_id is set (Issue #287 M4).
+
+    Bookkeeping pack blocks financial_distress. We create that signal only in the core
+    pack. Without core_pack_id the signal set would be empty (query by workspace pack)
+    and ESL would allow; with core_pack_id the signal set includes financial_distress
+    and ESL must suppress.
+    """
+    as_of = date(2026, 2, 18)
+    company = Company(name="CoreSignalESLCo", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    readiness = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=50,
+        complexity=50,
+        pressure=50,
+        leadership_gap=50,
+        composite=50,
+        pack_id=bookkeeping_pack_id,
+    )
+    db.add(readiness)
+    db.commit()
+
+    # Signal only in core pack (as after derive); no instance in bookkeeping pack
+    inst = SignalInstance(
+        entity_id=company.id,
+        signal_id="financial_distress",
+        pack_id=core_pack_id,
+        first_seen=datetime(2026, 2, 1, tzinfo=UTC),
+        last_seen=datetime(2026, 2, 10, tzinfo=UTC),
+    )
+    db.add(inst)
+    db.commit()
+
+    result = write_engagement_snapshot(
+        db,
+        company.id,
+        as_of,
+        pack_id=bookkeeping_pack_id,
+        core_pack_id=core_pack_id,
+    )
+
+    assert result is not None
+    assert result.esl_decision == "suppress"
+    assert result.explain["esl_reason_code"] == "blocked_signal"

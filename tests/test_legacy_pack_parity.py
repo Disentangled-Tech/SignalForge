@@ -40,6 +40,7 @@ from app.services.readiness.scoring_constants import (
     SUPPRESS_CTO_HIRED_180_DAYS,
     from_pack,
 )
+from app.services.readiness.snapshot_writer import write_readiness_snapshot
 
 # Fixed as_of for determinism (TDD_rules)
 _PARITY_AS_OF = date(2099, 6, 15)
@@ -48,20 +49,12 @@ _PARITY_AS_OF = date(2099, 6, 15)
 @pytest.fixture(autouse=True)
 def _clean_parity_test_data(db: Session) -> None:
     """Remove parity harness snapshots to avoid collision with other tests."""
-    db.execute(
-        delete(EngagementSnapshot).where(EngagementSnapshot.as_of == _PARITY_AS_OF)
-    )
-    db.execute(
-        delete(ReadinessSnapshot).where(ReadinessSnapshot.as_of == _PARITY_AS_OF)
-    )
+    db.execute(delete(EngagementSnapshot).where(EngagementSnapshot.as_of == _PARITY_AS_OF))
+    db.execute(delete(ReadinessSnapshot).where(ReadinessSnapshot.as_of == _PARITY_AS_OF))
     db.commit()
     yield
-    db.execute(
-        delete(EngagementSnapshot).where(EngagementSnapshot.as_of == _PARITY_AS_OF)
-    )
-    db.execute(
-        delete(ReadinessSnapshot).where(ReadinessSnapshot.as_of == _PARITY_AS_OF)
-    )
+    db.execute(delete(EngagementSnapshot).where(EngagementSnapshot.as_of == _PARITY_AS_OF))
+    db.execute(delete(ReadinessSnapshot).where(ReadinessSnapshot.as_of == _PARITY_AS_OF))
     db.commit()
 
 
@@ -359,9 +352,7 @@ class TestEmergingCompaniesParityPackVsLegacy:
             outreach_score_threshold=30,
             pack_id=fractional_cto_pack_id,
         )
-        pack_scores = [
-            round(rs.composite * es.esl_score) for rs, es, _ in result_pack
-        ]
+        pack_scores = [round(rs.composite * es.esl_score) for rs, es, _ in result_pack]
 
         # Remove pack snapshots, add legacy-only (pack_id=NULL)
         db.execute(
@@ -412,9 +403,7 @@ class TestEmergingCompaniesParityPackVsLegacy:
             outreach_score_threshold=30,
             pack_id=None,
         )
-        legacy_scores = [
-            round(rs.composite * es.esl_score) for rs, es, _ in result_legacy
-        ]
+        legacy_scores = [round(rs.composite * es.esl_score) for rs, es, _ in result_legacy]
 
         # Same score bands (ordering by OutreachScore desc)
         assert pack_scores == [64, 60, 58, 54, 35]
@@ -507,9 +496,9 @@ class TestIngestDeriveScoreParity:
             for row in db.query(Company.id).filter(Company.domain.in_(_PARITY_TEST_DOMAINS)).all()
         ]
         if company_ids:
-            db.query(SignalInstance).filter(
-                SignalInstance.entity_id.in_(company_ids)
-            ).delete(synchronize_session="fetch")
+            db.query(SignalInstance).filter(SignalInstance.entity_id.in_(company_ids)).delete(
+                synchronize_session="fetch"
+            )
             db.query(ReadinessSnapshot).filter(
                 ReadinessSnapshot.company_id.in_(company_ids)
             ).delete(synchronize_session="fetch")
@@ -526,9 +515,9 @@ class TestIngestDeriveScoreParity:
             for row in db.query(Company.id).filter(Company.domain.in_(_PARITY_TEST_DOMAINS)).all()
         ]
         if company_ids:
-            db.query(SignalInstance).filter(
-                SignalInstance.entity_id.in_(company_ids)
-            ).delete(synchronize_session="fetch")
+            db.query(SignalInstance).filter(SignalInstance.entity_id.in_(company_ids)).delete(
+                synchronize_session="fetch"
+            )
             db.query(ReadinessSnapshot).filter(
                 ReadinessSnapshot.company_id.in_(company_ids)
             ).delete(synchronize_session="fetch")
@@ -545,8 +534,9 @@ class TestIngestDeriveScoreParity:
         self,
         db: Session,
         fractional_cto_pack_id,
+        core_pack_id,
     ) -> None:
-        """Ingest → derive → score produces expected entities, signal_ids, scores."""
+        """Ingest → derive → score produces expected entities, signal_ids, scores (Issue #287 M2: derive writes to core)."""
         from app.pipeline.deriver_engine import run_deriver
         from app.services.ingestion.ingest_daily import run_ingest_daily
         from app.services.readiness.score_nightly import run_score_nightly
@@ -581,7 +571,7 @@ class TestIngestDeriveScoreParity:
                 db.query(SignalInstance)
                 .filter(
                     SignalInstance.entity_id.in_(c.id for c in companies),
-                    SignalInstance.pack_id == fractional_cto_pack_id,
+                    SignalInstance.pack_id == core_pack_id,
                 )
                 .all()
             )
@@ -638,13 +628,12 @@ class TestIngestDeriveScoreParity:
         self,
         db: Session,
         fractional_cto_pack_id,
+        core_pack_id,
     ) -> None:
-        """Ingest → derive → score: derived signal_ids match core derivers (Issue #285 regression guard).
+        """Ingest → derive → score: derived signal_ids match core derivers (Issue #285/#287 M2).
 
-        Ensures that when using fractional_cto_v1 pack, the derive stage (which uses
-        core derivers only) produces the same signal_ids as the core passthrough map
-        for the event types emitted by TestAdapter. Guards against drift between
-        core derivers and expected pipeline output.
+        Derive uses core derivers only and writes to core pack. Derived signal_ids
+        must match core passthrough for TestAdapter event types.
         """
         from app.core_derivers.loader import get_core_passthrough_map
         from app.pipeline.deriver_engine import run_deriver
@@ -678,7 +667,7 @@ class TestIngestDeriveScoreParity:
                 db.query(SignalInstance)
                 .filter(
                     SignalInstance.entity_id.in_(c.id for c in companies),
-                    SignalInstance.pack_id == fractional_cto_pack_id,
+                    SignalInstance.pack_id == core_pack_id,
                 )
                 .all()
             )
@@ -691,4 +680,94 @@ class TestIngestDeriveScoreParity:
                     f"core signal_ids: {core_signal_ids}"
                 )
             # TestAdapter emits funding_raised, job_posted_engineering, cto_role_posted
-            assert derived_signal_ids == {"funding_raised", "job_posted_engineering", "cto_role_posted"}
+            assert derived_signal_ids == {
+                "funding_raised",
+                "job_posted_engineering",
+                "cto_role_posted",
+            }
+
+    @pytest.mark.integration
+    def test_parity_derive_core_score_composite_matches_legacy(
+        self,
+        db: Session,
+        fractional_cto_pack_id,
+        core_pack_id,
+    ) -> None:
+        """Same events: legacy (pack-scoped events) vs derive→core (core instances) yield same composite (Issue #287).
+
+        Two companies with identical SignalEvents. One scored via legacy path (core_pack_id=None),
+        one via derive then core-instance path. Composites must match within tolerance.
+        """
+        from datetime import timedelta
+
+        from app.pipeline.deriver_engine import run_deriver
+
+        # Use fixed as_of and event times so both paths see same window
+        as_of = _PARITY_AS_OF
+        base_dt = datetime(2099, 6, 15, 12, 0, 0, tzinfo=UTC)
+        ev1_time = base_dt - timedelta(days=5)
+        ev2_time = base_dt - timedelta(days=50)
+
+        company_legacy = Company(
+            name="ParityLegacyCo",
+            domain="parity-legacy.example.com",
+            website_url="https://parity-legacy.example.com",
+        )
+        company_core = Company(
+            name="ParityCoreCo",
+            domain="parity-core.example.com",
+            website_url="https://parity-core.example.com",
+        )
+        db.add_all([company_legacy, company_core])
+        db.commit()
+        db.refresh(company_legacy)
+        db.refresh(company_core)
+
+        for company in (company_legacy, company_core):
+            db.add_all(
+                [
+                    SignalEvent(
+                        company_id=company.id,
+                        source="test",
+                        event_type="funding_raised",
+                        event_time=ev1_time,
+                        confidence=0.9,
+                    ),
+                    SignalEvent(
+                        company_id=company.id,
+                        source="test",
+                        event_type="cto_role_posted",
+                        event_time=ev2_time,
+                        confidence=0.7,
+                    ),
+                ]
+            )
+        db.commit()
+
+        # Legacy path: no core_pack_id → event list from pack-scoped SignalEvents
+        snap_legacy = write_readiness_snapshot(
+            db,
+            company_legacy.id,
+            as_of,
+            pack_id=fractional_cto_pack_id,
+            core_pack_id=None,
+        )
+        assert snap_legacy is not None, "Legacy path must produce snapshot"
+        composite_legacy = snap_legacy.composite
+
+        # Core path: derive then score from core instances
+        run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company_core.id])
+        snap_core = write_readiness_snapshot(
+            db,
+            company_core.id,
+            as_of,
+            pack_id=fractional_cto_pack_id,
+            core_pack_id=core_pack_id,
+        )
+        assert snap_core is not None, "Core path must produce snapshot"
+        composite_core = snap_core.composite
+
+        assert abs(composite_legacy - composite_core) <= 1, (
+            f"Derive→core score composite should match legacy within 1 point: "
+            f"legacy={composite_legacy} core={composite_core}"
+        )
