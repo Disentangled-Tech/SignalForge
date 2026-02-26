@@ -54,7 +54,7 @@ def _get_keywords() -> list[str]:
             arr = json.loads(json_val)
             if isinstance(arr, list):
                 return [str(k).strip() for k in arr if str(k).strip()]
-        except Exception:
+        except json.JSONDecodeError:
             pass
     csv_val = os.getenv("INGEST_NEWSAPI_KEYWORDS", "").strip()
     if csv_val:

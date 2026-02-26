@@ -27,6 +27,8 @@ SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     "fractional_request",
     "advisor_request",
     "cto_hired",  # suppressor
+    # Core (Issue #244): GitHub provider
+    "repo_activity",
 })
 
 
