@@ -1,11 +1,19 @@
-# Deriver Engine (Issue #173, #192)
+# Deriver Engine (Issue #173, #192, #285)
 
-The deriver engine populates `signal_instances` from `SignalEvents` (observations) using pack-defined rules. It supports two deriver types: **passthrough** (event_type → signal_id) and **pattern** (regex match on title/summary).
+The deriver engine populates `signal_instances` from `SignalEvents` (observations) using **core derivers only** (Issue #285). It supports two deriver types: **passthrough** (event_type → signal_id) and **pattern** (regex match on title/summary).
+
+## Core derivers only (Issue #285)
+
+- **Runtime**: The derive stage uses **core derivers** only (`app/core_derivers/`). Pack `derivers.yaml` is **not** used at runtime for the derive stage. See [Core vs Pack Responsibilities](CORE_VS_PACK_RESPONSIBILITIES.md).
+- **Pack derivers**: For **schema_version "1"** packs, `derivers.yaml` is still required on disk and validated at pack load time (signal_ids must match pack taxonomy). For **schema_version "2"** packs, `derivers.yaml` is optional; if absent, the pack has empty derivers and derive uses core derivers.
+- **Rationale**: Ensures identical `signal_id` output regardless of pack, so scoring/ESL/outreach can vary by pack while the set of derived signals is canonical.
+- **Validation**: Pack schema validation still checks pack derivers (when present) against allowed signal_ids (pack taxonomy for v1, core taxonomy for v2). This keeps pack configs consistent; only runtime behavior is core-only.
 
 ## Overview
 
 - **Input**: `SignalEvent` rows (pack-scoped, optionally company-scoped)
 - **Output**: `SignalInstance` rows (entity-level signals)
+- **Rules source**: Core derivers only (`app/core_derivers/derivers.yaml`); see [Core vs Pack Responsibilities](CORE_VS_PACK_RESPONSIBILITIES.md).
 - **Idempotency**: Upsert by `(entity_id, signal_id, pack_id)` — re-runs produce the same state
 - **Evidence**: Each `SignalInstance` stores `evidence_event_ids` (JSONB list of `SignalEvent.id`)
 
@@ -25,7 +33,7 @@ derivers:
 ```
 
 - **Required fields**: `event_type`, `signal_id`
-- **Validation**: `signal_id` must be in `taxonomy.signal_ids`
+- **Validation**: Core derivers: `signal_id` must be in core taxonomy (`app/core_taxonomy/taxonomy.yaml`). Pack derivers (when present): validated against allowed signal_ids at pack load time.
 
 ### Pattern
 
@@ -46,14 +54,16 @@ derivers:
   - `min_confidence`: Minimum event confidence to match (default: none)
   - `min_strength`: Reserved for future use
 - **Validation**:
-  - `signal_id` must be in `taxonomy.signal_ids`
+  - Core: `signal_id` must be in core taxonomy. Pack (when present): must be in allowed signal_ids.
   - Pattern length ≤ 500 chars (ADR-008)
   - No ReDoS-prone constructs (nested quantifiers)
   - Valid regex syntax
 
 ## Schema (derivers.yaml)
 
-**Pack structure**: Derivers must be under the top-level `derivers` key. The value is an object with `passthrough` and/or `pattern` lists:
+**Core** (`app/core_derivers/derivers.yaml`): Used by the deriver engine. Same structure below.
+
+**Pack** (optional for Pack v2): When present, structure is validated at pack load; derive does not use pack derivers. Structure: derivers must be under the top-level `derivers` key. The value is an object with `passthrough` and/or `pattern` lists:
 
 ```yaml
 derivers:
@@ -69,10 +79,12 @@ derivers:
 
 **source_fields whitelist**: When `source_fields` is present, it must be a subset of: `title`, `summary`, `url`, `source`. Excludes `raw` (JSONB) and other non-string fields (ADR-008 defense in depth).
 
-Pack schema validation (`app/packs/schemas.py`) enforces:
+Core deriver validation (`app/core_derivers/validator.py`): signal_ids in core taxonomy; regex safety via `app/packs/regex_validator.py`.
 
-- Passthrough entries have `signal_id` in taxonomy
-- Pattern entries have `pattern` or `regex` and `signal_id` in taxonomy
+Pack schema validation (`app/packs/schemas.py`), when pack has derivers:
+
+- Passthrough entries have `signal_id` in allowed set (core for v2, pack taxonomy for v1)
+- Pattern entries have `pattern` or `regex` and `signal_id` in allowed set
 - Pattern `source_fields` (when present) must be in whitelist: title, summary, url, source
 - Regex safety (`app/packs/regex_validator.py`) validates length and ReDoS guards
 - Runtime: per-match regex timeout (100ms) via `regex` package (ADR-008)
@@ -119,12 +131,15 @@ At DEBUG level, additional per-event logs include `entity_id`.
 ## Integration
 
 - **Executor**: `app/pipeline/executor.py` — derive stage requires pack (no derive without pack)
-- **Resolver**: `app/services/pack_resolver.py` — `resolve_pack(db, pack_id)` loads derivers
+- **Resolver**: `app/services/pack_resolver.py` — `resolve_pack(db, pack_id)` used for job/scoping; deriver engine loads rules from `app/core_derivers/loader.py` (core only)
 - **Stage**: `POST /internal/run_derive` — invokes `run_deriver(db, workspace_id, pack_id)`
+- **Startup**: Core taxonomy and core derivers are validated at app startup (`app/main.py`); invalid YAML prevents the app from serving
 
 ## References
 
-- Plan: `.cursor/plans/deriver_engine_pack-driven_implementation_459de0b6.plan.md`
+- Core vs Pack: [CORE_VS_PACK_RESPONSIBILITIES.md](CORE_VS_PACK_RESPONSIBILITIES.md) — core derivers only; pack owns scoring/ESL/outreach
+- Plan: `.cursor/plans/deriver_engine_pack-driven_implementation_459de0b6.plan.md`; Issue #285: `.cursor/plans/core_taxonomy_deriver_registry_6099ab34.plan.md`
 - Pipeline: `docs/pipeline.md`
 - Regex safety: ADR-008, `app/packs/regex_validator.py`
 - Legacy-vs-Pack Parity Harness: `docs/ISSUE_LEGACY_PACK_PARITY_HARNESS.md`, `tests/test_legacy_pack_parity.py` — verify this doc matches implementation when harness is extended.
+- Core taxonomy and derivers: `app/core_taxonomy/`, `app/core_derivers/` (Issue #285); derive uses core only; pack derivers are for schema validation only.
