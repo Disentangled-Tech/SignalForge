@@ -13,6 +13,7 @@ See [pipeline.md](pipeline.md) for the high-level adapter table and pipeline flo
 | **Crunchbase** | `CRUNCHBASE_API_KEY`, `INGEST_CRUNCHBASE_ENABLED=1` | funding_raised | Requires Crunchbase API license |
 | **Product Hunt** | `PRODUCTHUNT_API_TOKEN`, `INGEST_PRODUCTHUNT_ENABLED=1` | launch_major | Implemented; rate limits apply; retry on 429/5xx |
 | **NewsAPI** | `NEWSAPI_API_KEY`, `INGEST_NEWSAPI_ENABLED=1` | funding_raised | Keyword-based queries. 100 req/day free tier. See [NewsAPI](#newsapi). |
+| **GitHub** | `GITHUB_TOKEN`, `INGEST_GITHUB_ENABLED=1` | repo_activity | Repo/org events. See [GitHub](#github). |
 | **TestAdapter** | `INGEST_USE_TEST_ADAPTER=1` | funding_raised, job_posted_engineering, cto_role_posted | Tests only; when set, only TestAdapter is used |
 
 When `INGEST_USE_TEST_ADAPTER=1`, only TestAdapter is returned. Otherwise, adapters are built from env: each adapter is included when its enable flag is set and its API key/token is present.
@@ -137,6 +138,55 @@ Funding-related articles are mapped to `RawEvent` with:
 - `company_name` extracted from title/description heuristics
 - `event_time` from article `publishedAt`
 - `url`: article URL
+
+---
+
+## GitHub {#github}
+
+### API Token Acquisition
+
+The GitHub adapter uses the [GitHub REST API](https://docs.github.com/en/rest) to fetch repository and organization events. To obtain a token:
+
+1. Create a [Personal Access Token (PAT)](https://github.com/settings/tokens) with `repo` scope (for private repos) or `public_repo` (for public repos only).
+2. For org events, ensure the token has access to the organization.
+3. Alternatively, use a [GitHub App](https://docs.github.com/en/apps) installation token for production (documented as future enhancement).
+
+### Configuration
+
+```bash
+export GITHUB_TOKEN=your-token
+export INGEST_GITHUB_ENABLED=1
+```
+
+`GITHUB_PAT` is also accepted as an alias for `GITHUB_TOKEN`.
+
+**Required**: At least one of the following must be set:
+
+- **`INGEST_GITHUB_REPOS`**: Comma-separated list of `owner/repo` (e.g., `org1/repo1,org2/repo2`).
+- **`INGEST_GITHUB_ORGS`**: Comma-separated list of organization names.
+
+When `GITHUB_TOKEN` (or `GITHUB_PAT`) is unset or empty, the adapter returns `[]` and logs at debug. No exception is raised. When both `INGEST_GITHUB_REPOS` and `INGEST_GITHUB_ORGS` are unset, the adapter is skipped.
+
+### Rate Limits and Behavior
+
+- GitHub API rate limits apply (5,000 requests/hour for authenticated requests).
+- **401/403/404/429/500**: Pagination stops for that repo/org; a warning is logged.
+- **404**: Repo or org not found; logged at debug.
+- Events are filtered by `event_time >= since`; pagination continues until the page is full or no more events.
+
+### Security: Token in API Requests
+
+The token is sent in the `Authorization: Bearer <token>` header. Ensure HTTP clients and middleware do not log request headers to avoid credential exposure.
+
+### Event Mapping
+
+Repository and organization events are mapped to `RawEvent` with:
+
+- `event_type_candidate`: `repo_activity`
+- `company_name`: org or owner (from repo owner/repo)
+- `event_time` from `created_at`
+- `url`: repo URL, commit URL (PushEvent), or PR URL (PullRequestEvent)
+- `url` is truncated to 2048 characters; `source_event_id` is stable and unique per event
 
 ---
 
