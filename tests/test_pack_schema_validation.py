@@ -949,3 +949,170 @@ class TestValidatePackSchemaStrictExplainability:
             playbooks=playbooks,
             strict_explainability=True,
         )
+
+
+class TestPackV2ValidateAgainstCore:
+    """Pack v2 (schema_version "2"): validation uses core signal_ids (M2)."""
+
+    def _v2_manifest(self) -> dict:
+        return {"id": "test_v2", "version": "1", "name": "Test V2", "schema_version": "2"}
+
+    def test_v2_taxonomy_empty_dict_passes(self) -> None:
+        """schema_version 2: taxonomy may be empty dict; allowed set is core."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=self._v2_manifest(),
+            taxonomy={},
+            scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
+            esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+            derivers={"derivers": {}},
+            playbooks={},
+        )
+
+    def test_v2_taxonomy_labels_only_no_signal_ids_passes(self) -> None:
+        """schema_version 2: taxonomy may have only labels (no signal_ids)."""
+        from app.packs.schemas import validate_pack_schema
+
+        taxonomy = {"labels": {"funding_raised": "New funding"}, "dimensions": {}}
+        validate_pack_schema(
+            manifest=self._v2_manifest(),
+            taxonomy=taxonomy,
+            scoring={"base_scores": {"momentum": {"funding_raised": 40}}},
+            esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+            derivers={"derivers": {}},
+            playbooks={},
+        )
+
+    def test_v2_scoring_core_signal_id_passes(self) -> None:
+        """schema_version 2: scoring may reference core signal_ids without pack taxonomy."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=self._v2_manifest(),
+            taxonomy={},
+            scoring={
+                "base_scores": {
+                    "momentum": {"funding_raised": 35},
+                    "leadership_gap": {"cto_role_posted": 70},
+                },
+                "composite_weights": {"M": 0.30, "G": 0.15},
+            },
+            esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+            derivers={"derivers": {}},
+            playbooks={},
+        )
+
+    def test_v2_scoring_non_core_signal_id_raises(self) -> None:
+        """schema_version 2: scoring referencing non-core signal_id raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        with pytest.raises(ValidationError, match="ghost_signal|scoring|taxonomy"):
+            validate_pack_schema(
+                manifest=self._v2_manifest(),
+                taxonomy={},
+                scoring={"base_scores": {"momentum": {"ghost_signal": 10}}},
+                esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+                derivers={"derivers": {}},
+                playbooks={},
+            )
+
+    def test_v2_esl_core_signal_id_passes(self) -> None:
+        """schema_version 2: ESL svi_event_types may reference core signal_ids."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=self._v2_manifest(),
+            taxonomy={},
+            scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
+            esl_policy={
+                "recommendation_boundaries": [[0.0, "Observe"]],
+                "svi_event_types": ["funding_raised", "cto_role_posted"],
+            },
+            derivers={"derivers": {}},
+            playbooks={},
+        )
+
+    def test_v2_esl_non_core_signal_id_raises(self) -> None:
+        """schema_version 2: ESL referencing non-core signal_id raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        with pytest.raises(ValidationError, match="unknown_signal|svi_event_types|taxonomy"):
+            validate_pack_schema(
+                manifest=self._v2_manifest(),
+                taxonomy={},
+                scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
+                esl_policy={
+                    "recommendation_boundaries": [[0.0, "Observe"]],
+                    "svi_event_types": ["funding_raised", "unknown_signal"],
+                },
+                derivers={"derivers": {}},
+                playbooks={},
+            )
+
+    def test_v2_derivers_empty_skipped_passes(self) -> None:
+        """schema_version 2: empty derivers (no passthrough/pattern) skips deriver validation."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=self._v2_manifest(),
+            taxonomy={},
+            scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
+            esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+            derivers={},
+            playbooks={},
+        )
+
+    def test_v2_derivers_present_validate_against_core_passes(self) -> None:
+        """schema_version 2: derivers present validate against core signal_ids."""
+        from app.packs.schemas import validate_pack_schema
+
+        validate_pack_schema(
+            manifest=self._v2_manifest(),
+            taxonomy={},
+            scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
+            esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+            derivers={
+                "derivers": {
+                    "passthrough": [
+                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
+                    ],
+                },
+            },
+            playbooks={},
+        )
+
+    def test_v2_derivers_non_core_signal_id_raises(self) -> None:
+        """schema_version 2: derivers referencing non-core signal_id raises."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        with pytest.raises(ValidationError, match="ghost_signal|derivers|taxonomy"):
+            validate_pack_schema(
+                manifest=self._v2_manifest(),
+                taxonomy={},
+                scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
+                esl_policy={"recommendation_boundaries": [[0.0, "Observe"]]},
+                derivers={
+                    "derivers": {
+                        "passthrough": [
+                            {"event_type": "funding_raised", "signal_id": "funding_raised"},
+                            {"event_type": "ghost", "signal_id": "ghost_signal"},
+                        ],
+                    },
+                },
+                playbooks={},
+            )
+
+    def test_v1_unchanged_requires_signal_ids(self) -> None:
+        """schema_version 1: taxonomy without signal_ids still raises (no regression)."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        with pytest.raises(ValidationError, match="signal_ids|taxonomy"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy={},
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks={},
+            )

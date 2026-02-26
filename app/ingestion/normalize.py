@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from app.core_taxonomy.loader import is_valid_signal_id
 from app.ingestion.event_types import SIGNAL_EVENT_TYPES
 from app.schemas.company import CompanyCreate, CompanySource
 from app.schemas.signal import RawEvent
@@ -17,19 +18,35 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIDENCE: float = 0.7
 
 
+def _pack_has_taxonomy_signal_ids(pack: Pack) -> bool:
+    """Return True if pack has a non-empty taxonomy signal_ids list (Issue #285, Milestone 4)."""
+    if not isinstance(pack.taxonomy, dict):
+        return False
+    ids = pack.taxonomy.get("signal_ids")
+    if ids is None:
+        return False
+    if isinstance(ids, (list, set, frozenset)):
+        return len(ids) > 0
+    return False
+
+
 def _is_valid_event_type_for_pack(candidate: str, pack: Pack | None) -> bool:
     """Return True if candidate is valid.
 
     Core types (SIGNAL_EVENT_TYPES) are always accepted regardless of pack taxonomy.
-    When pack is provided, pack taxonomy types are also accepted.
-    When pack is None, uses is_valid_event_type (core types only).
+    When pack is provided and has taxonomy, pack taxonomy signal_ids are also accepted.
+    When pack is None or pack has no taxonomy, validates against core taxonomy first
+    (Issue #285, Milestone 4), then SIGNAL_EVENT_TYPES for backward compat (e.g. incorporation).
     """
     if candidate in SIGNAL_EVENT_TYPES:
         return True
-    if pack is not None:
-        ids = pack.taxonomy.get("signal_ids") if isinstance(pack.taxonomy, dict) else []
+    if pack is not None and _pack_has_taxonomy_signal_ids(pack):
+        ids = pack.taxonomy.get("signal_ids")
         return candidate in (ids if isinstance(ids, (list, set, frozenset)) else [])
-    return False
+    # Pack is None or has no taxonomy: use core taxonomy, then legacy event_types for compat
+    if is_valid_signal_id(candidate):
+        return True
+    return candidate in SIGNAL_EVENT_TYPES
 
 
 def _build_website_url(raw: RawEvent) -> str | None:
@@ -70,9 +87,9 @@ def normalize_raw_event(
     """Normalize RawEvent to (signal_event_data, company_create).
 
     Returns None if event_type_candidate is not in the canonical taxonomy.
-    When pack is provided, validates against pack.taxonomy.signal_ids;
-    otherwise uses event_types.is_valid_event_type (Phase 2, Step 3.3).
-    Caller resolves company and stores the event.
+    When pack is provided and has taxonomy, validates against pack.taxonomy.signal_ids
+    plus core types. When pack is None or has no taxonomy, uses core taxonomy
+    (Issue #285, Milestone 4) with legacy event_types for backward compat.
     """
     if not _is_valid_event_type_for_pack(raw.event_type_candidate, pack):
         logger.debug(

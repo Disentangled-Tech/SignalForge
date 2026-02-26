@@ -5,8 +5,7 @@ title/summary) to produce entity-level signal instances. Idempotent: upsert by
 (entity_id, signal_id, pack_id).
 
 Phase 1 (Issue #173): pattern derivers support.
-Milestone 3 (Issue #285): core derivers preferred over pack derivers; pack derivers
-are the fallback when core derivers are unavailable (FileNotFoundError, ValueError).
+Issue #285, Milestone 6: derive uses core derivers only; pack deriver fallback removed.
 """
 
 from __future__ import annotations
@@ -106,19 +105,15 @@ def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
     return result
 
 
-def _load_core_derivers() -> tuple[Mapping[str, str], list[dict[str, Any]]]:
-    """Load core passthrough map and compiled pattern derivers (Issue #285, Milestone 3).
+def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Load core passthrough map and pattern derivers (Issue #285).
 
     Returns (passthrough_map, pattern_derivers) in the format expected by
     _evaluate_event_derivers. Results come from lru_cached core_derivers module.
 
     Raises:
-        FileNotFoundError: When derivers.yaml is absent.
-        ValueError: When derivers.yaml is malformed or fails validation
-            (triggers pack-deriver fallback in _run_deriver_core).
-        Exception: Any other exception (e.g. AttributeError) is intentionally NOT
-            caught here so programming errors surface as job failures rather than
-            silently producing wrong signal_ids via the pack fallback.
+        FileNotFoundError: When core derivers.yaml is missing.
+        ValueError: When core derivers fail schema validation.
     """
     passthrough_map = get_core_passthrough_map()
     pattern_derivers: list[dict[str, Any]] = list(get_core_pattern_derivers())
@@ -232,30 +227,20 @@ def _run_deriver_core(
     pack_uuid: UUID,
     company_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Core deriver logic. Updates job in-place, commits, returns result dict."""
-    # resolve_pack is needed now (for the fallback branch) or later for other meta; resolve once.
-    pack = resolve_pack(db, pack_uuid)
+    """Core deriver logic. Updates job in-place, commits, returns result dict.
 
-    # Prefer core derivers (Issue #285, Milestone 3).
-    # Fall back to pack derivers only when core derivers cannot be loaded due to a
-    # missing or malformed derivers.yaml (FileNotFoundError, ValueError).
-    # Programming errors (AttributeError, TypeError, etc.) are intentionally NOT caught
-    # here so they surface as job failures rather than silently producing wrong
-    # signal_ids via the pack fallback.
-    try:
-        passthrough, pattern_derivers = _load_core_derivers()
-        logger.debug(
-            "Using core derivers: passthrough=%d patterns=%d",
-            len(passthrough),
-            len(pattern_derivers),
-        )
-    except (FileNotFoundError, ValueError):
-        logger.warning(
-            "Core derivers failed to load; falling back to pack derivers (pack_id=%s)",
-            pack_uuid,
-        )
-        passthrough = _build_passthrough_map(pack)
-        pattern_derivers = _build_pattern_derivers(pack)
+    Uses core derivers only (Issue #285, Milestone 6). If core derivers fail to
+    load (FileNotFoundError, ValueError), the exception propagates and the job
+    is marked failed by run_deriver.
+    """
+    resolve_pack(db, pack_uuid)  # ensure pack exists for job/scoping
+
+    passthrough, pattern_derivers = _load_core_derivers()
+    logger.debug(
+        "Using core derivers: passthrough=%d patterns=%d",
+        len(passthrough),
+        len(pattern_derivers),
+    )
 
     if not passthrough and not pattern_derivers:
         logger.warning("No derivers available (core or pack); deriver skipped")
