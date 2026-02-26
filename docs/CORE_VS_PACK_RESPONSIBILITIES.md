@@ -16,7 +16,7 @@ Core configuration lives in `app/core_taxonomy/` and `app/core_derivers/`. It is
 **Used by:**
 
 - **Ingestion**: Event type validation can use core taxonomy when pack is absent or when pack has no taxonomy (e.g. Pack v2 with optional taxonomy).
-- **Derive**: The deriver engine uses **core derivers only**. It does not read pack `derivers.yaml` for passthrough or pattern rules. Pack is still required for job/scoping (`pack_id` on JobRun and SignalInstance).
+- **Derive**: The deriver engine uses **core derivers only**. It does not read pack `derivers.yaml` for passthrough or pattern rules. Derive runs without a pack and writes SignalInstances with core pack_id (Issue #287).
 - **Pack schema**: For Pack v2, scoring/ESL/derivers validation uses core signal_ids when pack taxonomy is minimal or empty.
 
 **References:** `app/core_taxonomy/loader.py`, `app/core_derivers/loader.py`, `app/pipeline/deriver_engine.py`, `app/ingestion/normalize.py`, `app/packs/schemas.py`.
@@ -40,24 +40,33 @@ Pack configuration lives under `packs/<pack_id>/`. Packs own:
 
 ---
 
-## 3. Derive: Core Only
+## 3. Derive: Core Only (Issue #287)
 
-- **Input**: SignalEvents (pack-scoped by `pack_id` for filtering).
+- **Runs without a pack**: Derive does not require a workspace pack; it uses core derivers only and writes to the **core** pack_id (core pack sentinel in `signal_packs`).
+- **Input**: SignalEvents (all events with `company_id`; no filter on `SignalEvent.pack_id` when writing to core).
 - **Rules**: Passthrough and pattern rules come from **core derivers only** (`app/core_derivers/`). No fallback to pack derivers.
-- **Output**: SignalInstances keyed by `(entity_id, signal_id, pack_id)`. Same events produce the same `signal_id` values regardless of which pack is used for the job; pack_id on the instance is for scoping (e.g. scoring/ESL per pack).
+- **Output**: SignalInstances keyed by `(entity_id, signal_id, pack_id)` with `pack_id` = core pack UUID. Same events produce the same `signal_id` values; only one canonical set of instances (core) is written.
 - **Startup**: Core taxonomy and core derivers are validated at application startup; invalid or missing core YAML prevents the app from serving (fail-fast).
 
 See `docs/deriver-engine.md` for deriver types, schema, and integration.
 
 ---
 
-## 4. Core config: loading and caching (ops)
+## 4. Score: Core input, pack interpretation (Issue #287)
+
+- **Input**: Core SignalInstances (via evidence events). The snapshot writer loads event-like data from core instances for each company; pack is not used to select which signals exist.
+- **Pack**: Weights and ESL rubric only. The workspace pack supplies `scoring.yaml` and `esl_policy.yaml`; it does not define or filter the signal set.
+- **Output**: ReadinessSnapshot and EngagementSnapshot remain pack-scoped (keyed by workspace `pack_id`); only the **source** of the event list for scoring and ESL signal set is core.
+
+---
+
+## 5. Core config: loading and caching (ops)
 
 Core taxonomy (`app/core_taxonomy/taxonomy.yaml`) and core derivers (`app/core_derivers/derivers.yaml`) are **loaded at application startup** and **cached in process** (`load_core_taxonomy`, `load_core_derivers`, and their accessors use `@lru_cache`). Edits to these YAML files do not take effect until the application is restarted. For config changes in production, plan for a restart or rolling deploy so all processes pick up the new core config.
 
 ---
 
-## 5. Summary Table
+## 6. Summary Table
 
 | Concern                    | Owner   | Location / usage                                      |
 | -------------------------- | ------- | ----------------------------------------------------- |
@@ -73,7 +82,7 @@ Core taxonomy (`app/core_taxonomy/taxonomy.yaml`) and core derivers (`app/core_d
 
 ---
 
-## 6. References
+## 7. References
 
 - Implementation plan: `.cursor/plans/core_taxonomy_deriver_registry_6099ab34.plan.md`
 - Deriver engine: `docs/deriver-engine.md`

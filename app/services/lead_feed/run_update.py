@@ -43,6 +43,7 @@ def run_update_lead_feed(
 
     pack_uuid = UUID(str(pack)) if isinstance(pack, str) else pack
     as_of_date = as_of or date.today()
+    # When None (core pack not installed), last_seen is taken from pack-scoped instances; no error.
     core_pack_id = get_core_pack_id(db)
 
     job = JobRun(job_type="update_lead_feed", status="running")
@@ -110,6 +111,7 @@ def run_backfill_lead_feed(
     from app.services.pack_resolver import get_core_pack_id, get_pack_for_workspace
 
     as_of_date = as_of or date.today()
+    # When None (core pack not installed), last_seen is taken from pack-scoped instances; no error.
     core_pack_id = get_core_pack_id(db)
     workspaces = db.query(Workspace).all()
     total_rows = 0

@@ -43,42 +43,24 @@ _TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 _AS_OF = date(2026, 2, 18)
 
 
-class _FailingAdapter(SourceAdapter):
-    """Adapter that raises on fetch_events for testing error handling."""
-
-    @property
-    def source_name(self) -> str:
-        return "failing"
-
-    def fetch_events(self, since) -> list[RawEvent]:
-        raise RuntimeError("Adapter fetch failed")
-
-
 @pytest.fixture(autouse=True)
 def _cleanup_test_adapter_data(db: Session) -> None:
     """Remove test adapter data before each test."""
     company_ids = [
-        row[0]
-        for row in db.query(Company.id)
-        .filter(Company.domain.in_(_TEST_DOMAINS))
-        .all()
+        row[0] for row in db.query(Company.id).filter(Company.domain.in_(_TEST_DOMAINS)).all()
     ]
     if company_ids:
-        db.query(SignalInstance).filter(
-            SignalInstance.entity_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-        db.query(EngagementSnapshot).filter(
-            EngagementSnapshot.company_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-        db.query(ReadinessSnapshot).filter(
-            ReadinessSnapshot.company_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(
-        synchronize_session="fetch"
-    )
-    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(
-        synchronize_session="fetch"
-    )
+        db.query(SignalInstance).filter(SignalInstance.entity_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db.query(EngagementSnapshot).filter(EngagementSnapshot.company_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db.query(ReadinessSnapshot).filter(ReadinessSnapshot.company_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(synchronize_session="fetch")
+    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(synchronize_session="fetch")
     db.commit()
 
 
@@ -185,16 +167,12 @@ class TestRunDailyAggregationNoDuplicatesOnRerun:
 
             first = run_daily_aggregation(db, pack_id=fractional_cto_pack_id)
             assert first["status"] == "completed"
-            events_after_first = (
-                db.query(SignalEvent).filter(SignalEvent.source == "test").count()
-            )
+            events_after_first = db.query(SignalEvent).filter(SignalEvent.source == "test").count()
             assert events_after_first == 3
 
             second = run_daily_aggregation(db, pack_id=fractional_cto_pack_id)
             assert second["status"] == "completed"
-            events_after_second = (
-                db.query(SignalEvent).filter(SignalEvent.source == "test").count()
-            )
+            events_after_second = db.query(SignalEvent).filter(SignalEvent.source == "test").count()
             assert events_after_second == 3
             assert second["ingest_result"]["inserted"] == 0
             assert second["ingest_result"]["skipped_duplicate"] == 3
@@ -271,9 +249,7 @@ class TestRunDailyAggregationUsesWorkspacePack:
             patch("app.services.aggregation.daily_aggregation.date") as mock_date,
         ):
             mock_date.today.return_value = _AS_OF
-            run_daily_aggregation(
-                db, workspace_id=ws_id, pack_id=fractional_cto_pack_id
-            )
+            run_daily_aggregation(db, workspace_id=ws_id, pack_id=fractional_cto_pack_id)
 
         assert captured["ingest"]["workspace_id"] == ws_id
         assert captured["ingest"]["pack_id"] == fractional_cto_pack_id
@@ -308,9 +284,7 @@ class TestRunDailyAggregationCreatesJobRun:
 class TestRunDailyAggregationNoPackResolved:
     """Early return when no pack is resolvable."""
 
-    def test_run_daily_aggregation_returns_failed_when_no_pack(
-        self, db: Session
-    ) -> None:
+    def test_run_daily_aggregation_returns_failed_when_no_pack(self, db: Session) -> None:
         """Returns failed status immediately when no pack can be resolved (no JobRun created)."""
         from app.models import JobRun
 
@@ -415,12 +389,14 @@ class TestRunDailyAggregationRankedCountUsesZeroThreshold:
 def test_daily_aggregation_full_run_with_test_adapter_asserts_ranked_output(
     db: Session,
     fractional_cto_pack_id,
+    core_pack_id,
 ) -> None:
-    """Integration: full run with TestAdapter, assert ranked output visible.
+    """Integration: full run with TestAdapter, assert ranked output and M6 invariants.
 
     - TestAdapter returns 3 events (funding_raised, job_posted_engineering, cto_role_posted)
     - run_daily_aggregation runs ingest → derive → score
     - Assert status completed, ranked_companies non-empty, each item has company_name/composite/band
+    - Issue #287 M6: derive writes to core SignalInstances; score writes pack-scoped snapshots
     """
     with (
         patch("app.services.readiness.score_nightly.date") as mock_date,
@@ -449,3 +425,31 @@ def test_daily_aggregation_full_run_with_test_adapter_asserts_ranked_output(
         assert isinstance(item["company_name"], str)
         assert isinstance(item["composite"], (int, float))
         assert 0 <= item["composite"] <= 100
+
+    # M6: SignalInstances from derive use core pack_id; snapshots use workspace pack_id
+    companies = db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).all()
+    if companies:
+        company_ids = [c.id for c in companies]
+        instances = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id.in_(company_ids),
+                SignalInstance.pack_id == core_pack_id,
+            )
+            .all()
+        )
+        assert len(instances) >= 1, (
+            "Full run must write SignalInstances to core pack (Issue #287 M2)"
+        )
+        snapshots = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id.in_(company_ids),
+                ReadinessSnapshot.as_of == _AS_OF,
+                ReadinessSnapshot.pack_id == fractional_cto_pack_id,
+            )
+            .all()
+        )
+        assert len(snapshots) >= 1, (
+            "Full run must produce pack-scoped ReadinessSnapshots (Issue #287 M6)"
+        )

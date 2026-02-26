@@ -35,27 +35,20 @@ _AS_OF = date(2026, 2, 18)
 def _cleanup_test_adapter_data(db: Session) -> None:
     """Remove test adapter data before each test (handles pre-existing data from prior runs)."""
     company_ids = [
-        row[0]
-        for row in db.query(Company.id)
-        .filter(Company.domain.in_(_TEST_DOMAINS))
-        .all()
+        row[0] for row in db.query(Company.id).filter(Company.domain.in_(_TEST_DOMAINS)).all()
     ]
     if company_ids:
-        db.query(SignalInstance).filter(
-            SignalInstance.entity_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-        db.query(EngagementSnapshot).filter(
-            EngagementSnapshot.company_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-        db.query(ReadinessSnapshot).filter(
-            ReadinessSnapshot.company_id.in_(company_ids)
-        ).delete(synchronize_session="fetch")
-    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(
-        synchronize_session="fetch"
-    )
-    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(
-        synchronize_session="fetch"
-    )
+        db.query(SignalInstance).filter(SignalInstance.entity_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db.query(EngagementSnapshot).filter(EngagementSnapshot.company_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+        db.query(ReadinessSnapshot).filter(ReadinessSnapshot.company_id.in_(company_ids)).delete(
+            synchronize_session="fetch"
+        )
+    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(synchronize_session="fetch")
+    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(synchronize_session="fetch")
     db.commit()
 
 
@@ -81,11 +74,7 @@ def test_ingestion_to_scoring_pipeline_produces_expected_snapshot(
         assert len(events) == 3
         assert all(e.company_id is not None for e in events)
 
-        companies = (
-            db.query(Company)
-            .filter(Company.domain.in_(_TEST_DOMAINS))
-            .all()
-        )
+        companies = db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).all()
         assert len(companies) == 3
 
         # 2. Run scoring
@@ -103,6 +92,10 @@ def test_ingestion_to_scoring_pipeline_produces_expected_snapshot(
             .all()
         )
         assert len(snapshots) >= 1
+        # Issue #287 M6: score produces pack-scoped snapshots (workspace pack_id)
+        assert all(s.pack_id is not None for s in snapshots), (
+            "ReadinessSnapshots must have workspace pack_id set"
+        )
 
         for snapshot in snapshots:
             # Dimensions in valid range (0-100)
@@ -137,11 +130,7 @@ def test_ingest_then_derive_then_score(
         assert len(events) == 3
         assert all(e.company_id is not None for e in events)
 
-        companies = (
-            db.query(Company)
-            .filter(Company.domain.in_(_TEST_DOMAINS))
-            .all()
-        )
+        companies = db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).all()
         assert len(companies) == 3
 
         # 2. Run derive (writes to core pack; Issue #287 M2)

@@ -508,6 +508,55 @@ class TestBuildLeadFeedFromSnapshots:
         assert row is not None
         assert row.last_seen == t_core, "last_seen must come from core instances, not pack-scoped"
 
+    def test_build_last_seen_from_pack_scoped_when_core_pack_id_none(
+        self,
+        db: Session,
+        lead_feed_company: Company,
+        lead_feed_snapshots: tuple[ReadinessSnapshot, EngagementSnapshot],
+        fractional_cto_pack_id: UUID,
+    ) -> None:
+        """When core_pack_id is None, last_seen comes from pack-scoped SignalInstances (Issue #287 M5).
+
+        Backward compatibility: core pack not installed or not passed; pack-scoped
+        (or NULL) instances are used for last_seen.
+        """
+        rs, es = lead_feed_snapshots
+        as_of = rs.as_of
+        t_pack = datetime(2099, 2, 1, 18, 0, 0, tzinfo=UTC)
+        pack_inst = SignalInstance(
+            entity_id=lead_feed_company.id,
+            signal_id="job_posted_engineering",
+            pack_id=fractional_cto_pack_id,
+            first_seen=t_pack,
+            last_seen=t_pack,
+        )
+        db.add(pack_inst)
+        db.commit()
+
+        count = build_lead_feed_from_snapshots(
+            db,
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            pack_id=fractional_cto_pack_id,
+            as_of=as_of,
+            core_pack_id=None,
+        )
+        db.commit()
+
+        assert count == 1
+        row = (
+            db.query(LeadFeed)
+            .filter(
+                LeadFeed.workspace_id == UUID(DEFAULT_WORKSPACE_ID),
+                LeadFeed.pack_id == fractional_cto_pack_id,
+                LeadFeed.entity_id == lead_feed_company.id,
+            )
+            .first()
+        )
+        assert row is not None
+        assert row.last_seen == t_pack, (
+            "last_seen must come from pack-scoped instances when core_pack_id is None"
+        )
+
     def test_build_isolates_by_workspace_and_pack(
         self,
         db: Session,
