@@ -1,5 +1,4 @@
-"""Tests for daily aggregation job (Issue #246, Phase 1)."""
-"""Tests for daily aggregation job (Issue #246, Phase 4)."""
+"""Tests for daily aggregation job (Issue #246, Phase 1, Phase 4)."""
 
 from __future__ import annotations
 
@@ -11,9 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.base import SourceAdapter
-from app.models import Company, JobRun, SignalEvent
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    JobRun,
+    ReadinessSnapshot,
+    SignalEvent,
+    SignalInstance,
+)
 from app.schemas.signal import RawEvent
 from app.services.aggregation.daily_aggregation import run_daily_aggregation
+
+# Test domains used by TestAdapter (same as test_ingestion_scoring_integration)
+_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 
 
 class _FailingAdapter(SourceAdapter):
@@ -25,19 +34,6 @@ class _FailingAdapter(SourceAdapter):
 
     def fetch_events(self, since) -> list[RawEvent]:
         raise RuntimeError("Adapter fetch failed")
-
-_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
-from app.models import (
-    Company,
-    EngagementSnapshot,
-    ReadinessSnapshot,
-    SignalEvent,
-    SignalInstance,
-)
-from app.services.aggregation.daily_aggregation import run_daily_aggregation
-
-# Test domains used by TestAdapter (same as test_ingestion_scoring_integration)
-_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 
 # Fixed date matching TestAdapter event times (2026-02-18) for deterministic scoring
 _AS_OF = date(2026, 2, 18)
