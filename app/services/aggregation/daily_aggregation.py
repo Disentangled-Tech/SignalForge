@@ -1,6 +1,6 @@
-"""Daily aggregation job (Issue #246, Phase 1/4).
+"""Daily signal aggregation job (Issue #246).
 
-Orchestrates ingest -> derive -> score. On success, queries ranked companies
+Orchestrates ingest, derive, and score stages. On success, queries ranked companies
 via get_emerging_companies. One adapter failure does not kill ingest.
 Stage failure: derive/score run on existing data; partial result returned on error.
 Unified orchestrator for cron. Runs stages in order, returns ranked companies.
@@ -11,13 +11,11 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime
 from typing import Any
-from datetime import date
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models.job_run import JobRun
-from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.briefing import get_emerging_companies
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
@@ -25,25 +23,66 @@ from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspa
 logger = logging.getLogger(__name__)
 
 
+class RankedCompany(TypedDict):
+    """Single entry in the ranked_companies list returned by run_daily_aggregation."""
+
+    company_name: str
+    composite: int | float
+    band: str
+
+
+class DailyAggregationResult(TypedDict):
+    """Return type of run_daily_aggregation.
+
+    ranked_companies uses outreach_score_threshold=0 (all scored companies, not
+    just those above the configured outreach threshold). The briefing view applies
+    its own threshold independently.
+    """
+
+    status: str
+    job_run_id: int | None
+    ingest_result: dict[str, Any]
+    derive_result: dict[str, Any]
+    score_result: dict[str, Any]
+    ranked_companies: list[RankedCompany]
+    ranked_count: int
+    error: str | None
+
+
 def run_daily_aggregation(
     db: Session,
     workspace_id: str | UUID | None = None,
     pack_id: str | UUID | None = None,
 ) -> dict[str, Any]:
-    """Run unified daily aggregation: ingest → derive → score.
+    """Run unified daily aggregation: ingest, derive, and score stages.
 
     Resolves pack via pack_id or get_pack_for_workspace(workspace_id) or
     get_default_pack_id(db). Passes workspace_id and pack_id to each stage.
 
-    On success, calls get_emerging_companies for ranked list. Logs ranked
-    companies (name, composite, band) to console.
+    On success, calls get_emerging_companies with outreach_score_threshold=0 for
+    the ranked list used in monitoring/logging. This means ranked_companies and
+    ranked_count include all scored companies regardless of their outreach score;
+    briefing views apply their own threshold separately.
 
     Returns:
-        dict with status, job_run_id, ingest_result, derive_result,
-        score_result, ranked_companies, ranked_count, error
+        DailyAggregationResult with status, job_run_id, ingest_result,
+        derive_result, score_result, ranked_companies, ranked_count, error.
+        On no-pack failure: job_run_id is None and no JobRun is created.
     """
     ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
     resolved_pack = pack_id or get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+
+    if resolved_pack is None:
+        return {
+            "status": "failed",
+            "job_run_id": None,
+            "ingest_result": {},
+            "derive_result": {},
+            "score_result": {},
+            "ranked_companies": [],
+            "ranked_count": 0,
+            "error": "No pack resolved for workspace",
+        }
 
     job = JobRun(
         job_type="daily_aggregation",
@@ -77,23 +116,26 @@ def run_daily_aggregation(
 
         score_result = run_score_nightly(db, workspace_id=ws_id, pack_id=resolved_pack)
 
-        # Ranked list (same source as briefing)
-        from app.services.briefing import get_emerging_companies
-
+        # Ranked list (same source as briefing); threshold=0 to include all scored companies
         as_of = date.today()
         emerging = get_emerging_companies(
             db,
             as_of,
             limit=20,
+            outreach_score_threshold=0,
             pack_id=resolved_pack,
             workspace_id=ws_id,
             outreach_score_threshold=0,
         )
         for rs, es, company in emerging:
-            band = es.esl_decision or es.engagement_type or "N/A"
+            band = (
+                getattr(es, "esl_decision", None)
+                or getattr(es, "engagement_type", None)
+                or "N/A"
+            )
             ranked_companies.append(
                 {
-                    "company_name": company.name,
+                    "name": company.name,
                     "composite": rs.composite,
                     "band": band,
                 }

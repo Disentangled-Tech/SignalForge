@@ -111,7 +111,7 @@ def test_normalize_validates_event_type_against_pack() -> None:
 
 
 def test_normalize_without_pack_uses_legacy_event_types() -> None:
-    """normalize_raw_event without pack falls back to event_types.is_valid_event_type."""
+    """normalize_raw_event without pack validates against core taxonomy and legacy ingest-only types."""
     raw = RawEvent(
         company_name="Acme",
         domain="acme.com",

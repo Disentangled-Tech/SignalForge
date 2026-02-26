@@ -1,0 +1,165 @@
+"""Core derivers schema validation (Issue #285, Milestone 2).
+
+Validates core derivers YAML:
+- Structure: must have 'derivers' key with dict value
+- Passthrough entries: must have event_type and signal_id; signal_id must be in core taxonomy
+- Pattern entries: must have signal_id and pattern/regex; signal_id must be in core taxonomy;
+  source_fields must be in allowed set; regex must be safe (no catastrophic backtracking)
+
+Reuses app.packs.regex_validator for regex safety (ADR-008).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def validate_core_derivers(derivers: dict[str, Any], core_signal_ids: frozenset[str]) -> None:
+    """Validate core derivers schema and cross-references.
+
+    Args:
+        derivers: Loaded derivers dict (from derivers.yaml).
+        core_signal_ids: Frozenset of valid signal_ids from core taxonomy.
+
+    Raises:
+        ValueError: When derivers structure is invalid or references unknown
+            signal_ids; or when a pattern fails regex safety checks.
+    """
+    if not isinstance(derivers, dict):
+        raise ValueError("Core derivers must be a dict")
+
+    inner = derivers.get("derivers") or derivers
+    if not isinstance(inner, dict):
+        raise ValueError("Core derivers must have a 'derivers' key containing a dict")
+
+    passthrough = inner.get("passthrough") or []
+    if not isinstance(passthrough, list):
+        raise ValueError("Core derivers 'passthrough' must be a list")
+    for i, item in enumerate(passthrough):
+        if not isinstance(item, dict):
+            raise ValueError(f"Passthrough entry {i} must be a dict")
+        etype = item.get("event_type")
+        sid = item.get("signal_id")
+        if not etype or not isinstance(etype, str):
+            raise ValueError(f"Passthrough entry {i} must have a non-empty 'event_type'")
+        if not sid or not isinstance(sid, str):
+            raise ValueError(f"Passthrough entry {i} must have a non-empty 'signal_id'")
+        if sid not in core_signal_ids:
+            raise ValueError(
+                f"Passthrough entry {i} references unknown signal_id '{sid}'"
+            )
+
+    pattern_list = inner.get("pattern") or []
+    if not isinstance(pattern_list, list):
+        raise ValueError("Core derivers 'pattern' must be a list")
+    if pattern_list:
+        from app.packs.regex_validator import validate_deriver_regex_safety
+
+        validate_deriver_regex_safety(derivers)
+        for i, item in enumerate(pattern_list):
+            if not isinstance(item, dict):
+                raise ValueError(f"Pattern entry {i} must be a dict")
+            sid = item.get("signal_id")
+            if not sid or not isinstance(sid, str):
+                raise ValueError(f"Pattern entry {i} must have a non-empty 'signal_id'")
+            if sid not in core_signal_ids:
+                raise ValueError(
+                    f"Pattern entry {i} references unknown signal_id '{sid}'"
+                )
+from app.packs.regex_validator import validate_deriver_regex_safety
+from app.packs.schemas import ALLOWED_PATTERN_SOURCE_FIELDS, ValidationError
+
+
+class CoreDeriversValidationError(ValueError):
+    """Raised when core derivers validation fails.
+
+    Subclasses ValueError so callers can catch it via ``except ValueError``
+    alongside ``FileNotFoundError`` without needing to import this class.
+    """
+
+
+def validate_core_derivers(derivers: dict[str, Any]) -> None:
+    """Validate core derivers structure, signal_ids against core taxonomy, and regex safety.
+
+    Args:
+        derivers: Loaded derivers.yaml content.
+
+    Raises:
+        CoreDeriversValidationError: When structural or referential integrity validation fails,
+            including when regex safety validation detects dangerous patterns.
+    """
+    if not isinstance(derivers, dict):
+        raise CoreDeriversValidationError("core derivers must be a dict")
+
+    inner = derivers.get("derivers")
+    if inner is None:
+        raise CoreDeriversValidationError("core derivers must have a 'derivers' key")
+    if not isinstance(inner, dict):
+        raise CoreDeriversValidationError("core derivers 'derivers' value must be a dict")
+
+    from app.core_taxonomy.loader import get_core_signal_ids
+
+    core_signal_ids = get_core_signal_ids()
+
+    # Validate passthrough derivers
+    passthrough = inner.get("passthrough") or []
+    if not isinstance(passthrough, list):
+        raise CoreDeriversValidationError("core derivers 'passthrough' must be a list")
+    for i, entry in enumerate(passthrough):
+        if not isinstance(entry, dict):
+            raise CoreDeriversValidationError(
+                f"core derivers passthrough entry at index {i} must be a dict"
+            )
+        if "event_type" not in entry:
+            raise CoreDeriversValidationError(
+                f"core derivers passthrough entry at index {i} missing required field 'event_type'"
+            )
+        if "signal_id" not in entry:
+            raise CoreDeriversValidationError(
+                f"core derivers passthrough entry at index {i} missing required field 'signal_id'"
+            )
+        sid = entry.get("signal_id")
+        if sid not in core_signal_ids:
+            raise CoreDeriversValidationError(
+                f"core derivers passthrough entry at index {i} references signal_id '{sid}' "
+                f"not in core taxonomy"
+            )
+
+    # Validate pattern derivers
+    pattern_list = inner.get("pattern") or []
+    if not isinstance(pattern_list, list):
+        raise CoreDeriversValidationError("core derivers 'pattern' must be a list")
+    for i, entry in enumerate(pattern_list):
+        if not isinstance(entry, dict):
+            raise CoreDeriversValidationError(
+                f"core derivers pattern entry at index {i} must be a dict"
+            )
+        if "signal_id" not in entry:
+            raise CoreDeriversValidationError(
+                f"core derivers pattern entry at index {i} missing required field 'signal_id'"
+            )
+        if "pattern" not in entry and "regex" not in entry:
+            raise CoreDeriversValidationError(
+                f"core derivers pattern entry at index {i} must have 'pattern' or 'regex'"
+            )
+        sid = entry.get("signal_id")
+        if sid not in core_signal_ids:
+            raise CoreDeriversValidationError(
+                f"core derivers pattern entry at index {i} references signal_id '{sid}' "
+                f"not in core taxonomy"
+            )
+        source_fields = entry.get("source_fields")
+        if source_fields is not None and isinstance(source_fields, list):
+            for j, field in enumerate(source_fields):
+                if field not in ALLOWED_PATTERN_SOURCE_FIELDS:
+                    raise CoreDeriversValidationError(
+                        f"core derivers pattern entry at index {i} source_fields[{j}] "
+                        f"'{field}' not allowed; must be one of "
+                        f"{sorted(ALLOWED_PATTERN_SOURCE_FIELDS)}"
+                    )
+
+    # Delegate regex safety validation to the existing pack validator (ADR-008)
+    try:
+        validate_deriver_regex_safety(derivers)
+    except ValidationError as exc:
+        raise CoreDeriversValidationError(str(exc)) from exc
