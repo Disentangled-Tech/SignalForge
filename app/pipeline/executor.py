@@ -119,4 +119,12 @@ def _cached_result(job: JobRun, job_type: str) -> dict:
             "rows_upserted": job.companies_processed or 0,
             "error": job.error_message,
         }
+    if job_type == "daily_aggregation":
+        return {
+            **base,
+            "inserted": 0,
+            "companies_scored": job.companies_processed or 0,
+            "ranked_count": 0,
+            "error": job.error_message,
+        }
     return base

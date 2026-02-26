@@ -89,10 +89,25 @@ def _update_lead_feed_stage(
     )
 
 
+def _daily_aggregation_stage(
+    db: Session,
+    workspace_id: str,
+    pack_id: str | None,
+    **kwargs: Any,
+) -> StageResult:
+    """Daily aggregation stage: ingest → derive → score (Issue #246, Phase 1)."""
+    from app.services.aggregation.daily_aggregation import run_daily_aggregation
+
+    return StageResult(
+        run_daily_aggregation(db, workspace_id=workspace_id, pack_id=pack_id)
+    )
+
+
 # Registry: job_type -> callable (db, workspace_id, pack_id, **kwargs) -> dict
 STAGE_REGISTRY: dict[str, PipelineStage] = {
     "ingest": _ingest_stage,
     "derive": _derive_stage,
     "score": _score_stage,
     "update_lead_feed": _update_lead_feed_stage,
+    "daily_aggregation": _daily_aggregation_stage,
 }
