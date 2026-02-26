@@ -1,0 +1,51 @@
+# Core Signal Taxonomy (Issue #285, Milestone 1)
+# Canonical signal_ids and dimensions, extracted from fractional_cto_v1/taxonomy.yaml.
+# Labels and explainability templates remain in pack-specific taxonomy.yaml.
+
+signal_ids:
+  - funding_raised
+  - job_posted_engineering
+  - job_posted_infra
+  - headcount_growth
+  - launch_major
+  - api_launched
+  - ai_feature_launched
+  - enterprise_feature
+  - compliance_mentioned
+  - enterprise_customer
+  - regulatory_deadline
+  - founder_urgency_language
+  - revenue_milestone
+  - cto_role_posted
+  - no_cto_detected
+  - fractional_request
+  - advisor_request
+  - cto_hired
+  - repo_activity
+
+dimensions:
+  M:  # Momentum
+    - funding_raised
+    - job_posted_engineering
+    - job_posted_infra
+    - headcount_growth
+    - launch_major
+  C:  # Complexity
+    - api_launched
+    - ai_feature_launched
+    - enterprise_feature
+    - compliance_mentioned
+    - job_posted_infra
+    - repo_activity
+  P:  # Pressure
+    - enterprise_customer
+    - regulatory_deadline
+    - founder_urgency_language
+    - revenue_milestone
+    - funding_raised
+  G:  # Leadership Gap
+    - cto_role_posted
+    - no_cto_detected
+    - fractional_request
+    - advisor_request
+    - cto_hired

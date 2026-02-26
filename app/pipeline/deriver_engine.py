@@ -1,8 +1,12 @@
 """Deriver engine: populate signal_instances from SignalEvents (Phase 2, Issue #192).
 
-Applies pack derivers (passthrough: event_type -> signal_id; pattern: regex on
+Applies derivers (passthrough: event_type -> signal_id; pattern: regex on
 title/summary) to produce entity-level signal instances. Idempotent: upsert by
-(entity_id, signal_id, pack_id). Phase 1 (Issue #173): pattern derivers support.
+(entity_id, signal_id, pack_id).
+
+Phase 1 (Issue #173): pattern derivers support.
+Milestone 3 (Issue #285): core derivers override pack derivers; pack derivers
+are the fallback when core derivers are unavailable.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core_derivers.loader import get_core_passthrough_map, get_core_pattern_derivers
 from app.models.job_run import JobRun
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
@@ -101,6 +106,20 @@ def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Load core passthrough map and pattern derivers (Issue #285, Milestone 3).
+
+    Returns (passthrough_map, pattern_derivers) in the format expected by
+    _evaluate_event_derivers. Results come from lru_cached core_derivers module.
+
+    Raises:
+        Exception: When core derivers cannot be loaded (triggers pack fallback).
+    """
+    passthrough_map = get_core_passthrough_map()
+    pattern_derivers: list[dict[str, Any]] = list(get_core_pattern_derivers())
+    return passthrough_map, pattern_derivers
 
 
 def _evaluate_event_derivers(
@@ -212,14 +231,32 @@ def _run_deriver_core(
 ) -> dict[str, Any]:
     """Core deriver logic. Updates job in-place, commits, returns result dict."""
     pack = resolve_pack(db, pack_uuid)
-    passthrough = _build_passthrough_map(pack)
-    pattern_derivers = _build_pattern_derivers(pack)
+
+    # Prefer core derivers (Issue #285, Milestone 3).
+    # Fall back to pack derivers only when core derivers cannot be loaded due to a
+    # missing or malformed derivers.yaml file. Programming errors (AttributeError,
+    # TypeError, etc.) are intentionally NOT caught here so they surface as job
+    # failures rather than silently producing wrong signal_ids via the pack fallback.
+    try:
+        passthrough, pattern_derivers = _load_core_derivers()
+        logger.debug(
+            "Using core derivers: passthrough=%d patterns=%d",
+            len(passthrough),
+            len(pattern_derivers),
+        )
+    except (FileNotFoundError, ValueError):
+        logger.warning(
+            "Core derivers failed to load; falling back to pack derivers (pack_id=%s)",
+            pack_uuid,
+        )
+        passthrough = _build_passthrough_map(pack)
+        pattern_derivers = _build_pattern_derivers(pack)
 
     if not passthrough and not pattern_derivers:
-        logger.warning("Pack has no passthrough or pattern derivers; deriver skipped")
+        logger.warning("No derivers available (core or pack); deriver skipped")
         job.finished_at = datetime.now(UTC)
         job.status = "skipped"
-        job.error_message = "No passthrough or pattern derivers in pack"
+        job.error_message = "No passthrough or pattern derivers available"
         db.commit()
         return {
             "status": "skipped",
@@ -227,7 +264,7 @@ def _run_deriver_core(
             "instances_upserted": 0,
             "events_processed": 0,
             "events_skipped": 0,
-            "error": "No passthrough or pattern derivers in pack",
+            "error": "No passthrough or pattern derivers available",
         }
 
     # Query SignalEvents: pack_id matches; optionally scope to company_ids (for tests)
