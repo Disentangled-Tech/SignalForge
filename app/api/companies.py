@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_auth
+from app.api.deps import require_auth, validate_uuid_param_or_422
+from app.api.views import _require_workspace_access
+from app.config import get_settings
 from app.db.session import get_db
+from app.models.user import User
 from app.schemas.company import (
     BulkImportResponse,
     CompanyCreate,
@@ -18,6 +22,7 @@ from app.schemas.company import (
     CompanyRead,
     CompanyUpdate,
 )
+from app.schemas.ranked_companies import RankedCompaniesResponse
 from app.services.company import (
     bulk_import_companies,
     delete_company,
@@ -26,11 +31,62 @@ from app.services.company import (
     update_company,
 )
 from app.services.company_resolver import resolve_or_create_company
+from app.services.ranked_companies import get_ranked_companies_for_api
 
 router = APIRouter()
 
 
 # ── Routes ───────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/top",
+    response_model=RankedCompaniesResponse,
+    summary="Get top ranked companies",
+    description="""Get ranked companies for Daily Briefing UI (Issue #247).
+
+Returns companies ordered by composite/outreach score descending, with
+recommendation_band (IGNORE | WATCH | HIGH_PRIORITY), top_signals, and
+optional dimension breakdown (momentum, complexity, pressure, leadership_gap).
+
+**Auth**: Required (Bearer token or session cookie).
+
+**Workspace scoping**: When multi_workspace_enabled, pass workspace_id to scope
+results. Invalid workspace_id returns 422. Users must have access to the workspace
+(403 if not).
+
+**Empty DB**: Returns ``{"companies": [], "total": 0}``.
+""",
+)
+def api_companies_top(
+    since: date | None = Query(
+        None,
+        description="Snapshot date (YYYY-MM-DD). Default: today.",
+    ),
+    limit: int = Query(
+        10,
+        ge=1,
+        le=100,
+        description="Maximum number of companies to return.",
+    ),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID (when multi_workspace_enabled). Default workspace if omitted.",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_auth),
+) -> RankedCompaniesResponse:
+    """Get top ranked companies for Daily Briefing (Issue #247)."""
+    as_of = since if since is not None else date.today()
+    settings = get_settings()
+    ws_id = workspace_id if settings.multi_workspace_enabled else None
+    if ws_id is not None:
+        validate_uuid_param_or_422(ws_id, "workspace_id")
+        _require_workspace_access(db, user, ws_id)
+    companies = get_ranked_companies_for_api(
+        db, as_of, limit=limit, workspace_id=ws_id
+    )
+    return RankedCompaniesResponse(companies=companies, total=len(companies))
 
 
 @router.get("", response_model=CompanyList)
