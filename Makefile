@@ -12,6 +12,7 @@ help:
 	@echo "  make upgrade   - Run database migrations"
 	@echo "  make test      - Run tests"
 	@echo "  make lint      - Run ruff"
+	@echo "  make signals-daily - Run daily aggregation (ingest → derive → score)"
 	@echo "  make create-company COMPANY_NAME=\"Acme\" - Insert a company via CLI script"
 	@echo "  make rectify-alembic - Fix alembic_version when DB has unknown revision"
 	@echo "  make diagnose-scan COMPANY_ID=N - Diagnose why a company scan fails"
@@ -33,6 +34,9 @@ upgrade:
 
 test:
 	pytest tests/ -v
+
+signals-daily:
+	.venv/bin/python scripts/run_daily_aggregation.py
 
 lint:
 	ruff check app tests

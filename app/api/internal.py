@@ -361,6 +361,59 @@ async def run_backfill_lead_feed_endpoint(
         return {"status": "failed", "error": str(exc)}
 
 
+@router.post("/run_daily_aggregation")
+async def run_daily_aggregation_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+    workspace_id: str | None = Query(None, description="Workspace ID; uses default if omitted"),
+    pack_id: str | None = Query(
+        None, description="Pack UUID; uses workspace active pack if omitted"
+    ),
+):
+    """Trigger daily aggregation: ingest → derive → score (Issue #246).
+
+    Unified entry point for cron. Returns status, job_run_id, inserted,
+    companies_scored, ranked_count, error. Idempotent with X-Idempotency-Key.
+    """
+    from uuid import UUID
+
+    from app.pipeline.executor import run_stage
+
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    validate_uuid_param_or_422(pack_id, "pack_id")
+
+    try:
+        pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
+        ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
+        result = run_stage(
+            db,
+            job_type="daily_aggregation",
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
+            idempotency_key=x_idempotency_key,
+        )
+        inserted = result.get("ingest_result", {}).get(
+            "inserted", result.get("inserted", 0)
+        )
+        companies_scored = result.get("score_result", {}).get(
+            "companies_scored", result.get("companies_scored", 0)
+        )
+        return {
+            "status": result["status"],
+            "job_run_id": result["job_run_id"],
+            "inserted": inserted,
+            "companies_scored": companies_scored,
+            "ranked_count": result.get("ranked_count", 0),
+            "error": result.get("error"),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Internal daily aggregation job failed")
+        return {"status": "failed", "error": str(exc)}
+
+
 @router.post("/run_bias_audit")
 async def run_bias_audit_endpoint(
     db: Session = Depends(get_db),
