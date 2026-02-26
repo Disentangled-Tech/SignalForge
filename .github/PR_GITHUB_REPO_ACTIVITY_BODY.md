@@ -1,6 +1,6 @@
 # GitHub Provider + REPO_ACTIVITY (Issue #244)
 
-Relates to #244
+Closes #244
 
 ## Summary
 
