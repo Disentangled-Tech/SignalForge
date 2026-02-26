@@ -19,6 +19,10 @@ from app.schemas.company import (
     CompanySource,
     CompanyUpdate,
 )
+from app.schemas.ranked_companies import (
+    RankedCompaniesResponse,
+    RankedCompanyTop,
+)
 from app.schemas.settings import (
     OperatorProfileRead,
     OperatorProfileUpdate,
@@ -39,6 +43,9 @@ __all__ = [
     "CompanyRead",
     "CompanyList",
     "CompanySource",
+    # Ranked companies
+    "RankedCompanyTop",
+    "RankedCompaniesResponse",
     # Signal
     "RawEvent",
     "SignalRecordRead",
