@@ -71,7 +71,8 @@ Optional: `INGEST_NEWSAPI_KEYWORDS` or `INGEST_NEWSAPI_KEYWORDS_JSON`
 - **`app/ingestion/adapters/delaware_socrata_adapter.py`** (new): Fetches incorporation filings from Delaware SODA API; maps to `RawEvent` with `event_type_candidate='incorporation'`; validates `INGEST_DELAWARE_SOCRATA_DATE_COLUMN` (alphanumeric/underscore only) to prevent SoQL injection
 - **`app/ingestion/adapters/__init__.py`**: Export `DelawareSocrataAdapter`
 - **`app/services/ingestion/ingest_daily.py`**: Wire when `INGEST_DELAWARE_SOCRATA_ENABLED=1` and `INGEST_DELAWARE_SOCRATA_DATASET_ID` set
-- **`docs/ingestion-adapters.md`**: Delaware Socrata section (dataset ID research, expected schema, company resolution notes)
+- **`docs/ingestion-adapters.md`**: Delaware Socrata section (dataset IDs, SoQL examples, expected schema, company resolution)
+- **`docs/implementation-plan-delaware-incorporation-issue-250.md`** (new): Implementation summary and verification
 - **Tests**: `test_delaware_socrata_adapter.py`, `test_ingest_daily.py`, `test_ingestion_adapter.py`, `test_event_types.py`, `test_signal_schemas.py`
 
 ### Configuration
