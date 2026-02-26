@@ -4,6 +4,8 @@ Orchestrates ingest, derive, and score stages. On success, queries ranked compan
 via get_emerging_companies. One adapter failure does not kill ingest.
 Stage failure: derive/score run on existing data; partial result returned on error.
 Unified orchestrator for cron. Runs stages in order, returns ranked companies.
+One adapter failure does not kill ingest. Stage failure: derive/score run on
+existing data; partial result returned on error.
 """
 
 from __future__ import annotations

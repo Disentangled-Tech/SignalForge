@@ -291,6 +291,43 @@ class TestRunDeriver:
         assert len(instances) == 3
         signal_ids = {i.signal_id for i in instances}
         assert signal_ids == {"funding_raised", "job_posted_engineering", "cto_role_posted"}
+        # Pack isolation: every instance must have pack_id equal to job pack_id (no cross-pack)
+        for inst in instances:
+            assert inst.pack_id == fractional_cto_pack_id, (
+                f"SignalInstance pack_id must match job pack_id; got {inst.pack_id}"
+            )
+
+    def test_deriver_output_instances_all_have_job_pack_id(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """Regression: every SignalInstance created by deriver has pack_id == run_deriver pack_id."""
+        company = Company(
+            name="PackScopeCo",
+            domain="packscope.example.com",
+            website_url="https://packscope.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+        _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        _make_event(db, company.id, "cto_role_posted", fractional_cto_pack_id)
+        db.commit()
+
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        assert result["status"] == "completed"
+        assert result["instances_upserted"] == 2
+
+        instances = (
+            db.query(SignalInstance)
+            .filter(SignalInstance.entity_id == company.id)
+            .all()
+        )
+        assert len(instances) == 2
+        for inst in instances:
+            assert inst.pack_id == fractional_cto_pack_id, (
+                f"Deriver must only create instances for job pack_id; "
+                f"entity_id={inst.entity_id} signal_id={inst.signal_id} pack_id={inst.pack_id}"
+            )
 
     def test_deriver_aggregates_multiple_events_same_signal(
         self, db: Session, fractional_cto_pack_id
