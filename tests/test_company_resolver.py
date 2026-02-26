@@ -159,12 +159,14 @@ def clean_db(db: Session) -> Session:
     return db
 
 
+@pytest.mark.serial
 class TestResolveOrCreateCompany:
-    """Integration-style tests using real DB session from conftest."""
+    """Integration-style tests using real DB session from conftest.
 
-    def test_two_urls_same_domain_resolve_to_one(
-        self, clean_db: Session
-    ) -> None:
+    Marked serial to avoid ShareLock deadlock when run in parallel (pytest-xdist).
+    """
+
+    def test_two_urls_same_domain_resolve_to_one(self, clean_db: Session) -> None:
         """Two URLs with same domain should resolve to one company."""
         data_a = CompanyCreate(
             company_name="DomainTest Inc",
@@ -184,11 +186,7 @@ class TestResolveOrCreateCompany:
         assert company_b.id == company_a.id
         assert company_b.name == "DomainTest Inc"
 
-    # TODO(flaky): Intermittent deadlock when run in parallel; consider isolating
-    # or fixing DELETE ordering to avoid ShareLock contention across processes.
-    def test_inc_vs_llc_variants_resolve_to_one(
-        self, clean_db: Session
-    ) -> None:
+    def test_inc_vs_llc_variants_resolve_to_one(self, clean_db: Session) -> None:
         """Inc vs LLC name variants (no URL) should resolve to same company."""
         data_a = CompanyCreate(company_name="NameVariant Inc")
         company_a, created_a = resolve_or_create_company(clean_db, data_a)
@@ -199,9 +197,7 @@ class TestResolveOrCreateCompany:
         assert created_b is False
         assert company_b.id == company_a.id
 
-    def test_different_domains_create_two_companies(
-        self, clean_db: Session
-    ) -> None:
+    def test_different_domains_create_two_companies(self, clean_db: Session) -> None:
         """Different domains should create different companies."""
         data_a = CompanyCreate(
             company_name="DomainAlpha Corp",
@@ -218,9 +214,7 @@ class TestResolveOrCreateCompany:
         assert created_b is True
         assert company_b.id != company_a.id
 
-    def test_no_domain_name_match_only_resolves(
-        self, clean_db: Session
-    ) -> None:
+    def test_no_domain_name_match_only_resolves(self, clean_db: Session) -> None:
         """When no domain/URL/LinkedIn, name match only (current behavior)."""
         data_a = CompanyCreate(company_name="NameMatch Foo Bar Company")
         company_a, created_a = resolve_or_create_company(clean_db, data_a)
@@ -231,9 +225,7 @@ class TestResolveOrCreateCompany:
         assert created_b is False
         assert company_b.id == company_a.id
 
-    def test_linkedin_match_resolves(
-        self, clean_db: Session
-    ) -> None:
+    def test_linkedin_match_resolves(self, clean_db: Session) -> None:
         """LinkedIn URL match should resolve to existing company."""
         linkedin_url = "https://linkedin.com/company/linkedin-test-unique-88"
         data_a = CompanyCreate(
