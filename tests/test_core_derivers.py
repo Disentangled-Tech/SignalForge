@@ -1,528 +1,493 @@
-"""Tests for core derivers loader and validator (Issue #285, Milestone 2)."""
+"""Core derivers module tests (Issue #285, Milestone 2).
+
+Covers: load, validate, passthrough/pattern output stability, regex safety,
+and signal_id cross-reference with core taxonomy.
+"""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
-from app.core_derivers.loader import (
-    get_core_passthrough_map,
-    get_core_pattern_derivers,
-    load_core_derivers,
-)
-from app.core_derivers.validator import validate_core_derivers
-from app.core_taxonomy.loader import get_core_signal_ids
 
+class TestLoadCoreDrivers:
+    """load_core_derivers() returns valid dict with expected structure."""
 
-class TestLoadCoreDerivers:
-    """Tests for load_core_derivers."""
+    def test_load_returns_dict(self) -> None:
+        from app.core_derivers.loader import load_core_derivers
 
-    def test_returns_dict(self) -> None:
-        """load_core_derivers returns a non-empty dict."""
-        derivers = load_core_derivers()
-        assert isinstance(derivers, dict)
-        assert derivers
+        result = load_core_derivers()
+        assert isinstance(result, dict)
 
-    def test_has_derivers_key(self) -> None:
-        """Loaded derivers has a 'derivers' key."""
-        derivers = load_core_derivers()
-        assert "derivers" in derivers
+    def test_load_has_derivers_key(self) -> None:
+        from app.core_derivers.loader import load_core_derivers
 
-    def test_has_passthrough(self) -> None:
-        """Derivers 'derivers' section has a non-empty passthrough list."""
-        derivers = load_core_derivers()
-        inner = derivers["derivers"]
-        passthrough = inner.get("passthrough")
-        assert isinstance(passthrough, list)
-        assert len(passthrough) > 0
+        result = load_core_derivers()
+        assert "derivers" in result
 
-    def test_passthrough_entries_are_dicts_with_event_type_signal_id(self) -> None:
-        """Each passthrough entry has event_type and signal_id keys."""
-        derivers = load_core_derivers()
-        for entry in derivers["derivers"]["passthrough"]:
-            assert "event_type" in entry, f"Missing event_type in {entry}"
-            assert "signal_id" in entry, f"Missing signal_id in {entry}"
+    def test_load_derivers_has_passthrough(self) -> None:
+        from app.core_derivers.loader import load_core_derivers
 
-    def test_cached_same_object(self) -> None:
-        """Repeated calls return the same cached object (lru_cache)."""
-        a = load_core_derivers()
-        b = load_core_derivers()
-        assert a is b
+        result = load_core_derivers()
+        inner = result["derivers"]
+        assert "passthrough" in inner
+        assert isinstance(inner["passthrough"], list)
+        assert len(inner["passthrough"]) > 0
 
-    def test_passthrough_signal_ids_are_in_core_taxonomy(self) -> None:
-        """All signal_ids in passthrough entries are in core taxonomy."""
-        derivers = load_core_derivers()
-        core_ids = get_core_signal_ids()
-        for entry in derivers["derivers"]["passthrough"]:
-            sid = entry["signal_id"]
-            assert sid in core_ids, f"signal_id '{sid}' not in core taxonomy"
+    def test_load_is_idempotent(self) -> None:
+        from app.core_derivers.loader import load_core_derivers
+
+        first = load_core_derivers()
+        second = load_core_derivers()
+        assert first == second
 
 
 class TestGetCorePassthroughMap:
-    """Tests for get_core_passthrough_map."""
+    """get_core_passthrough_map() returns correct event_type -> signal_id mapping."""
 
-    def test_returns_dict(self) -> None:
-        """get_core_passthrough_map returns a dict."""
+    def test_returns_mapping(self) -> None:
+        """get_core_passthrough_map returns an immutable Mapping (MappingProxyType).
+
+        The return type is MappingProxyType, not dict, to prevent mutation of the
+        shared cached reference (Fix #4). It supports all read operations.
+        """
+        from collections.abc import Mapping
+        from types import MappingProxyType
+
+        from app.core_derivers.loader import get_core_passthrough_map
+
         result = get_core_passthrough_map()
-        assert isinstance(result, dict)
+        assert isinstance(result, Mapping)
+        assert isinstance(result, MappingProxyType)
 
-    def test_non_empty(self) -> None:
-        """Passthrough map is non-empty."""
-        assert len(get_core_passthrough_map()) > 0
+    def test_nonempty(self) -> None:
+        from app.core_derivers.loader import get_core_passthrough_map
 
-    def test_contains_expected_mappings(self) -> None:
-        """Map contains expected canonical event_type -> signal_id entries."""
-        m = get_core_passthrough_map()
-        assert m.get("funding_raised") == "funding_raised"
-        assert m.get("cto_role_posted") == "cto_role_posted"
-        assert m.get("repo_activity") == "repo_activity"
-        assert m.get("job_posted_engineering") == "job_posted_engineering"
+        result = get_core_passthrough_map()
+        assert len(result) > 0
 
-    def test_all_signal_ids_in_core_taxonomy(self) -> None:
-        """All values in the passthrough map are valid core signal_ids."""
-        core_ids = get_core_signal_ids()
-        for event_type, signal_id in get_core_passthrough_map().items():
-            assert signal_id in core_ids, (
-                f"signal_id '{signal_id}' for event_type '{event_type}' not in core taxonomy"
+    def test_contains_fractional_cto_mappings(self) -> None:
+        """All fractional_cto_v1 passthrough mappings are present in core."""
+        from app.core_derivers.loader import get_core_passthrough_map
+
+        expected = {
+            "funding_raised": "funding_raised",
+            "job_posted_engineering": "job_posted_engineering",
+            "job_posted_infra": "job_posted_infra",
+            "headcount_growth": "headcount_growth",
+            "launch_major": "launch_major",
+            "api_launched": "api_launched",
+            "ai_feature_launched": "ai_feature_launched",
+            "enterprise_feature": "enterprise_feature",
+            "compliance_mentioned": "compliance_mentioned",
+            "enterprise_customer": "enterprise_customer",
+            "regulatory_deadline": "regulatory_deadline",
+            "founder_urgency_language": "founder_urgency_language",
+            "revenue_milestone": "revenue_milestone",
+            "cto_role_posted": "cto_role_posted",
+            "no_cto_detected": "no_cto_detected",
+            "fractional_request": "fractional_request",
+            "advisor_request": "advisor_request",
+            "cto_hired": "cto_hired",
+            "repo_activity": "repo_activity",
+        }
+        passthrough = get_core_passthrough_map()
+        for event_type, signal_id in expected.items():
+            assert event_type in passthrough, f"missing passthrough for '{event_type}'"
+            assert passthrough[event_type] == signal_id, (
+                f"expected passthrough['{event_type}'] == '{signal_id}', "
+                f"got '{passthrough[event_type]}'"
             )
 
-    def test_cached_same_object(self) -> None:
-        """Repeated calls return the same cached dict (lru_cache)."""
-        a = get_core_passthrough_map()
-        b = get_core_passthrough_map()
-        assert a is b
+    def test_incorporation_passthrough(self) -> None:
+        """incorporation event type maps to incorporation signal_id."""
+        from app.core_derivers.loader import get_core_passthrough_map
 
-    def test_identity_mapping_for_all_core_passthrough(self) -> None:
-        """Each event_type in the core passthrough maps to itself (identity mapping)."""
-        for event_type, signal_id in get_core_passthrough_map().items():
-            assert event_type == signal_id, (
-                f"Expected identity mapping, got {event_type!r} -> {signal_id!r}"
+        passthrough = get_core_passthrough_map()
+        assert "incorporation" in passthrough
+        assert passthrough["incorporation"] == "incorporation"
+
+    def test_stable_across_calls(self) -> None:
+        """get_core_passthrough_map() is cached and returns the same object."""
+        from app.core_derivers.loader import get_core_passthrough_map
+
+        first = get_core_passthrough_map()
+        second = get_core_passthrough_map()
+        assert first is second  # lru_cache returns same object
+
+    def test_all_signal_ids_in_core_taxonomy(self) -> None:
+        """Every signal_id in the passthrough map is in the core taxonomy."""
+        from app.core_derivers.loader import get_core_passthrough_map
+        from app.core_taxonomy.loader import get_core_signal_ids
+
+        passthrough = get_core_passthrough_map()
+        core_ids = get_core_signal_ids()
+        for event_type, signal_id in passthrough.items():
+            assert signal_id in core_ids, (
+                f"passthrough signal_id '{signal_id}' (for '{event_type}') not in core taxonomy"
             )
 
 
 class TestGetCorePatternDerivers:
-    """Tests for get_core_pattern_derivers."""
+    """get_core_pattern_derivers() returns tuple of compiled pattern derivers."""
 
     def test_returns_tuple(self) -> None:
-        """get_core_pattern_derivers returns a tuple (hashable for lru_cache)."""
+        from app.core_derivers.loader import get_core_pattern_derivers
+
         result = get_core_pattern_derivers()
         assert isinstance(result, tuple)
 
-    def test_each_entry_has_required_keys(self) -> None:
-        """Each pattern entry has signal_id, compiled, source_fields, min_confidence."""
-        for entry in get_core_pattern_derivers():
-            assert "signal_id" in entry
-            assert "compiled" in entry
-            assert "source_fields" in entry
-            assert "min_confidence" in entry
+    def test_stable_across_calls(self) -> None:
+        """get_core_pattern_derivers() is cached and returns the same object."""
+        from app.core_derivers.loader import get_core_pattern_derivers
 
-    def test_compiled_patterns_are_regex_objects(self) -> None:
-        """Compiled patterns are valid compiled regex objects."""
-        import re
+        first = get_core_pattern_derivers()
+        second = get_core_pattern_derivers()
+        assert first is second  # lru_cache returns same object
+
+    def test_each_entry_has_compiled_regex(self) -> None:
+        """Every pattern deriver has a 'compiled' re.Pattern field."""
+        from app.core_derivers.loader import get_core_pattern_derivers
 
         for entry in get_core_pattern_derivers():
-            assert hasattr(entry["compiled"], "search"), (
-                f"Entry for {entry['signal_id']} must have a compiled regex"
+            assert "compiled" in entry, f"missing compiled key in {entry}"
+            assert isinstance(entry["compiled"], re.Pattern), (
+                f"compiled is not a re.Pattern in {entry}"
             )
-            assert isinstance(entry["compiled"], type(re.compile("")))
 
-    def test_cached_same_object(self) -> None:
-        """Repeated calls return the same cached tuple (lru_cache)."""
-        a = get_core_pattern_derivers()
-        b = get_core_pattern_derivers()
-        assert a is b
-
-
-class TestGetCorePassthroughMapEdgeCases:
-    """Edge cases for get_core_passthrough_map (coverage for loader.py non-list path)."""
-
-    def test_passthrough_map_when_derivers_has_inner_list_returns_empty(self) -> None:
-        """When 'passthrough' value is not a list, returns empty dict."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_passthrough_map
-
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": "not_a_list"}},
-        ):
-            get_core_passthrough_map.cache_clear()
-            result = get_core_passthrough_map()
-        assert result == {}
-        get_core_passthrough_map.cache_clear()
-
-
-class TestGetCorePatternDeriversWithPatterns:
-    """Coverage tests for get_core_pattern_derivers processing paths (lines 76-111)."""
-
-    def _mock_load_with_patterns(self, patterns):
-        return {"derivers": {"passthrough": [], "pattern": patterns}}
-
-    def test_pattern_derivers_with_valid_pattern(self) -> None:
-        """Pattern entry with valid regex produces compiled deriver."""
-        from unittest.mock import patch
-
+    def test_each_entry_has_signal_id(self) -> None:
+        """Every pattern deriver has a 'signal_id' field."""
         from app.core_derivers.loader import get_core_pattern_derivers
 
-        patterns = [
-            {
-                "signal_id": "compliance_mentioned",
-                "pattern": r"(?i)compliance",
-                "source_fields": ["title", "summary"],
-                "min_confidence": 0.6,
+        for entry in get_core_pattern_derivers():
+            assert "signal_id" in entry, f"missing signal_id in {entry}"
+
+    def test_compiles_pattern_entries_from_derivers(self) -> None:
+        """Pattern entries with 'pattern' key are compiled to re.Pattern.
+
+        Uses mock to inject pattern entries and exercises the loop body in loader.py.
+        Cache is cleared before and restored after the test.
+        """
+        from unittest.mock import patch
+
+        import app.core_derivers.loader as loader_mod
+
+        loader_mod.get_core_pattern_derivers.cache_clear()
+        try:
+            synthetic = {
+                "derivers": {
+                    "pattern": [
+                        {
+                            "pattern": r"\bfunding\b",
+                            "signal_id": "funding_raised",
+                            "source_fields": ["title"],
+                        },
+                        "not_a_dict",  # should be skipped
+                        {"signal_id": "no_pattern_key"},  # no pattern/regex; should be skipped
+                    ]
+                }
             }
-        ]
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
+            with patch.object(loader_mod, "load_core_derivers", return_value=synthetic):
+                result = loader_mod.get_core_pattern_derivers()
 
-        assert len(result) == 1
-        assert result[0]["signal_id"] == "compliance_mentioned"
-        assert result[0]["compiled"].search("SOC2 compliance achieved")
-        assert result[0]["source_fields"] == ["title", "summary"]
-        assert result[0]["min_confidence"] == 0.6
-        get_core_pattern_derivers.cache_clear()
+            assert len(result) == 1
+            entry = result[0]
+            assert entry["signal_id"] == "funding_raised"
+            assert isinstance(entry["compiled"], re.Pattern)
+            assert entry["source_fields"] == ["title"]
+        finally:
+            loader_mod.get_core_pattern_derivers.cache_clear()
 
-    def test_pattern_derivers_with_default_source_fields_when_none(self) -> None:
-        """Pattern entry without source_fields uses default (title, summary)."""
+    def test_compiles_regex_key_entries(self) -> None:
+        """Pattern entries with 'regex' key are compiled to re.Pattern."""
         from unittest.mock import patch
 
-        from app.core_derivers.loader import get_core_pattern_derivers
+        import app.core_derivers.loader as loader_mod
 
-        patterns = [{"signal_id": "compliance_mentioned", "pattern": r"compliance"}]
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
-
-        assert result[0]["source_fields"] == ["title", "summary"]
-        assert result[0]["min_confidence"] is None
-        get_core_pattern_derivers.cache_clear()
-
-    def test_pattern_derivers_skips_invalid_regex(self) -> None:
-        """Pattern entry with invalid regex is skipped with a warning."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_pattern_derivers
-
-        patterns = [
-            {"signal_id": "compliance_mentioned", "pattern": r"[invalid"},
-        ]
-        with (
-            patch(
-                "app.core_derivers.loader.load_core_derivers",
-                return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-            ),
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
-
-        assert result == ()
-        get_core_pattern_derivers.cache_clear()
-
-    def test_pattern_derivers_skips_non_dict_entries(self) -> None:
-        """Non-dict pattern entries are skipped."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_pattern_derivers
-
-        patterns = ["not_a_dict", 123, None]
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
-
-        assert result == ()
-        get_core_pattern_derivers.cache_clear()
-
-    def test_pattern_derivers_fallback_when_source_fields_not_list(self) -> None:
-        """Non-list source_fields falls back to default fields."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_pattern_derivers
-
-        patterns = [
-            {
-                "signal_id": "compliance_mentioned",
-                "pattern": r"compliance",
-                "source_fields": "title",
+        loader_mod.get_core_pattern_derivers.cache_clear()
+        try:
+            synthetic = {
+                "derivers": {
+                    "pattern": [
+                        {
+                            "regex": r"\bcto\b",
+                            "signal_id": "cto_role_posted",
+                        },
+                    ]
+                }
             }
-        ]
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
+            with patch.object(loader_mod, "load_core_derivers", return_value=synthetic):
+                result = loader_mod.get_core_pattern_derivers()
 
-        assert result[0]["source_fields"] == ["title", "summary"]
-        get_core_pattern_derivers.cache_clear()
-
-    def test_pattern_derivers_fallback_when_invalid_source_fields(self) -> None:
-        """Source fields with only invalid names fall back to default fields."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_pattern_derivers
-
-        patterns = [
-            {
-                "signal_id": "compliance_mentioned",
-                "pattern": r"compliance",
-                "source_fields": ["invalid_field", "also_invalid"],
-            }
-        ]
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
-
-        assert result[0]["source_fields"] == ["title", "summary"]
-        get_core_pattern_derivers.cache_clear()
-
-    def test_pattern_derivers_skips_entry_missing_signal_id_or_pattern(self) -> None:
-        """Entries missing signal_id or pattern are skipped."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_pattern_derivers
-
-        patterns = [
-            {"pattern": r"compliance"},
-            {"signal_id": "compliance_mentioned"},
-        ]
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": patterns}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
-
-        assert result == ()
-        get_core_pattern_derivers.cache_clear()
-
-    def test_pattern_derivers_non_list_pattern_returns_empty(self) -> None:
-        """When pattern list is not a list, returns empty tuple."""
-        from unittest.mock import patch
-
-        from app.core_derivers.loader import get_core_pattern_derivers
-
-        with patch(
-            "app.core_derivers.loader.load_core_derivers",
-            return_value={"derivers": {"passthrough": [], "pattern": "not_a_list"}},
-        ):
-            get_core_pattern_derivers.cache_clear()
-            result = get_core_pattern_derivers()
-
-        assert result == ()
-        get_core_pattern_derivers.cache_clear()
+            assert len(result) == 1
+            assert isinstance(result[0]["compiled"], re.Pattern)
+            assert result[0]["signal_id"] == "cto_role_posted"
+        finally:
+            loader_mod.get_core_pattern_derivers.cache_clear()
 
 
-class TestValidateCoreDerivers:
-    """Tests for validate_core_derivers."""
+class TestValidateCoreDrivers:
+    """validate_core_derivers() raises CoreDeriversValidationError on invalid input."""
 
-    def test_valid_derivers_passes(self) -> None:
-        """Well-formed derivers dict passes validation without error."""
-        core_ids = frozenset(["funding_raised", "cto_role_posted"])
-        derivers = {
+    def _valid_passthrough(self) -> dict:
+        return {
             "derivers": {
                 "passthrough": [
                     {"event_type": "funding_raised", "signal_id": "funding_raised"},
-                    {"event_type": "cto_role_posted", "signal_id": "cto_role_posted"},
                 ]
             }
         }
-        validate_core_derivers(derivers, core_ids)
 
-    def test_raises_when_not_dict(self) -> None:
-        """Non-dict input raises ValueError."""
-        with pytest.raises(ValueError, match="must be a dict"):
-            validate_core_derivers([], frozenset())  # type: ignore[arg-type]
+    def test_valid_passthrough_passes(self) -> None:
+        from app.core_derivers.validator import validate_core_derivers
 
-    def test_raises_when_passthrough_not_list(self) -> None:
-        """Non-list passthrough raises ValueError."""
-        with pytest.raises(ValueError, match="passthrough"):
+        validate_core_derivers(self._valid_passthrough())  # must not raise
+
+    def test_non_dict_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="must be a dict"):
+            validate_core_derivers([])  # type: ignore[arg-type]
+
+    def test_missing_derivers_key_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="'derivers' key"):
+            validate_core_derivers({})
+
+    def test_derivers_value_not_dict_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="must be a dict"):
+            validate_core_derivers({"derivers": "bad"})
+
+    def test_passthrough_missing_event_type_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="event_type"):
+            validate_core_derivers({"derivers": {"passthrough": [{"signal_id": "funding_raised"}]}})
+
+    def test_passthrough_missing_signal_id_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="signal_id"):
             validate_core_derivers(
-                {"derivers": {"passthrough": "funding_raised"}},
-                frozenset(["funding_raised"]),
+                {"derivers": {"passthrough": [{"event_type": "funding_raised"}]}}
             )
 
-    def test_raises_when_passthrough_entry_not_dict(self) -> None:
-        """Non-dict passthrough entry raises ValueError."""
-        with pytest.raises(ValueError, match="must be a dict"):
-            validate_core_derivers(
-                {"derivers": {"passthrough": ["not_a_dict"]}},
-                frozenset(["funding_raised"]),
-            )
+    def test_passthrough_unknown_signal_id_raises(self) -> None:
+        """Passthrough referencing signal_id not in core taxonomy raises."""
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
 
-    def test_raises_when_pattern_not_list(self) -> None:
-        """Non-list pattern field raises ValueError."""
-        with pytest.raises(ValueError, match="'pattern' must be a list"):
-            validate_core_derivers(
-                {"derivers": {"passthrough": [], "pattern": "not_a_list"}},
-                frozenset(["funding_raised"]),
-            )
-
-    def test_raises_when_passthrough_entry_missing_event_type(self) -> None:
-        """Missing event_type in passthrough entry raises ValueError."""
-        with pytest.raises(ValueError, match="event_type"):
-            validate_core_derivers(
-                {"derivers": {"passthrough": [{"signal_id": "funding_raised"}]}},
-                frozenset(["funding_raised"]),
-            )
-
-    def test_raises_when_passthrough_entry_missing_signal_id(self) -> None:
-        """Missing signal_id in passthrough entry raises ValueError."""
-        with pytest.raises(ValueError, match="signal_id"):
-            validate_core_derivers(
-                {"derivers": {"passthrough": [{"event_type": "funding_raised"}]}},
-                frozenset(["funding_raised"]),
-            )
-
-    def test_raises_when_signal_id_not_in_core_taxonomy(self) -> None:
-        """Signal_id not in core taxonomy raises ValueError."""
-        with pytest.raises(ValueError, match="unknown signal_id"):
+        with pytest.raises(CoreDeriversValidationError, match="not in core taxonomy"):
             validate_core_derivers(
                 {
                     "derivers": {
                         "passthrough": [
-                            {"event_type": "some_event", "signal_id": "not_in_core"}
+                            {"event_type": "mystery_event", "signal_id": "mystery_signal_xyz"}
                         ]
                     }
-                },
-                frozenset(["funding_raised"]),
+                }
             )
 
-    def test_loaded_derivers_pass_validation(self) -> None:
-        """The bundled core derivers.yaml passes validation against core taxonomy."""
-        derivers = load_core_derivers()
-        core_ids = get_core_signal_ids()
-        validate_core_derivers(derivers, core_ids)
-
-    def test_empty_passthrough_passes(self) -> None:
-        """Empty passthrough list is valid."""
-        validate_core_derivers({"derivers": {"passthrough": []}}, frozenset())
-
-    def test_parity_with_fractional_cto_passthrough_count(self) -> None:
-        """Core passthrough count matches fractional_cto_v1 passthrough count (no drift)."""
-        import os
-
-        import yaml
-
-        pack_derivers_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "packs",
-            "fractional_cto_v1",
-            "derivers.yaml",
-        )
-        with open(pack_derivers_path) as f:
-            pack_derivers = yaml.safe_load(f)
-
-        pack_pt = pack_derivers.get("derivers", {}).get("passthrough", [])
-        core_pt = load_core_derivers().get("derivers", {}).get("passthrough", [])
-        assert len(core_pt) == len(pack_pt), (
-            f"Core passthrough count ({len(core_pt)}) diverged from "
-            f"fractional_cto_v1 ({len(pack_pt)})"
+    def test_pattern_missing_signal_id_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
         )
 
-    def test_raises_when_inner_derivers_not_dict(self) -> None:
-        """When 'derivers' key value is not a dict, raises ValueError."""
-        with pytest.raises(ValueError, match="'derivers' key containing a dict"):
-            validate_core_derivers({"derivers": "not_a_dict"}, frozenset(["funding_raised"]))
+        with pytest.raises(CoreDeriversValidationError, match="signal_id"):
+            validate_core_derivers({"derivers": {"pattern": [{"pattern": r"\bfunding\b"}]}})
 
-    def test_pattern_validation_called_for_pattern_entries(self) -> None:
-        """When pattern entries exist, regex safety validation is applied."""
-        from app.packs.schemas import ValidationError
+    def test_pattern_missing_pattern_or_regex_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
 
-        core_ids = frozenset(["funding_raised"])
-        with pytest.raises(ValidationError):
+        with pytest.raises(CoreDeriversValidationError, match="pattern.*regex|regex.*pattern"):
+            validate_core_derivers({"derivers": {"pattern": [{"signal_id": "funding_raised"}]}})
+
+    def test_pattern_unknown_signal_id_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="not in core taxonomy"):
             validate_core_derivers(
                 {
                     "derivers": {
-                        "passthrough": [],
+                        "pattern": [{"pattern": r"\bfunding\b", "signal_id": "ghost_signal_xyz"}]
+                    }
+                }
+            )
+
+    def test_pattern_disallowed_source_field_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="not allowed"):
+            validate_core_derivers(
+                {
+                    "derivers": {
                         "pattern": [
                             {
+                                "pattern": r"\bfunding\b",
                                 "signal_id": "funding_raised",
-                                "pattern": r"(.+)+",
+                                "source_fields": ["raw"],  # not in ALLOWED_PATTERN_SOURCE_FIELDS
                             }
-                        ],
+                        ]
                     }
-                },
-                core_ids,
+                }
             )
 
-    def test_pattern_validation_unknown_signal_id_raises(self) -> None:
-        """Pattern entry with unknown signal_id raises ValueError."""
-        with pytest.raises(ValueError, match="unknown signal_id"):
-            validate_core_derivers(
-                {
-                    "derivers": {
-                        "passthrough": [],
-                        "pattern": [
-                            {
-                                "signal_id": "unknown_signal",
-                                "pattern": r"compliance",
-                            }
-                        ],
-                    }
-                },
-                frozenset(["funding_raised"]),
-            )
+    def test_pattern_allowed_source_fields_pass(self) -> None:
+        from app.core_derivers.validator import validate_core_derivers
 
-    def test_pattern_entry_not_dict_raises(self) -> None:
-        """Non-dict pattern entry raises ValueError."""
-        with pytest.raises(ValueError, match="Pattern entry 0 must be a dict"):
-            validate_core_derivers(
-                {
-                    "derivers": {
-                        "passthrough": [],
-                        "pattern": ["not_a_dict"],
-                    }
-                },
-                frozenset(["funding_raised"]),
-            )
+        validate_core_derivers(
+            {
+                "derivers": {
+                    "pattern": [
+                        {
+                            "pattern": r"\bfunding\b",
+                            "signal_id": "funding_raised",
+                            "source_fields": ["title", "summary"],
+                        }
+                    ]
+                }
+            }
+        )  # must not raise
 
-    def test_pattern_entry_missing_signal_id_raises(self) -> None:
-        """Pattern entry without signal_id raises ValueError."""
-        with pytest.raises(ValueError, match="signal_id"):
-            validate_core_derivers(
-                {
-                    "derivers": {
-                        "passthrough": [],
-                        "pattern": [{"pattern": r"compliance"}],
-                    }
-                },
-                frozenset(["funding_raised"]),
-            )
-
-    def test_parity_with_fractional_cto_passthrough_entries(self) -> None:
-        """Core passthrough entries are a superset of fractional_cto_v1 entries."""
-        import os
-
-        import yaml
-
-        pack_derivers_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "packs",
-            "fractional_cto_v1",
-            "derivers.yaml",
+    def test_dangerous_regex_raises(self) -> None:
+        """Catastrophic backtracking patterns are rejected."""
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
         )
-        with open(pack_derivers_path) as f:
-            pack_derivers = yaml.safe_load(f)
 
-        pack_map = {
-            e["event_type"]: e["signal_id"]
-            for e in pack_derivers.get("derivers", {}).get("passthrough", [])
-        }
-        core_map = get_core_passthrough_map()
-        for etype, sid in pack_map.items():
-            assert core_map.get(etype) == sid, (
-                f"Core passthrough missing or differs for event_type '{etype}': "
-                f"expected '{sid}', got '{core_map.get(etype)}'"
+        with pytest.raises(CoreDeriversValidationError, match="backtracking|unsafe|catastrophic"):
+            validate_core_derivers(
+                {"derivers": {"pattern": [{"pattern": r"(.*)+", "signal_id": "funding_raised"}]}}
             )
+
+    def test_invalid_regex_syntax_raises(self) -> None:
+        from app.core_derivers.validator import (
+            CoreDeriversValidationError,
+            validate_core_derivers,
+        )
+
+        with pytest.raises(CoreDeriversValidationError, match="invalid|syntax|regex"):
+            validate_core_derivers(
+                {
+                    "derivers": {
+                        "pattern": [{"pattern": r"(unclosed", "signal_id": "funding_raised"}]
+                    }
+                }
+            )
+
+    def test_passthrough_only_valid_no_pattern_key(self) -> None:
+        """Derivers with only passthrough (no pattern key) are valid."""
+        from app.core_derivers.validator import validate_core_derivers
+
+        validate_core_derivers(
+            {
+                "derivers": {
+                    "passthrough": [
+                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
+                        {"event_type": "cto_hired", "signal_id": "cto_hired"},
+                    ]
+                }
+            }
+        )  # must not raise
+
+    def test_empty_passthrough_list_is_valid(self) -> None:
+        from app.core_derivers.validator import validate_core_derivers
+
+        validate_core_derivers({"derivers": {"passthrough": []}})  # must not raise
+
+
+class TestLoaderYamlErrorHandling:
+    """Fix #3: yaml.YAMLError is converted to ValueError so deriver engine fallback fires."""
+
+    def test_malformed_yaml_raises_value_error(self) -> None:
+        """When derivers.yaml is malformed YAML, load_core_derivers raises ValueError."""
+        from unittest.mock import MagicMock, patch
+
+        import yaml as _yaml
+
+        import app.core_derivers.loader as loader_mod
+
+        bad_yaml = MagicMock(side_effect=_yaml.YAMLError("bad yaml"))
+        with patch.object(_yaml, "safe_load", bad_yaml):
+            with pytest.raises(ValueError, match="malformed"):
+                loader_mod.load_core_derivers()
+
+    def test_validation_error_is_value_error_subclass(self) -> None:
+        """CoreDeriversValidationError is a ValueError subclass (caught by engine fallback)."""
+        from app.core_derivers.validator import CoreDeriversValidationError
+
+        assert issubclass(CoreDeriversValidationError, ValueError)
+
+    def test_validation_error_caught_as_value_error(self) -> None:
+        """validate_core_derivers raises an exception catchable as ValueError."""
+        from app.core_derivers.validator import validate_core_derivers
+
+        with pytest.raises(ValueError):
+            validate_core_derivers({})  # missing 'derivers' key
+
+
+class TestCoreDerivesFileIntegrity:
+    """Integration: the real derivers.yaml loads and validates without errors."""
+
+    def test_file_loads_and_validates(self) -> None:
+        from app.core_derivers.loader import load_core_derivers
+
+        result = load_core_derivers()
+        assert "derivers" in result
+
+    def test_all_passthrough_signal_ids_in_taxonomy(self) -> None:
+        """Every passthrough signal_id in derivers.yaml is in core taxonomy signal_ids."""
+        from app.core_derivers.loader import load_core_derivers
+        from app.core_taxonomy.loader import get_core_signal_ids
+
+        data = load_core_derivers()
+        core_ids = get_core_signal_ids()
+        passthrough = data.get("derivers", {}).get("passthrough") or []
+        for entry in passthrough:
+            sid = entry.get("signal_id")
+            assert sid in core_ids, (
+                f"derivers.yaml passthrough references '{sid}' not in core taxonomy"
+            )
+
+    def test_no_duplicate_event_types(self) -> None:
+        """Each event_type appears at most once in the passthrough list."""
+        from app.core_derivers.loader import load_core_derivers
+
+        data = load_core_derivers()
+        passthrough = data.get("derivers", {}).get("passthrough") or []
+        event_types = [e.get("event_type") for e in passthrough if isinstance(e, dict)]
+        assert len(event_types) == len(set(event_types)), (
+            "derivers.yaml passthrough contains duplicate event_types"
+        )

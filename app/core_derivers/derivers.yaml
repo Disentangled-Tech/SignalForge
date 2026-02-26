@@ -8,6 +8,12 @@
 # by the company resolver; it is not intended to produce a SignalInstance in the derive stage.
 # If scoring of incorporation signals is required in future, add the passthrough entry here and
 # update the corresponding core taxonomy dimension mapping.
+# Core derivers — canonical passthrough and pattern derivers (Issue #285, Milestone 2)
+# Copied from packs/fractional_cto_v1/derivers.yaml.
+# Passthrough: event_type -> signal_id (identity mapping)
+#
+# Pattern derivers (future): populate here when pack-independent pattern rules are needed.
+# All signal_ids must reference core taxonomy signal_ids.
 
 derivers:
   passthrough:
@@ -49,3 +55,5 @@ derivers:
       signal_id: cto_hired
     - event_type: repo_activity
       signal_id: repo_activity
+    - event_type: incorporation
+      signal_id: incorporation

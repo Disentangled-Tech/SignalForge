@@ -21,6 +21,18 @@ from app.models import (
 from app.schemas.signal import RawEvent
 from app.services.aggregation.daily_aggregation import run_daily_aggregation
 
+
+class _FailingAdapter(SourceAdapter):
+    """Adapter that raises on fetch_events for testing error handling."""
+
+    @property
+    def source_name(self) -> str:
+        return "failing"
+
+    def fetch_events(self, since) -> list[RawEvent]:
+        raise RuntimeError("Adapter fetch failed")
+
+
 # Test domains used by TestAdapter (same as test_ingestion_scoring_integration)
 _TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 

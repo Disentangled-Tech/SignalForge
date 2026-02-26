@@ -5,14 +5,15 @@ title/summary) to produce entity-level signal instances. Idempotent: upsert by
 (entity_id, signal_id, pack_id).
 
 Phase 1 (Issue #173): pattern derivers support.
-Milestone 3 (Issue #285): core derivers override pack derivers; pack derivers
-are the fallback when core derivers are unavailable.
+Milestone 3 (Issue #285): core derivers preferred over pack derivers; pack derivers
+are the fallback when core derivers are unavailable (FileNotFoundError, ValueError).
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -35,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 # Default fields to search for pattern derivers when source_fields not specified
 _DEFAULT_PATTERN_SOURCE_FIELDS = ("title", "summary")
-
 
 
 def _build_passthrough_map(pack: Pack | None) -> dict[str, str]:
@@ -89,9 +89,7 @@ def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
             source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
         else:
             # Filter by schema-validated whitelist (title, summary, url, source)
-            source_fields = [
-                f for f in source_fields if f in ALLOWED_PATTERN_SOURCE_FIELDS
-            ]
+            source_fields = [f for f in source_fields if f in ALLOWED_PATTERN_SOURCE_FIELDS]
             if not source_fields:
                 source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
         min_confidence = item.get("min_confidence")
@@ -108,14 +106,19 @@ def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
     return result
 
 
-def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
-    """Load core passthrough map and pattern derivers (Issue #285, Milestone 3).
+def _load_core_derivers() -> tuple[Mapping[str, str], list[dict[str, Any]]]:
+    """Load core passthrough map and compiled pattern derivers (Issue #285, Milestone 3).
 
     Returns (passthrough_map, pattern_derivers) in the format expected by
     _evaluate_event_derivers. Results come from lru_cached core_derivers module.
 
     Raises:
-        Exception: When core derivers cannot be loaded (triggers pack fallback).
+        FileNotFoundError: When derivers.yaml is absent.
+        ValueError: When derivers.yaml is malformed or fails validation
+            (triggers pack-deriver fallback in _run_deriver_core).
+        Exception: Any other exception (e.g. AttributeError) is intentionally NOT
+            caught here so programming errors surface as job failures rather than
+            silently producing wrong signal_ids via the pack fallback.
     """
     passthrough_map = get_core_passthrough_map()
     pattern_derivers: list[dict[str, Any]] = list(get_core_pattern_derivers())
@@ -124,7 +127,7 @@ def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
 
 def _evaluate_event_derivers(
     ev: SignalEvent,
-    passthrough_map: dict[str, str],
+    passthrough_map: Mapping[str, str],
     pattern_derivers: list[dict[str, Any]],
 ) -> list[tuple[str, str]]:
     """Evaluate all derivers for a single event. Returns list of (signal_id, deriver_type).
@@ -230,13 +233,15 @@ def _run_deriver_core(
     company_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     """Core deriver logic. Updates job in-place, commits, returns result dict."""
+    # resolve_pack is needed now (for the fallback branch) or later for other meta; resolve once.
     pack = resolve_pack(db, pack_uuid)
 
     # Prefer core derivers (Issue #285, Milestone 3).
     # Fall back to pack derivers only when core derivers cannot be loaded due to a
-    # missing or malformed derivers.yaml file. Programming errors (AttributeError,
-    # TypeError, etc.) are intentionally NOT caught here so they surface as job
-    # failures rather than silently producing wrong signal_ids via the pack fallback.
+    # missing or malformed derivers.yaml (FileNotFoundError, ValueError).
+    # Programming errors (AttributeError, TypeError, etc.) are intentionally NOT caught
+    # here so they surface as job failures rather than silently producing wrong
+    # signal_ids via the pack fallback.
     try:
         passthrough, pattern_derivers = _load_core_derivers()
         logger.debug(

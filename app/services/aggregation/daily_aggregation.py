@@ -1,6 +1,6 @@
-"""Daily signal aggregation job (Issue #246, Phase 4).
+"""Daily signal aggregation job (Issue #246).
 
-Orchestrates ingest → derive → score. On success, queries ranked companies
+Orchestrates ingest, derive, and score stages. On success, queries ranked companies
 via get_emerging_companies. One adapter failure does not kill ingest.
 Stage failure: derive/score run on existing data; partial result returned on error.
 Unified orchestrator for cron. Runs stages in order, returns ranked companies.
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime
-from typing import Any, TypedDict
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -53,8 +53,8 @@ def run_daily_aggregation(
     db: Session,
     workspace_id: str | UUID | None = None,
     pack_id: str | UUID | None = None,
-) -> DailyAggregationResult:
-    """Run unified daily aggregation: ingest → derive → score.
+) -> dict[str, Any]:
+    """Run unified daily aggregation: ingest, derive, and score stages.
 
     Resolves pack via pack_id or get_pack_for_workspace(workspace_id) or
     get_default_pack_id(db). Passes workspace_id and pack_id to each stage.
@@ -116,8 +116,7 @@ def run_daily_aggregation(
 
         score_result = run_score_nightly(db, workspace_id=ws_id, pack_id=resolved_pack)
 
-        # Ranked list for monitoring/logging: threshold=0 to include all scored companies
-        # (orchestrator output; briefing view applies its own filtering)
+        # Ranked list (same source as briefing); threshold=0 to include all scored companies
         as_of = date.today()
         emerging = get_emerging_companies(
             db,
@@ -128,7 +127,11 @@ def run_daily_aggregation(
             workspace_id=ws_id,
         )
         for rs, es, company in emerging:
-            band = es.esl_decision or es.engagement_type or "N/A"
+            band = (
+                getattr(es, "esl_decision", None)
+                or getattr(es, "engagement_type", None)
+                or "N/A"
+            )
             ranked_companies.append(
                 {
                     "company_name": company.name,
