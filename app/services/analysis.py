@@ -17,7 +17,7 @@ from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
 from app.models.signal_record import SignalRecord
-from app.prompts.loader import render_prompt
+from app.prompts.loader import resolve_prompt_content
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +115,7 @@ def analyze_company(
         logger.warning("analyze_company: company %s not found", company_id)
         return None
 
-    signals = (
-        db.query(SignalRecord)
-        .filter(SignalRecord.company_id == company_id)
-        .all()
-    )
+    signals = db.query(SignalRecord).filter(SignalRecord.company_id == company_id).all()
     if not signals:
         logger.info("analyze_company: no signals for company %s", company_id)
         return None
@@ -133,8 +129,9 @@ def analyze_company(
     llm = get_llm_provider(role=ModelRole.REASONING)
 
     # ── Stage classification ──────────────────────────────────────────
-    stage_prompt = render_prompt(
+    stage_prompt = resolve_prompt_content(
         "stage_classification_v1",
+        pack,
         COMPANY_NAME=company.name,
         WEBSITE_URL=company.website_url or "",
         FOUNDER_NAME=company.founder_name or "",
@@ -156,9 +153,7 @@ def analyze_company(
     if isinstance(stage, str):
         stage = stage.strip().lower()
     if not isinstance(stage, str) or stage not in ALLOWED_STAGES:
-        logger.warning(
-            "Invalid stage '%s' from LLM, defaulting to '%s'", stage, _DEFAULT_STAGE
-        )
+        logger.warning("Invalid stage '%s' from LLM, defaulting to '%s'", stage, _DEFAULT_STAGE)
         stage = _DEFAULT_STAGE
 
     confidence = stage_data.get("confidence", 0)
@@ -172,8 +167,9 @@ def analyze_company(
     evidence_bullets = stage_data.get("evidence_bullets", [])
 
     # ── Pain signal detection ─────────────────────────────────────────
-    pain_prompt = render_prompt(
+    pain_prompt = resolve_prompt_content(
         "pain_signals_v1",
+        pack,
         COMPANY_NAME=company.name,
         WEBSITE_URL=company.website_url or "",
         FOUNDER_NAME=company.founder_name or "",
@@ -189,16 +185,18 @@ def analyze_company(
     evidence_text = "\n".join(f"- {b}" for b in evidence_bullets) if evidence_bullets else "(none)"
     pain_signals = pain_data.get("signals") or {}
     active_signals = {
-        k: v for k, v in pain_signals.items()
-        if isinstance(v, dict) and v.get("value")
+        k: v for k, v in pain_signals.items() if isinstance(v, dict) and v.get("value")
     }
     pain_signals_summary = json.dumps(active_signals, indent=2) if active_signals else "(none)"
     top_risks = pain_data.get("top_risks") or []
-    top_risks_text = ", ".join(str(x) for x in top_risks) if isinstance(top_risks, list) else str(top_risks)
+    top_risks_text = (
+        ", ".join(str(x) for x in top_risks) if isinstance(top_risks, list) else str(top_risks)
+    )
     most_likely_next = pain_data.get("most_likely_next_problem") or ""
 
-    explanation_prompt = render_prompt(
+    explanation_prompt = resolve_prompt_content(
         "explanation_v1",
+        pack,
         COMPANY_NAME=company.name or "",
         STAGE=stage,
         EVIDENCE_BULLETS=evidence_text,
@@ -233,4 +231,3 @@ def analyze_company(
     db.commit()
     db.refresh(record)
     return record
-
