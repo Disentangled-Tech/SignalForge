@@ -29,7 +29,7 @@ def run_update_lead_feed(
         dict with status, job_run_id, rows_upserted, error
     """
     from app.pipeline.stages import DEFAULT_WORKSPACE_ID
-    from app.services.pack_resolver import get_pack_for_workspace
+    from app.services.pack_resolver import get_core_pack_id, get_pack_for_workspace
 
     ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
     pack = pack_id or get_pack_for_workspace(db, ws_id)
@@ -43,6 +43,7 @@ def run_update_lead_feed(
 
     pack_uuid = UUID(str(pack)) if isinstance(pack, str) else pack
     as_of_date = as_of or date.today()
+    core_pack_id = get_core_pack_id(db)
 
     job = JobRun(job_type="update_lead_feed", status="running")
     job.workspace_id = UUID(ws_id) if ws_id else None
@@ -53,7 +54,11 @@ def run_update_lead_feed(
 
     try:
         count = build_lead_feed_from_snapshots(
-            db, workspace_id=ws_id, pack_id=pack_uuid, as_of=as_of_date
+            db,
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
+            as_of=as_of_date,
+            core_pack_id=core_pack_id,
         )
         job.finished_at = datetime.now(UTC)
         job.status = "completed"
@@ -102,9 +107,10 @@ def run_backfill_lead_feed(
         dict with status, workspaces_processed, total_rows_upserted, errors
     """
     from app.models.workspace import Workspace
-    from app.services.pack_resolver import get_pack_for_workspace
+    from app.services.pack_resolver import get_core_pack_id, get_pack_for_workspace
 
     as_of_date = as_of or date.today()
+    core_pack_id = get_core_pack_id(db)
     workspaces = db.query(Workspace).all()
     total_rows = 0
     errors: list[str] = []
@@ -119,6 +125,7 @@ def run_backfill_lead_feed(
                 workspace_id=str(ws.id),
                 pack_id=pack,
                 as_of=as_of_date,
+                core_pack_id=core_pack_id,
             )
             db.commit()
             total_rows += count

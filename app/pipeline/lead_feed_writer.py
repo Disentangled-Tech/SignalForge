@@ -27,12 +27,15 @@ def upsert_lead_feed(
     Returns count of rows upserted.
     """
     from app.services.lead_feed import build_lead_feed_from_snapshots
+    from app.services.pack_resolver import get_core_pack_id
 
+    core_pack_id = get_core_pack_id(db)
     count = build_lead_feed_from_snapshots(
         db,
         workspace_id=workspace_id,
         pack_id=pack_id,
         as_of=as_of,
+        core_pack_id=core_pack_id,
     )
     db.commit()
     ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
