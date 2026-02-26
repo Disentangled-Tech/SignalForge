@@ -36,6 +36,7 @@ svi_event_types:
   - enterprise_customer
   - revenue_milestone
   - funding_raised
+  - repo_activity  # Issue #244; GitHub provider contributes to volatility
 
 # Issue #175 — ESL pack policy binding (Phase 1)
 # Empty/minimal for parity: all entities get allow

@@ -97,12 +97,16 @@ class TestFromPackFractionalCtoMatchesDefaults:
     """from_pack(fractional_cto_v1) produces same values as module constants."""
 
     def test_from_pack_base_scores_match_module_defaults(self) -> None:
-        """Base scores from pack match BASE_SCORES_* constants."""
+        """Base scores from pack contain module defaults; pack may add keys (e.g. repo_activity)."""
         cfg = from_pack(_load_fractional_cto_scoring())
-        assert cfg["base_scores_momentum"] == BASE_SCORES_MOMENTUM
-        assert cfg["base_scores_complexity"] == BASE_SCORES_COMPLEXITY
-        assert cfg["base_scores_pressure"] == BASE_SCORES_PRESSURE
-        assert cfg["base_scores_leadership_gap"] == BASE_SCORES_LEADERSHIP_GAP
+        for k, v in BASE_SCORES_MOMENTUM.items():
+            assert cfg["base_scores_momentum"].get(k) == v, f"momentum mismatch for {k}"
+        for k, v in BASE_SCORES_COMPLEXITY.items():
+            assert cfg["base_scores_complexity"].get(k) == v, f"complexity mismatch for {k}"
+        for k, v in BASE_SCORES_PRESSURE.items():
+            assert cfg["base_scores_pressure"].get(k) == v, f"pressure mismatch for {k}"
+        for k, v in BASE_SCORES_LEADERSHIP_GAP.items():
+            assert cfg["base_scores_leadership_gap"].get(k) == v, f"leadership_gap mismatch for {k}"
 
     def test_from_pack_caps_match_module_defaults(self) -> None:
         """Caps from pack match CAP_* constants."""

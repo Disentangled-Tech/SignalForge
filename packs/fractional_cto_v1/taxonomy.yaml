@@ -20,6 +20,7 @@ signal_ids:
   - fractional_request
   - advisor_request
   - cto_hired
+  - repo_activity  # Core type (Issue #244); GitHub provider
 
 dimensions:
   M:  # Momentum
@@ -34,6 +35,7 @@ dimensions:
     - enterprise_feature
     - compliance_mentioned
     - job_posted_infra
+    - repo_activity
   P:  # Pressure
     - enterprise_customer
     - regulatory_deadline
@@ -66,6 +68,7 @@ labels:
   advisor_request: "Advisor help requested"
   no_cto_detected: "No CTO detected"
   cto_hired: "CTO hired"
+  repo_activity: "Repository activity"
 
 # Explainability templates per signal (Issue #190, Phase 2)
 # Used when strict_explainability=True; supports human-readable signal explanations
@@ -88,3 +91,4 @@ explainability_templates:
   fractional_request: "{signal_label} observed on {date}"
   advisor_request: "{signal_label} observed on {date}"
   cto_hired: "{signal_label} observed on {date}"
+  repo_activity: "{signal_label} observed on {date}"

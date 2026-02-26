@@ -88,6 +88,25 @@ class TestScenarioComplexityAccumulation:
         assert c == 60
 
 
+# ── Scenario 2a: repo_activity contributes to Complexity (Issue #244 Phase 4) ─
+
+
+class TestRepoActivityContributesToComplexity:
+    """repo_activity contributes to C when pack adopts it (Issue #244 Phase 4)."""
+
+    def test_repo_activity_contributes_to_complexity(self) -> None:
+        """Event with repo_activity → C non-zero when pack adopts."""
+        from app.packs.loader import load_pack
+        from app.services.readiness.readiness_engine import compute_readiness
+
+        cto_pack = load_pack("fractional_cto_v1", "1")
+        events = [_event("repo_activity", 10)]
+        result = compute_readiness(events, date.today(), pack=cto_pack)
+        # repo_activity base 15, decay 1.0, confidence 0.7 → 15*1.0*0.7=10.5 → 10 or 11
+        assert result["complexity"] > 0
+        assert result["complexity"] in (10, 11)
+
+
 # ── Scenario 2b: Quiet Signal Amplification (Issue #113) ───────────────────
 
 

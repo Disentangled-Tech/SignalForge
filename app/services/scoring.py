@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -273,7 +274,7 @@ def score_company(
     company_id: int,
     analysis: AnalysisRecord,
     pack: Pack | None = None,
-    pack_id: "UUID | None" = None,
+    pack_id: UUID | None = None,
 ) -> int:
     """Score a company from its latest analysis and persist the result.
 
@@ -284,8 +285,6 @@ def score_company(
        the pack is the default pack (cto_need_score caches default-pack score only).
     5. Commits and returns the score.
     """
-    from uuid import UUID
-
     from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
     custom_weights = get_custom_weights(db)
