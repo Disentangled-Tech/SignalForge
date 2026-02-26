@@ -18,11 +18,17 @@ DEFAULT_CONFIDENCE: float = 0.7
 
 
 def _is_valid_event_type_for_pack(candidate: str, pack: Pack | None) -> bool:
-    """Return True if candidate is valid: pack taxonomy when pack provided, else event_types."""
+    """Return True if candidate is valid.
+
+    Core types (event_types) are always accepted regardless of pack.
+    When pack is provided, pack taxonomy types are also accepted.
+    """
+    if is_valid_event_type(candidate):
+        return True
     if pack is not None:
         ids = pack.taxonomy.get("signal_ids") if isinstance(pack.taxonomy, dict) else []
         return candidate in (ids if isinstance(ids, (list, set, frozenset)) else [])
-    return is_valid_event_type(candidate)
+    return False
 
 
 def _build_website_url(raw: RawEvent) -> str | None:

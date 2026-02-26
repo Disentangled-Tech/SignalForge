@@ -125,6 +125,10 @@ When `NEWSAPI_API_KEY` is unset or empty, the adapter returns `[]` and logs at d
 - Free tier: 100 requests/day.
 - Paid plans available for higher limits.
 
+### Security: API Key in Request URL
+
+The NewsAPI API key is passed as a query parameter (`apiKey`) in the request URL. **Ensure HTTP clients and middleware do not log full request URLs** to avoid credential exposure. Configure logging to redact or omit query parameters when logging request URLs.
+
 ### Event Mapping
 
 Funding-related articles are mapped to `RawEvent` with:
