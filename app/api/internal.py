@@ -375,6 +375,11 @@ async def run_daily_aggregation_endpoint(
 
     Unified entry point for cron. Returns status, job_run_id, inserted,
     companies_scored, ranked_count, error. Idempotent with X-Idempotency-Key.
+
+    ranked_count: count of all companies with any readiness score for today
+    (outreach_score_threshold=0 is applied by the orchestrator). This is the
+    monitoring population; it is NOT filtered by the configured outreach threshold.
+    The briefing view (/api/briefing) applies its own threshold independently.
     """
     from uuid import UUID
 

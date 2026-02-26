@@ -32,8 +32,8 @@ def client() -> TestClient:
 @pytest.fixture
 def client_with_db(db: Session) -> TestClient:
     """TestClient with get_db overridden to use the test db session (for integration tests)."""
-    from app.main import app
     from app.db.session import get_db
+    from app.main import app
 
     def override_get_db():
         yield db
@@ -42,6 +42,34 @@ def client_with_db(db: Session) -> TestClient:
     c = TestClient(app)
     yield c
     app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture(autouse=True)
+def _clear_core_loader_caches() -> None:
+    """Clear lru_cache on core taxonomy and deriver loaders before and after each test.
+
+    Prevents stale cache state from propagating between tests, particularly for
+    tests that patch load_core_derivers or load_core_taxonomy to inject test data.
+    Clearing both before and after ensures a clean slate regardless of test order.
+    """
+    from app.core_derivers.loader import (
+        get_core_passthrough_map,
+        get_core_pattern_derivers,
+        load_core_derivers,
+    )
+    from app.core_taxonomy.loader import get_core_signal_ids, load_core_taxonomy
+
+    load_core_taxonomy.cache_clear()
+    get_core_signal_ids.cache_clear()
+    load_core_derivers.cache_clear()
+    get_core_passthrough_map.cache_clear()
+    get_core_pattern_derivers.cache_clear()
+    yield
+    load_core_taxonomy.cache_clear()
+    get_core_signal_ids.cache_clear()
+    load_core_derivers.cache_clear()
+    get_core_passthrough_map.cache_clear()
+    get_core_pattern_derivers.cache_clear()
 
 
 @pytest.fixture(scope="session")

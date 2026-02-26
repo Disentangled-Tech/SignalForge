@@ -36,6 +36,22 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.critical("Database unreachable: %s", e)
             raise
+
+        # Eagerly validate core YAML files at startup so a bad deployment (syntax error,
+        # missing file, or schema violation) surfaces immediately rather than at the first
+        # derive job (Issue #285, Milestone 3). Both FileNotFoundError and yaml.YAMLError
+        # will propagate as CRITICAL failures, preventing the app from serving requests.
+        try:
+            from app.core_derivers.loader import load_core_derivers
+            from app.core_taxonomy.loader import load_core_taxonomy
+
+            load_core_taxonomy()
+            load_core_derivers()
+            logger.info("Core taxonomy and derivers validated")
+        except Exception as e:
+            logger.critical("Core YAML validation failed at startup: %s", e)
+            raise
+
         yield
     finally:
         logger.info("SignalForge shutting down")
