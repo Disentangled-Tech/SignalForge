@@ -5,8 +5,8 @@ for cross-reference consistency. Raises ValidationError on invalid config.
 
 Phase 1 (Issue #190): playbook refs, semver (optional), ethical gates.
 Phase 2 (Issue #190): regex safety validation for derivers (ADR-008).
-Pack v2 (pack_v2_contract): schema_version optional in manifest (default "1"); v2
-validation (core signal_ids, optional taxonomy/derivers) in later milestones.
+Pack v2 (M2): schema_version "2" validates scoring/ESL/derivers against core
+signal_ids; taxonomy may be minimal (labels/explainability only) or empty.
 """
 
 from __future__ import annotations

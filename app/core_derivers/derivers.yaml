@@ -1,9 +1,12 @@
 # Core Derivers (Issue #285, Milestone 2)
 # Canonical event_type -> signal_id passthrough mappings; extracted from fractional_cto_v1/derivers.yaml.
+# Pack-specific pattern derivers and custom mappings remain in pack-specific derivers.yaml.
 #
-# NOTE: incorporation (Issue #250, Delaware Socrata provider) is in core taxonomy
-# and accepted at ingest for company resolution, but is intentionally omitted from
-# this passthrough list. Derive does not produce SignalInstances for incorporation.
+# NOTE: `incorporation` (Issue #250, Delaware Socrata provider) is in core taxonomy
+# (taxonomy.yaml) and accepted at ingest for company resolution, but it is intentionally
+# omitted from this passthrough list. Derive does not produce SignalInstances for
+# incorporation. If scoring of incorporation signals is required in future, add the
+# passthrough entry here and update the core taxonomy dimension mapping.
 
 derivers:
   passthrough:

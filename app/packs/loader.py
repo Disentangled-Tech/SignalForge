@@ -91,12 +91,16 @@ def _packs_root() -> Path:
 def load_pack(pack_id: str, version: str) -> Pack:
     """Load pack config from packs/{pack_id}/ directory.
 
+    For schema_version "2" (Pack v2, Issue #285 M5): taxonomy.yaml and derivers.yaml
+    are optional; if absent, empty dicts are used and derive uses core derivers.
+    scoring.yaml and esl_policy.yaml are always required.
+
     Args:
         pack_id: Pack identifier (e.g. 'fractional_cto_v1').
         version: Pack version (e.g. '1').
 
     Returns:
-        Pack with taxonomy, scoring, esl_policy, playbooks.
+        Pack with taxonomy, scoring, esl_policy, playbooks, derivers.
 
     Raises:
         FileNotFoundError: Pack directory or required file not found.
@@ -119,6 +123,8 @@ def load_pack(pack_id: str, version: str) -> Pack:
         raise ValueError(f"Pack {pack_id} version {manifest.get('version')} != requested {version}")
 
     is_v2 = manifest.get("schema_version") == "2"
+    # For schema_version "2", taxonomy.yaml and derivers.yaml are optional (Issue #285 M5).
+    # scoring.yaml and esl_policy.yaml remain required for all packs.
     taxonomy_path = pack_dir / "taxonomy.yaml"
     if taxonomy_path.exists():
         with taxonomy_path.open() as f:

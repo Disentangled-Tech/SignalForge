@@ -1,7 +1,10 @@
-"""Core Signal Taxonomy (Issue #285, Milestone 1).
+"""Core signal taxonomy package (Issue #285, Milestone 1).
 
-Provides pack-independent canonical signal identifiers for the derive stage.
+Exposes canonical signal_ids that are pack-independent. Labels and
+explainability_templates remain pack-specific.
 """
+
+from __future__ import annotations
 
 from app.core_taxonomy.loader import get_core_signal_ids, is_valid_signal_id, load_core_taxonomy
 

@@ -30,6 +30,10 @@ _DERIVER_TEST_DOMAINS = (
     "merge_null.example.com",
     "singleev.example.com",
     "crosspack.example.com",
+    "stablecore.example.com",
+    "noderivers.example.com",
+    "patternfallback.example.com",
+    "v2noderivers.example.com",  # M5: pack without derivers.yaml (example_v2)
 )
 
 
@@ -430,7 +434,13 @@ class TestRunDeriver:
     def test_deriver_pattern_produces_signal_instance(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Passthrough deriver produces SignalInstance; core derivers only (Issue #285)."""
+        """Pattern deriver matches title/summary and produces SignalInstance (Phase 1).
+
+        Core derivers are mocked to be unavailable so the engine falls back to the
+        pack-specific pattern deriver, which is the code path under test here.
+        """
+        from app.packs.loader import Pack
+
         company = Company(
             name="PatternTestCo",
             domain="pattern.example.com",
@@ -450,11 +460,40 @@ class TestRunDeriver:
         )
         db.commit()
 
-        # Deriver uses core derivers only (Issue #285); pack derivers are ignored.
-        # Core has passthrough for funding_raised but no pattern for compliance_mentioned.
-        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        mock_pack = Pack(
+            manifest={"id": "test", "version": "1", "name": "Test", "schema_version": "1"},
+            taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
+            scoring={},
+            esl_policy={},
+            playbooks={},
+            derivers={
+                "derivers": {
+                    "passthrough": [
+                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
+                    ],
+                    "pattern": [
+                        {
+                            "pattern": r"(?i)(soc2|compliance)",
+                            "signal_id": "compliance_mentioned",
+                            "source_fields": ["title", "summary"],
+                        },
+                    ],
+                }
+            },
+            config_checksum="",
+        )
+
+        with (
+            patch("app.pipeline.deriver_engine.resolve_pack", return_value=mock_pack),
+            patch(
+                "app.pipeline.deriver_engine._load_core_derivers",
+                side_effect=FileNotFoundError("core derivers unavailable in test"),
+            ),
+        ):
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
         assert result["status"] == "completed"
+        # Core overrides pack: only passthrough applies (no pattern in core), so 1 instance
         assert result["instances_upserted"] == 1
         assert result["events_processed"] == 1
 
@@ -467,6 +506,7 @@ class TestRunDeriver:
             .all()
         )
         signal_ids = {i.signal_id for i in instances}
+        # Core passthrough: funding_raised -> funding_raised; pack pattern ignored
         assert signal_ids == {"funding_raised"}
 
     def test_deriver_evidence_populated(self, db: Session, fractional_cto_pack_id) -> None:
@@ -710,7 +750,13 @@ class TestRunDeriver:
     def test_cross_pack_different_signals_from_same_events(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Same events produce same signal_ids (core derivers); instances are pack-scoped (Issue #285)."""
+        """Core derivers override pack-specific mappings; pack isolation via event filtering.
+
+        Issue #285, Milestone 3: core derivers produce the same signal_ids regardless of
+        pack-specific deriver config. Pack isolation is maintained by event filtering
+        (SignalEvent.pack_id == pack_uuid): each pack's run processes only its own events,
+        producing signal_instances in its own pack namespace.
+        """
         from app.models import SignalPack
         from app.packs.loader import Pack
 
@@ -753,7 +799,7 @@ class TestRunDeriver:
         )
         db.commit()
 
-        # Pack A (fractional_cto): passthrough funding_raised + pattern compliance
+        # Pack A (fractional_cto): custom derivers — funding_raised + compliance pattern
         pack_cto = Pack(
             manifest={"id": "cto", "version": "1", "name": "CTO", "schema_version": "1"},
             taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
@@ -777,9 +823,14 @@ class TestRunDeriver:
             config_checksum="",
         )
 
-        # Pack B (bookkeeping): only maps funding_raised -> revenue_milestone, no pattern
+        # Pack B (bookkeeping): custom derivers — funding_raised -> revenue_milestone
         pack_bookkeeping = Pack(
-            manifest={"id": "bookkeeping", "version": "1", "name": "Bookkeeping", "schema_version": "1"},
+            manifest={
+                "id": "bookkeeping",
+                "version": "1",
+                "name": "Bookkeeping",
+                "schema_version": "1",
+            },
             taxonomy={"signal_ids": ["revenue_milestone"]},
             scoring={},
             esl_policy={},
@@ -794,7 +845,17 @@ class TestRunDeriver:
             config_checksum="",
         )
 
-        with patch("app.pipeline.deriver_engine.resolve_pack", side_effect=[pack_cto, pack_bookkeeping]):
+        with (
+            patch(
+                "app.pipeline.deriver_engine.resolve_pack", side_effect=[pack_cto, pack_bookkeeping]
+            ),
+            # Core derivers unavailable: engine falls back to the mock pack derivers so that
+            # pack-isolation (different signal_ids per pack) can be verified (Issue #285, M3).
+            patch(
+                "app.pipeline.deriver_engine._load_core_derivers",
+                side_effect=FileNotFoundError("core derivers unavailable in test"),
+            ),
+        ):
             # Run deriver with pack A (CTO)
             run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
             instances_cto = (
@@ -819,11 +880,160 @@ class TestRunDeriver:
             )
             signal_ids_b = {i.signal_id for i in instances_b}
 
-        # Deriver uses core derivers only (Issue #285); both packs get same core passthrough.
-        assert signal_ids_cto == {"funding_raised"}
-        assert signal_ids_b == {"funding_raised"}
+        # Core overrides both packs: funding_raised -> funding_raised (not pack-custom signals)
+        assert signal_ids_cto == {"funding_raised"}, (
+            f"Core override: expected {{'funding_raised'}}, got {signal_ids_cto!r}"
+        )
+        assert signal_ids_b == {"funding_raised"}, (
+            f"Core override: expected {{'funding_raised'}}, got {signal_ids_b!r}"
+        )
+        # Both produce same signal_ids (core is pack-agnostic)
         assert signal_ids_cto == signal_ids_b
+        # Pack isolation maintained: each pack has its own signal_instances (separate pack_id)
+        assert len(instances_cto) == 1
+        assert len(instances_b) == 1
+        assert instances_cto[0].pack_id == fractional_cto_pack_id
+        assert instances_b[0].pack_id == pack_b_id
 
         # Cleanup: remove test pack (cascade deletes its signal_instances)
         db.query(SignalPack).filter(SignalPack.id == pack_b_id).delete()
         db.commit()
+
+
+class TestMilestone3CoreDeriverBehavior:
+    """Issue #285: deriver uses core derivers only (Milestone 6: pack fallback removed)."""
+
+    def test_deriver_missing_pack_does_not_block(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """When pack has no derivers, core derivers are used; derive succeeds (not skipped).
+
+        Issue #285, Milestone 3: pack.derivers = {} / None must not block derive.
+        """
+        from app.packs.loader import Pack
+
+        company = Company(
+            name="NoDeriversCo",
+            domain="noderivers.example.com",
+            website_url="https://noderivers.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        # Pack with empty derivers dict (no passthrough, no pattern)
+        mock_pack = Pack(
+            manifest={"id": "empty", "version": "1", "name": "Empty", "schema_version": "1"},
+            taxonomy={"signal_ids": ["funding_raised"]},
+            scoring={},
+            esl_policy={},
+            playbooks={},
+            derivers={},
+            config_checksum="",
+        )
+
+        with patch("app.pipeline.deriver_engine.resolve_pack", return_value=mock_pack):
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+        # Core derivers succeed; derive is not skipped even though pack has no derivers
+        assert result["status"] == "completed", (
+            f"Expected 'completed' (core derivers used), got {result['status']!r}: "
+            f"{result.get('error')}"
+        )
+        assert result["instances_upserted"] == 1
+        assert result["events_processed"] == 1
+
+        instances = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .all()
+        )
+        signal_ids = {i.signal_id for i in instances}
+        assert signal_ids == {"funding_raised"}, (
+            f"Core passthrough must produce funding_raised; got {signal_ids!r}"
+        )
+
+    def test_deriver_with_v2_pack_without_derivers_file_uses_core(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """Pack that omits derivers.yaml (example_v2) loads and derive uses core derivers (M5).
+
+        Issue #285, Milestone 5: load_pack('example_v2', '1') has no derivers.yaml on disk;
+        resolve_pack returns that pack; deriver uses core derivers and completes.
+        """
+        from app.packs.loader import load_pack
+
+        company = Company(
+            name="V2NoDeriversCo",
+            domain="v2noderivers.example.com",
+            website_url="https://v2noderivers.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        v2_pack = load_pack("example_v2", "1")
+        assert v2_pack.derivers == {}, "example_v2 must have no derivers (omits derivers.yaml)"
+
+        with patch("app.pipeline.deriver_engine.resolve_pack", return_value=v2_pack):
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+        assert result["status"] == "completed", (
+            f"Expected 'completed' (core derivers used for pack without derivers), "
+            f"got {result['status']!r}: {result.get('error')}"
+        )
+        assert result["instances_upserted"] == 1
+        assert result["events_processed"] == 1
+
+        instances = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.pack_id == fractional_cto_pack_id,
+            )
+            .all()
+        )
+        signal_ids = {i.signal_id for i in instances}
+        assert signal_ids == {"funding_raised"}, (
+            f"Core passthrough must produce funding_raised; got {signal_ids!r}"
+        )
+
+    def test_core_derivers_load_failure_marks_job_failed(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """When core derivers fail to load, job is marked failed (no pack fallback).
+
+        Issue #285, Milestone 6: pack deriver fallback removed; core-only derive.
+        """
+        company = Company(
+            name="CoreFailCo",
+            domain="patternfallback.example.com",
+            website_url="https://patternfallback.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        with patch(
+            "app.pipeline.deriver_engine._load_core_derivers",
+            side_effect=FileNotFoundError("core derivers.yaml not found"),
+        ):
+            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+        assert result["status"] == "failed", (
+            f"Expected 'failed' (core load failure, no fallback), got {result['status']!r}"
+        )
+        assert result["instances_upserted"] == 0
+        assert "error" in result and result["error"]

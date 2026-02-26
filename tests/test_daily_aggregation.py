@@ -10,7 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.ingestion.adapters.test_adapter import TestAdapter
 from app.ingestion.base import SourceAdapter
-from app.models import Company, JobRun, SignalEvent
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    JobRun,
+    ReadinessSnapshot,
+    SignalEvent,
+    SignalInstance,
+)
 from app.schemas.signal import RawEvent
 from app.services.aggregation.daily_aggregation import run_daily_aggregation
 
@@ -25,21 +32,23 @@ class _FailingAdapter(SourceAdapter):
     def fetch_events(self, since) -> list[RawEvent]:
         raise RuntimeError("Adapter fetch failed")
 
-_TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
-from app.models import (
-    Company,
-    EngagementSnapshot,
-    ReadinessSnapshot,
-    SignalEvent,
-    SignalInstance,
-)
-from app.services.aggregation.daily_aggregation import run_daily_aggregation
 
 # Test domains used by TestAdapter (same as test_ingestion_scoring_integration)
 _TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 
 # Fixed date matching TestAdapter event times (2026-02-18) for deterministic scoring
 _AS_OF = date(2026, 2, 18)
+
+
+class _FailingAdapter(SourceAdapter):
+    """Adapter that raises on fetch_events for testing error handling."""
+
+    @property
+    def source_name(self) -> str:
+        return "failing"
+
+    def fetch_events(self, since) -> list[RawEvent]:
+        raise RuntimeError("Adapter fetch failed")
 
 
 @pytest.fixture(autouse=True)
@@ -291,6 +300,115 @@ class TestRunDailyAggregationCreatesJobRun:
         assert job is not None
         assert job.status == "completed"
         assert result["job_run_id"] == job.id
+
+
+class TestRunDailyAggregationNoPackResolved:
+    """Early return when no pack is resolvable."""
+
+    def test_run_daily_aggregation_returns_failed_when_no_pack(
+        self, db: Session
+    ) -> None:
+        """Returns failed status immediately when no pack can be resolved (no JobRun created)."""
+        from app.models import JobRun
+
+        with (
+            patch(
+                "app.services.aggregation.daily_aggregation.get_pack_for_workspace",
+                return_value=None,
+            ),
+            patch(
+                "app.services.aggregation.daily_aggregation.get_default_pack_id",
+                return_value=None,
+            ),
+        ):
+            result = run_daily_aggregation(db, pack_id=None)
+
+        assert result["status"] == "failed"
+        assert result["job_run_id"] is None
+        assert result["error"] == "No pack resolved for workspace"
+        assert result["ranked_companies"] == []
+        assert result["ranked_count"] == 0
+
+        # No daily_aggregation JobRun should be created for this failure path
+        job = (
+            db.query(JobRun)
+            .filter(JobRun.job_type == "daily_aggregation")
+            .order_by(JobRun.id.desc())
+            .first()
+        )
+        assert job is None, "No JobRun should be created when pack resolution fails"
+
+
+class TestRunDailyAggregationRankedCountUsesZeroThreshold:
+    """ranked_companies passes outreach_score_threshold=0 to get_emerging_companies."""
+
+    def test_ranked_companies_uses_zero_outreach_threshold(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """get_emerging_companies is called with outreach_score_threshold=0.
+
+        The orchestrator ranked list includes all scored companies for
+        monitoring/logging; the briefing view applies its own threshold.
+        """
+        threshold_observed: dict[str, int] = {}
+
+        def capture_threshold(
+            inner_db, as_of, *, limit, outreach_score_threshold, pack_id, workspace_id
+        ):
+            threshold_observed["value"] = outreach_score_threshold
+            return []
+
+        with (
+            patch(
+                "app.services.ingestion.ingest_daily.run_ingest_daily",
+                return_value={
+                    "status": "completed",
+                    "job_run_id": 1,
+                    "inserted": 0,
+                    "skipped_duplicate": 0,
+                    "skipped_invalid": 0,
+                    "errors_count": 0,
+                    "error": None,
+                },
+            ),
+            patch(
+                "app.pipeline.deriver_engine.run_deriver",
+                return_value={
+                    "status": "completed",
+                    "job_run_id": 2,
+                    "instances_upserted": 0,
+                    "events_processed": 0,
+                    "events_skipped": 0,
+                    "error": None,
+                },
+            ),
+            patch(
+                "app.services.readiness.score_nightly.run_score_nightly",
+                return_value={
+                    "status": "completed",
+                    "job_run_id": 3,
+                    "companies_scored": 0,
+                    "companies_engagement": 0,
+                    "companies_esl_suppressed": 0,
+                    "companies_skipped": 0,
+                    "error": None,
+                },
+            ),
+            patch(
+                "app.services.aggregation.daily_aggregation.get_emerging_companies",
+                side_effect=capture_threshold,
+            ),
+            patch("app.services.aggregation.daily_aggregation.date") as mock_date,
+        ):
+            mock_date.today.return_value = _AS_OF
+            run_daily_aggregation(db, pack_id=fractional_cto_pack_id)
+
+        assert threshold_observed.get("value") == 0, (
+            "ranked_companies must call get_emerging_companies with outreach_score_threshold=0; "
+            f"got {threshold_observed.get('value')!r}"
+        )
+
+
 def test_daily_aggregation_full_run_with_test_adapter_asserts_ranked_output(
     db: Session,
     fractional_cto_pack_id,
@@ -299,7 +417,7 @@ def test_daily_aggregation_full_run_with_test_adapter_asserts_ranked_output(
 
     - TestAdapter returns 3 events (funding_raised, job_posted_engineering, cto_role_posted)
     - run_daily_aggregation runs ingest → derive → score
-    - Assert status completed, ranked_companies non-empty, each item has name/composite/band
+    - Assert status completed, ranked_companies non-empty, each item has company_name/composite/band
     """
     with (
         patch("app.services.readiness.score_nightly.date") as mock_date,
@@ -322,9 +440,9 @@ def test_daily_aggregation_full_run_with_test_adapter_asserts_ranked_output(
     assert len(ranked) >= 1, "Ranked output should be visible after full run"
 
     for item in ranked:
-        assert "name" in item
+        assert "company_name" in item
         assert "composite" in item
         assert "band" in item
-        assert isinstance(item["name"], str)
+        assert isinstance(item["company_name"], str)
         assert isinstance(item["composite"], (int, float))
         assert 0 <= item["composite"] <= 100
