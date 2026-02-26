@@ -1,6 +1,6 @@
 # Signal Models — Canonical Schemas and Pack-Scoping
 
-This document describes the canonical Company Signal data models (events + scores) for SignalForge, aligning with ADR-001 Pack Architecture and Issue #239. It maps v2-spec event types to pack taxonomies and documents pack-scoping rules.
+This document describes the canonical Company Signal data models (events + scores) for SignalForge, aligning with ADR-001 Pack Architecture and Issue #239. It maps v2-spec event types to **core taxonomy** and pack taxonomies and documents pack-scoping rules. See [Core vs Pack Responsibilities](CORE_VS_PACK_RESPONSIBILITIES.md) for the split between core (derive, canonical signal_ids) and pack (scoring, ESL, outreach).
 
 ---
 
@@ -30,7 +30,7 @@ When pack-scoped scores are needed, use `get_company_score(db, company_id, pack_
 
 **Location**: `app/schemas/signals.py`
 
-Canonical event schema for providers and services. Maps from `SignalEvent` ORM. `event_type` is pack-defined (taxonomy `signal_ids`); validated against pack at runtime, not a hardcoded enum.
+Canonical event schema for providers and services. Maps from `SignalEvent` ORM. `event_type` must be in core taxonomy or (when pack is provided) pack taxonomy; validated at runtime (see §2.2).
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -102,12 +102,12 @@ The v2-spec defines event types as string constants. SignalForge uses `str` with
 | advisor_request | advisor_request | G |
 | cto_hired | cto_hired | G (suppressor) |
 
-**Note**: Issue #239 proposes a TypeScript `EventType` enum (LAUNCH, REPO_ACTIVITY, etc.). In Python, event types are pack-defined via `taxonomy.yaml`; the mapping above documents how v2-spec types map to fractional_cto_v1 `signal_ids`.
+**Note**: Issue #239 proposes a TypeScript `EventType` enum (LAUNCH, REPO_ACTIVITY, etc.). In Python, event types are validated against **core taxonomy** first (`app/core_taxonomy/taxonomy.yaml`); with pack, pack taxonomy may extend. The mapping above aligns v2-spec types with core signal_ids (and fractional_cto_v1).
 
 ### 2.2 Validation
 
-- **With pack**: `normalize_raw_event(raw, source, pack=pack)` validates `event_type_candidate` against `pack.taxonomy.signal_ids`.
-- **Without pack**: Falls back to `is_valid_event_type(candidate)` (event_types.py) for legacy paths.
+- **With pack**: `normalize_raw_event(raw, source, pack=pack)` validates `event_type_candidate` against `pack.taxonomy.signal_ids` and core taxonomy.
+- **Without pack**: Validates against core taxonomy and legacy ingest-only types (e.g. incorporation); see Issue #285, Milestone 6.
 
 ---
 
@@ -160,9 +160,11 @@ Resolution: get_company_score(db, company_id, pack_id) → ReadinessSnapshot | C
 
 ## 5. References
 
+- [CORE_VS_PACK_RESPONSIBILITIES.md](CORE_VS_PACK_RESPONSIBILITIES.md) — Core taxonomy vs pack (scoring, ESL, outreach); derive uses core only
 - [ADR-001](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) — Declarative Signal Pack Architecture
 - [ADR-002](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) — Pack Version Pinning Per Workspace
 - [ADR-009](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) — SignalInstances Are Pack-Scoped
 - [v2-spec](v2-spec.md) — Event types and data model
 - [pipeline](pipeline.md) — Scan vs Ingest/Derive/Score
-- [packs/fractional_cto_v1/taxonomy.yaml](../packs/fractional_cto_v1/taxonomy.yaml) — fractional_cto_v1 signal_ids
+- [app/core_taxonomy/taxonomy.yaml](../app/core_taxonomy/taxonomy.yaml) — Core signal_ids and dimensions (Issue #285)
+- [packs/fractional_cto_v1/taxonomy.yaml](../packs/fractional_cto_v1/taxonomy.yaml) — fractional_cto_v1 (pack) taxonomy

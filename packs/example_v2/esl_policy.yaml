@@ -1,0 +1,4 @@
+# Minimal ESL policy for Pack v2 example (M3).
+recommendation_boundaries:
+  - [0.0, "Observe Only"]
+  - [0.7, "Standard Outreach"]

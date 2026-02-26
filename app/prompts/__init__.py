@@ -7,6 +7,11 @@ Rules:
 - Prompts must be editable without code changes
 """
 
-from app.prompts.loader import load_prompt, render_prompt
+from app.prompts.loader import (
+    load_prompt,
+    load_prompt_from_pack,
+    render_prompt,
+    resolve_prompt_content,
+)
 
-__all__ = ["load_prompt", "render_prompt"]
+__all__ = ["load_prompt", "load_prompt_from_pack", "render_prompt", "resolve_prompt_content"]

@@ -268,3 +268,54 @@ class TestPackConfigChecksum:
         h1 = compute_pack_config_checksum(**cfg1)
         h2 = compute_pack_config_checksum(**cfg2)
         assert h1 != h2
+
+
+class TestPackV2OptionalTaxonomyDerivers:
+    """Pack v2 (schema_version '2'): taxonomy.yaml and derivers.yaml optional (Issue #285 M5)."""
+
+    def test_load_v2_pack_without_taxonomy_or_derivers_succeeds(self) -> None:
+        """load_pack('example_v2', '1') succeeds when taxonomy.yaml and derivers.yaml are missing.
+
+        Regression guard for Issue #285 M5: schema_version '2' packs may omit these files;
+        derive uses core derivers. example_v2 has no taxonomy.yaml or derivers.yaml on disk.
+        """
+        from pathlib import Path
+
+        from app.packs import loader as packs_loader
+
+        pack_dir = Path(packs_loader.__file__).resolve().parent.parent / "packs" / "example_v2"
+        assert not (pack_dir / "taxonomy.yaml").exists(), (
+            "example_v2 must not have taxonomy.yaml for this test (optional for v2)"
+        )
+        assert not (pack_dir / "derivers.yaml").exists(), (
+            "example_v2 must not have derivers.yaml for this test (optional for v2)"
+        )
+
+        from app.packs.loader import load_pack
+
+        pack = load_pack("example_v2", "1")
+        assert pack is not None
+        assert pack.manifest.get("schema_version") == "2"
+        assert pack.taxonomy == {}
+        assert pack.derivers == {}
+        assert pack.scoring is not None
+        assert pack.esl_policy is not None
+        assert hasattr(pack, "config_checksum")
+        assert pack.config_checksum
+
+    def test_v2_pack_validation_uses_core_signal_ids(self) -> None:
+        """V2 pack scoring references only core signal_ids; no pack taxonomy required."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("example_v2", "1")
+        assert pack.scoring.get("base_scores", {}).get("momentum", {}).get("funding_raised") == 35
+        assert pack.scoring.get("base_scores", {}).get("leadership_gap", {}).get("cto_role_posted") == 70
+
+    def test_v1_pack_still_requires_taxonomy_and_derivers(self) -> None:
+        """V1 pack (e.g. fractional_cto_v1) still requires taxonomy.yaml and derivers.yaml."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        assert pack.manifest.get("schema_version") == "1"
+        assert pack.taxonomy and pack.taxonomy.get("signal_ids")
+        assert pack.derivers and (pack.derivers.get("derivers") or {})

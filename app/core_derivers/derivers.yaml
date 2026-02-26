@@ -1,0 +1,50 @@
+# Core Derivers (Issue #285, Milestone 2)
+# Canonical event_type -> signal_id passthrough mappings; extracted from fractional_cto_v1/derivers.yaml.
+# Pack-specific pattern derivers and custom mappings remain in pack-specific derivers.yaml.
+#
+# NOTE: `incorporation` (Issue #250, Delaware Socrata provider) is in core taxonomy
+# (taxonomy.yaml) and accepted at ingest for company resolution, but it is intentionally
+# omitted from this passthrough list. Derive does not produce SignalInstances for
+# incorporation. If scoring of incorporation signals is required in future, add the
+# passthrough entry here and update the core taxonomy dimension mapping.
+
+derivers:
+  passthrough:
+    - event_type: funding_raised
+      signal_id: funding_raised
+    - event_type: job_posted_engineering
+      signal_id: job_posted_engineering
+    - event_type: job_posted_infra
+      signal_id: job_posted_infra
+    - event_type: headcount_growth
+      signal_id: headcount_growth
+    - event_type: launch_major
+      signal_id: launch_major
+    - event_type: api_launched
+      signal_id: api_launched
+    - event_type: ai_feature_launched
+      signal_id: ai_feature_launched
+    - event_type: enterprise_feature
+      signal_id: enterprise_feature
+    - event_type: compliance_mentioned
+      signal_id: compliance_mentioned
+    - event_type: enterprise_customer
+      signal_id: enterprise_customer
+    - event_type: regulatory_deadline
+      signal_id: regulatory_deadline
+    - event_type: founder_urgency_language
+      signal_id: founder_urgency_language
+    - event_type: revenue_milestone
+      signal_id: revenue_milestone
+    - event_type: cto_role_posted
+      signal_id: cto_role_posted
+    - event_type: no_cto_detected
+      signal_id: no_cto_detected
+    - event_type: fractional_request
+      signal_id: fractional_request
+    - event_type: advisor_request
+      signal_id: advisor_request
+    - event_type: cto_hired
+      signal_id: cto_hired
+    - event_type: repo_activity
+      signal_id: repo_activity

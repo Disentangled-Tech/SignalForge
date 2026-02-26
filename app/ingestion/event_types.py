@@ -1,9 +1,15 @@
-"""Canonical signal event taxonomy (v2-spec §3, Issue #89)."""
+"""Canonical signal event taxonomy (v2-spec §3, Issue #89).
+
+Issue #285, Milestone 4: Prefer core_taxonomy for validation; SIGNAL_EVENT_TYPES
+is deprecated for new code but kept for backward compatibility (e.g. incorporation
+and any types not yet in core taxonomy). is_valid_event_type delegates to core
+when available.
+"""
 
 from __future__ import annotations
 
-# All known event types from scoring constants + v2-spec §3
-# Used for validating event_type_candidate during normalization
+# Deprecated: Prefer app.core_taxonomy.loader.get_core_signal_ids / is_valid_signal_id.
+# Kept for backward compat (e.g. incorporation, which is ingest-only and not in core).
 SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     # Momentum
     "funding_raised",
@@ -29,13 +35,19 @@ SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     "cto_hired",  # suppressor
     # Core platform types (Issue #244, #250); packs may omit from taxonomy
     "repo_activity",
-    # Core (Issue #244): GitHub provider
-    "repo_activity",
     # Core (Issue #250): Delaware incorporation provider
     "incorporation",
 })
 
 
 def is_valid_event_type(candidate: str) -> bool:
-    """Return True if candidate is a known event type."""
+    """Return True if candidate is a known event type.
+
+    Delegates to core taxonomy when available (Issue #285, Milestone 4);
+    falls back to SIGNAL_EVENT_TYPES for backward compat (e.g. incorporation).
+    """
+    from app.core_taxonomy.loader import is_valid_signal_id
+
+    if is_valid_signal_id(candidate):
+        return True
     return candidate in SIGNAL_EVENT_TYPES

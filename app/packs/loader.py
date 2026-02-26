@@ -88,15 +88,35 @@ def _packs_root() -> Path:
     return app_dir.parent / "packs"
 
 
+def get_pack_dir(pack_id: str) -> Path:
+    """Return path to pack directory packs/{pack_id}/ (M4 prompt bundles).
+
+    Does not require the directory to exist. Use for resolving pack prompts
+    when pack has schema_version \"2\".
+    """
+    if not pack_id or not isinstance(pack_id, str):
+        raise ValueError("pack_id must be a non-empty string")
+    if not _PACK_ID_PATTERN.match(pack_id):
+        raise ValueError(f"pack_id must match [a-zA-Z0-9_-]+ (got {pack_id!r})")
+    if ".." in pack_id or "/" in pack_id or "\\" in pack_id:
+        raise ValueError("pack_id must not contain path separators or '..'")
+    return _packs_root() / pack_id
+
+
 def load_pack(pack_id: str, version: str) -> Pack:
     """Load pack config from packs/{pack_id}/ directory.
+
+    For schema_version "2" (Pack v2, Issue #285 M5): taxonomy.yaml and derivers.yaml
+    are optional; if absent, empty dicts are used and derive uses core derivers.
+    Validation for v2 uses core signal_ids (see app.packs.schemas). scoring.yaml
+    and esl_policy.yaml are always required for all schema versions.
 
     Args:
         pack_id: Pack identifier (e.g. 'fractional_cto_v1').
         version: Pack version (e.g. '1').
 
     Returns:
-        Pack with taxonomy, scoring, esl_policy, playbooks.
+        Pack with taxonomy, scoring, esl_policy, playbooks, derivers.
 
     Raises:
         FileNotFoundError: Pack directory or required file not found.
@@ -118,11 +138,17 @@ def load_pack(pack_id: str, version: str) -> Pack:
     if manifest.get("version") != version:
         raise ValueError(f"Pack {pack_id} version {manifest.get('version')} != requested {version}")
 
+    is_v2 = manifest.get("schema_version") == "2"
+    # For schema_version "2", taxonomy.yaml and derivers.yaml are optional (Issue #285 M5).
+    # scoring.yaml and esl_policy.yaml remain required for all packs.
     taxonomy_path = pack_dir / "taxonomy.yaml"
-    if not taxonomy_path.exists():
+    if taxonomy_path.exists():
+        with taxonomy_path.open() as f:
+            taxonomy = yaml.safe_load(f) or {}
+    elif is_v2:
+        taxonomy = {}
+    else:
         raise FileNotFoundError(f"taxonomy.yaml not found: {taxonomy_path}")
-    with taxonomy_path.open() as f:
-        taxonomy = yaml.safe_load(f) or {}
 
     scoring_path = pack_dir / "scoring.yaml"
     if not scoring_path.exists():
@@ -137,10 +163,13 @@ def load_pack(pack_id: str, version: str) -> Pack:
         esl_policy = yaml.safe_load(f) or {}
 
     derivers_path = pack_dir / "derivers.yaml"
-    if not derivers_path.exists():
+    if derivers_path.exists():
+        with derivers_path.open() as f:
+            derivers = yaml.safe_load(f) or {}
+    elif is_v2:
+        derivers = {}
+    else:
         raise FileNotFoundError(f"derivers.yaml not found: {derivers_path}")
-    with derivers_path.open() as f:
-        derivers = yaml.safe_load(f) or {}
 
     playbooks_dir = pack_dir / "playbooks"
     playbooks_dict: dict = {}
