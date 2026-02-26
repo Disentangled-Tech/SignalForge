@@ -1,0 +1,59 @@
+# Core signal taxonomy — canonical signal_ids for all packs (Issue #285, Milestone 1)
+# Extracted from packs/fractional_cto_v1/taxonomy.yaml + app/ingestion/event_types.py
+#
+# This is the authoritative list. Labels and explainability_templates remain pack-specific.
+# Must be a strict superset of all pack taxonomies and event_types.SIGNAL_EVENT_TYPES.
+
+signal_ids:
+  # Momentum
+  - funding_raised
+  - job_posted_engineering
+  - job_posted_infra
+  - headcount_growth
+  - launch_major
+  # Complexity
+  - api_launched
+  - ai_feature_launched
+  - enterprise_feature
+  - compliance_mentioned
+  # Pressure
+  - enterprise_customer
+  - regulatory_deadline
+  - founder_urgency_language
+  - revenue_milestone
+  # Leadership Gap
+  - cto_role_posted
+  - no_cto_detected
+  - fractional_request
+  - advisor_request
+  - cto_hired
+  # Core platform types (Issue #244, #250); packs may omit from pack taxonomy
+  - repo_activity    # GitHub provider (Issue #244)
+  - incorporation    # Delaware incorporation provider (Issue #250)
+
+dimensions:
+  M:  # Momentum
+    - funding_raised
+    - job_posted_engineering
+    - job_posted_infra
+    - headcount_growth
+    - launch_major
+  C:  # Complexity
+    - api_launched
+    - ai_feature_launched
+    - enterprise_feature
+    - compliance_mentioned
+    - job_posted_infra
+    - repo_activity
+  P:  # Pressure
+    - enterprise_customer
+    - regulatory_deadline
+    - founder_urgency_language
+    - revenue_milestone
+    - funding_raised
+  G:  # Leadership Gap
+    - cto_role_posted
+    - no_cto_detected
+    - fractional_request
+    - advisor_request
+    - cto_hired
