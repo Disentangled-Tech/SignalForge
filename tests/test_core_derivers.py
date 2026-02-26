@@ -100,13 +100,12 @@ class TestGetCorePassthroughMap:
                 f"got '{passthrough[event_type]}'"
             )
 
-    def test_incorporation_passthrough(self) -> None:
-        """incorporation event type maps to incorporation signal_id."""
+    def test_incorporation_omitted_from_passthrough(self) -> None:
+        """incorporation is ingest-only (Issue #250); omitted from core derivers passthrough."""
         from app.core_derivers.loader import get_core_passthrough_map
 
         passthrough = get_core_passthrough_map()
-        assert "incorporation" in passthrough
-        assert passthrough["incorporation"] == "incorporation"
+        assert "incorporation" not in passthrough
 
     def test_stable_across_calls(self) -> None:
         """get_core_passthrough_map() is cached and returns the same object."""

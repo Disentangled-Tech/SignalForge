@@ -15,6 +15,7 @@ import yaml
 _TAXONOMY_PATH = Path(__file__).parent / "taxonomy.yaml"
 
 
+@lru_cache(maxsize=1)
 def load_core_taxonomy() -> dict[str, Any]:
     """Load and return the core taxonomy YAML content.
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from sqlalchemy.orm import Session

@@ -51,7 +51,13 @@ See `docs/deriver-engine.md` for deriver types, schema, and integration.
 
 ---
 
-## 4. Summary Table
+## 4. Core config: loading and caching (ops)
+
+Core taxonomy (`app/core_taxonomy/taxonomy.yaml`) and core derivers (`app/core_derivers/derivers.yaml`) are **loaded at application startup** and **cached in process** (`load_core_taxonomy`, `load_core_derivers`, and their accessors use `@lru_cache`). Edits to these YAML files do not take effect until the application is restarted. For config changes in production, plan for a restart or rolling deploy so all processes pick up the new core config.
+
+---
+
+## 5. Summary Table
 
 | Concern                    | Owner   | Location / usage                                      |
 | -------------------------- | ------- | ----------------------------------------------------- |
@@ -67,7 +73,7 @@ See `docs/deriver-engine.md` for deriver types, schema, and integration.
 
 ---
 
-## 5. References
+## 6. References
 
 - Implementation plan: `.cursor/plans/core_taxonomy_deriver_registry_6099ab34.plan.md`
 - Deriver engine: `docs/deriver-engine.md`

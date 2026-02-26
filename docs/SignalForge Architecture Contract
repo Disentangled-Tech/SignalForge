@@ -184,6 +184,12 @@ Prompts must not invent data.
 
 ⸻
 
+3.4 Pack v2
+
+Packs with schema_version "2" (Pack v2) formalize this contract: they define only analysis weights (scoring), ESL rubrics, and optional prompt bundles. Signal IDs and derivers are core-owned; v2 packs do not define signals or derivation rules. For required vs optional pack files and how to add a v2 pack, see docs/pack_v2_contract.md.
+
+⸻
+
 4. LLM Boundary Rules
 
 LLMs operate in three places:
