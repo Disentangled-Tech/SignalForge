@@ -14,7 +14,7 @@ import logging
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, text
@@ -25,11 +25,7 @@ from app.core_derivers.loader import get_core_passthrough_map, get_core_pattern_
 from app.models.job_run import JobRun
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
-from app.packs.schemas import ALLOWED_PATTERN_SOURCE_FIELDS
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
-
-if TYPE_CHECKING:
-    from app.packs.loader import Pack
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +51,15 @@ def _build_passthrough_map(pack: Pack | None) -> dict[str, str]:
                 result[str(etype)] = str(sid)
     return result
 
+def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Load core passthrough map and pattern derivers (Issue #285).
 
-def _build_pattern_derivers(pack: Pack | None) -> list[dict[str, Any]]:
-    """Build list of pattern deriver configs from pack derivers.pattern.
+    Returns (passthrough_map, pattern_derivers) in the format expected by
+    _evaluate_event_derivers. Results come from lru_cached core_derivers module.
 
-    Each entry: {signal_id, pattern, source_fields, min_confidence}.
-    Patterns are precompiled for runtime (ADR-008).
+    Raises:
+        FileNotFoundError: When core derivers.yaml is missing.
+        ValueError: When core derivers fail schema validation.
     """
     if not pack or not pack.derivers:
         return []
@@ -166,7 +165,7 @@ def run_deriver(
     pack_id: str | UUID | None = None,
     company_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Run deriver: read SignalEvents, apply pack passthrough, upsert signal_instances.
+    """Run deriver: read SignalEvents, apply core derivers, upsert signal_instances.
 
     Scopes to pack_id (or default pack). Events with company_id is None are skipped.
     Idempotent: re-run produces same signal_instances (upsert by natural key).
