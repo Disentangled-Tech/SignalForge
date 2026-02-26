@@ -12,6 +12,14 @@ from app.models.company import Company
 from app.models.company_alias import CompanyAlias
 from app.schemas.company import CompanyCreate
 
+__all__ = [
+    "NormalizedCompanyInput",
+    "extract_domain",
+    "normalize_company_input",
+    "normalize_name",
+    "resolve_or_create_company",
+]
+
 
 class NormalizedCompanyInput(TypedDict):
     """Output of normalize_company_input — pure normalization, no DB."""

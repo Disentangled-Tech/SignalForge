@@ -602,3 +602,52 @@ class TestRunIngest:
         assert data["status"] == "failed"
         assert "Ingest failed" in data["error"]
 
+
+# ── /internal/run_daily_aggregation ────────────────────────────────────────
+
+
+class TestRunDailyAggregation:
+    """Tests for POST /internal/run_daily_aggregation."""
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_daily_aggregation_returns_expected_shape(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_daily_aggregation returns status, job_run_id, inserted, companies_scored, ranked_count."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 100,
+            "ingest_result": {"inserted": 5},
+            "score_result": {"companies_scored": 3},
+            "ranked_count": 2,
+            "error": None,
+        }
+
+        response = client.post(
+            "/internal/run_daily_aggregation",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["job_run_id"] == 100
+        assert data["inserted"] == 5
+        assert data["companies_scored"] == 3
+        assert data["ranked_count"] == 2
+        mock_run_stage.assert_called_once()
+        assert mock_run_stage.call_args[1]["job_type"] == "daily_aggregation"
+
+    def test_run_daily_aggregation_requires_token(self, client: TestClient):
+        """POST /internal/run_daily_aggregation without token returns 422."""
+        response = client.post("/internal/run_daily_aggregation")
+        assert response.status_code == 422
+
+    def test_run_daily_aggregation_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_daily_aggregation with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_daily_aggregation",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
