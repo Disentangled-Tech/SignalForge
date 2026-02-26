@@ -1,15 +1,19 @@
-"""Tests for get_ranked_companies_for_api (Issue #247, Phase 1)."""
+"""Tests for get_ranked_companies_for_api and GET /api/companies/top (Issue #247)."""
 
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.models import Company, EngagementSnapshot, ReadinessSnapshot, SignalPack
+from app.schemas.ranked_companies import RankedCompanyTop
 from app.services.ranked_companies import get_ranked_companies_for_api
+from tests.test_constants import TEST_USERNAME_VIEWS
 
 
 @pytest.fixture(autouse=True)
@@ -300,3 +304,185 @@ def test_get_ranked_companies_for_api_respects_outreach_threshold(db: Session) -
         db, as_of, limit=5, outreach_score_threshold=20
     )
     assert len(result_low) == 1
+
+
+# ── API endpoint tests (GET /api/companies/top) ─────────────────────────────
+
+
+def _make_mock_user() -> MagicMock:
+    """Create a mock User for auth override."""
+    user = MagicMock()
+    user.id = 1
+    user.username = TEST_USERNAME_VIEWS
+    return user
+
+
+@pytest.fixture
+def api_client_with_auth(db: Session) -> TestClient:
+    """TestClient with real db and auth override for /api/companies/top."""
+    from app.api.deps import require_auth
+    from app.db.session import get_db
+    from app.main import app
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[require_auth] = lambda: _make_mock_user()
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(require_auth, None)
+
+
+def test_api_companies_top_returns_sorted_list(api_client_with_auth: TestClient, db: Session) -> None:
+    """GET /api/companies/top returns companies ordered by composite score descending."""
+    companies = [
+        Company(name=f"API Ranked {i}", website_url=f"https://apiranked{i}.example.com")
+        for i in range(3)
+    ]
+    db.add_all(companies)
+    db.commit()
+    for c in companies:
+        db.refresh(c)
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    as_of = date(2099, 1, 25)
+    for i, c in enumerate(companies):
+        rs = ReadinessSnapshot(
+            company_id=c.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
+            composite=[80, 90, 70][i],
+            pack_id=pack_id,
+        )
+        db.add(rs)
+        _add_engagement_snapshot(db, c.id, as_of, esl_score=0.8)
+    db.commit()
+
+    resp = api_client_with_auth.get("/api/companies/top?since=2099-01-25")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 3
+    assert len(data["companies"]) == 3
+    assert data["companies"][0]["composite_score"] == 90
+    assert data["companies"][1]["composite_score"] == 80
+    assert data["companies"][2]["composite_score"] == 70
+
+
+def test_api_companies_top_includes_recommendation_band(api_client_with_auth: TestClient, db: Session) -> None:
+    """GET /api/companies/top includes recommendation_band when available."""
+    company = Company(name="API Band Co", website_url="https://apiband.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    as_of = date(2099, 1, 26)
+    rs = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=70,
+        complexity=60,
+        pressure=55,
+        leadership_gap=40,
+        composite=85,
+        pack_id=pack_id,
+        explain={"recommendation_band": "WATCH"},
+    )
+    db.add(rs)
+    _add_engagement_snapshot(db, company.id, as_of)
+    db.commit()
+
+    resp = api_client_with_auth.get("/api/companies/top?since=2099-01-26")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["companies"]) == 1
+    assert data["companies"][0]["recommendation_band"] == "WATCH"
+
+
+def test_api_companies_top_includes_top_signals(api_client_with_auth: TestClient, db: Session) -> None:
+    """GET /api/companies/top includes top_signals from pack taxonomy."""
+    company = Company(name="API Signals Co", website_url="https://apisignals.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    as_of = date(2099, 1, 27)
+    rs = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=70,
+        complexity=60,
+        pressure=55,
+        leadership_gap=40,
+        composite=75,
+        pack_id=pack_id,
+        explain={
+            "top_events": [
+                {"event_type": "cto_role_posted"},
+                {"event_type": "funding_raised"},
+            ]
+        },
+    )
+    db.add(rs)
+    _add_engagement_snapshot(db, company.id, as_of)
+    db.commit()
+
+    resp = api_client_with_auth.get("/api/companies/top?since=2099-01-27")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["companies"]) == 1
+    assert len(data["companies"][0]["top_signals"]) >= 1
+
+
+def test_api_companies_top_empty_db_returns_empty_list(api_client_with_auth: TestClient) -> None:
+    """GET /api/companies/top returns empty list when no snapshots for date."""
+    resp = api_client_with_auth.get("/api/companies/top?since=2099-01-28")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["companies"] == []
+    assert data["total"] == 0
+
+
+def test_api_companies_top_requires_auth(client: TestClient) -> None:
+    """GET /api/companies/top returns 401 without auth."""
+    from app.main import app
+
+    try:
+        app.dependency_overrides.clear()
+        resp = client.get("/api/companies/top")
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_api_companies_top_since_limit_params(api_client_with_auth: TestClient) -> None:
+    """GET /api/companies/top accepts since and limit query params."""
+    from unittest.mock import patch
+
+    with patch(
+        "app.api.companies.get_ranked_companies_for_api",
+        return_value=[
+            RankedCompanyTop(
+                company_id=1,
+                company_name="Mock Co",
+                website_url="https://mock.example.com",
+                composite_score=80,
+                recommendation_band="WATCH",
+                top_signals=[],
+            )
+        ],
+    ):
+        resp = api_client_with_auth.get("/api/companies/top?since=2026-02-15&limit=5")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["companies"][0]["company_name"] == "Mock Co"
