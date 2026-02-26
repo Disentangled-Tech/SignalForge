@@ -632,3 +632,63 @@ class TestIngestDeriveScoreParity:
                     assert len(es.sensitivity_level) > 0, (
                         f"sensitivity_level must be non-empty when set; company {es.company_id}"
                     )
+
+    @pytest.mark.integration
+    def test_parity_harness_derived_signal_ids_match_core_passthrough(
+        self,
+        db: Session,
+        fractional_cto_pack_id,
+    ) -> None:
+        """Ingest → derive → score: derived signal_ids match core derivers (Issue #285 regression guard).
+
+        Ensures that when using fractional_cto_v1 pack, the derive stage (which uses
+        core derivers only) produces the same signal_ids as the core passthrough map
+        for the event types emitted by TestAdapter. Guards against drift between
+        core derivers and expected pipeline output.
+        """
+        from app.core_derivers.loader import get_core_passthrough_map
+        from app.pipeline.deriver_engine import run_deriver
+        from app.services.ingestion.ingest_daily import run_ingest_daily
+
+        core_passthrough = get_core_passthrough_map()
+        assert "funding_raised" in core_passthrough
+        assert "job_posted_engineering" in core_passthrough
+        assert "cto_role_posted" in core_passthrough
+
+        with patch("app.services.readiness.score_nightly.date") as mock_date:
+            mock_date.today.return_value = _PARITY_INGEST_AS_OF
+
+            run_ingest_daily(db)
+            companies = (
+                db.query(Company)
+                .filter(Company.domain.in_(_PARITY_TEST_DOMAINS))
+                .order_by(Company.domain)
+                .all()
+            )
+            assert len(companies) >= 1
+
+            derive_result = run_deriver(
+                db,
+                pack_id=fractional_cto_pack_id,
+                company_ids=[c.id for c in companies],
+            )
+            assert derive_result["status"] == "completed"
+
+            instances = (
+                db.query(SignalInstance)
+                .filter(
+                    SignalInstance.entity_id.in_(c.id for c in companies),
+                    SignalInstance.pack_id == fractional_cto_pack_id,
+                )
+                .all()
+            )
+            derived_signal_ids = {i.signal_id for i in instances}
+            # Every derived signal_id must be in core passthrough (derive uses core only)
+            core_signal_ids = set(core_passthrough.values())
+            for sid in derived_signal_ids:
+                assert sid in core_signal_ids, (
+                    f"Derived signal_id {sid!r} must be in core derivers; "
+                    f"core signal_ids: {core_signal_ids}"
+                )
+            # TestAdapter emits funding_raised, job_posted_engineering, cto_role_posted
+            assert derived_signal_ids == {"funding_raised", "job_posted_engineering", "cto_role_posted"}

@@ -29,7 +29,10 @@ signal_ids:
   - cto_hired
   # Core platform types (Issue #244, #250); packs may omit from pack taxonomy
   - repo_activity    # GitHub provider (Issue #244)
-  - incorporation    # Delaware incorporation provider (Issue #250)
+  # incorporation (Issue #250): Delaware Socrata provider. Accepted at ingest for company
+  # resolution; intentionally omitted from core derivers passthrough — derive does not
+  # produce SignalInstances for it. See app/core_derivers/derivers.yaml NOTE.
+  - incorporation
 
 dimensions:
   M:  # Momentum

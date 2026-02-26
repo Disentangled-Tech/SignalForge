@@ -1,0 +1,292 @@
+Perfect — here is a copy-paste ready docs/architecture_contract.md you can drop directly into your repo.
+
+⸻
+
+SignalForge Architecture Contract
+
+Core = Facts · Packs = Interpretation
+
+⸻
+
+Purpose
+
+This document defines the non-negotiable architectural boundary in SignalForge:
+
+Core owns facts. Packs own interpretation.
+
+This boundary ensures:
+	•	Deterministic signal derivation
+	•	Pack-agnostic data integrity
+	•	LLM safety and auditability
+	•	Clear separation of responsibilities
+	•	Long-term extensibility across domains
+
+This contract must be preserved in all future changes.
+
+⸻
+
+1. System Model Overview
+
+SignalForge operates in five conceptual layers:
+	1.	Evidence — Raw, citation-backed artifacts (web pages, snippets, diffs)
+	2.	Core Events — Structured representations of factual occurrences
+	3.	Core Signals — Derived, canonical business signals
+	4.	Scoring / ESL — Weighted interpretation of signals
+	5.	Outreach / Recommendations — Prompt-driven action suggestions
+
+Only layers 4 and 5 are pack-influenced.
+
+⸻
+
+2. Core Responsibilities (Facts Layer)
+
+Core is the system of record for reality.
+
+Core owns:
+	•	Evidence storage
+	•	Entity schemas (Company, Person, etc.)
+	•	Core Event taxonomy
+	•	Core Signal taxonomy
+	•	Deriver registry
+	•	Event → Signal derivation logic
+	•	Verification & grounding rules
+	•	Monitoring & diff detection
+	•	Deterministic pipeline stages
+
+Core must be:
+	•	Pack-agnostic
+	•	Deterministic
+	•	Versioned
+	•	Auditable
+
+⸻
+
+2.1 Evidence
+
+Evidence is immutable and must:
+	•	Contain citations
+	•	Include source URLs
+	•	Include quoted snippets
+	•	Be versioned against core taxonomy/derivers
+
+Evidence must never contain pack-specific logic.
+
+⸻
+
+2.2 Core Events
+
+Core Events represent factual occurrences.
+
+Examples:
+	•	hiring_detected
+	•	pricing_changed
+	•	product_launch_detected
+	•	new_exec_added
+
+Rules:
+	•	Only event types defined in the core event taxonomy are valid.
+	•	LLM components may classify into existing event types only.
+	•	No pack may introduce new event types.
+
+⸻
+
+2.3 Core Signals
+
+Core Signals are derived deterministically from Core Events.
+
+Examples:
+	•	early_stage_scaling
+	•	revenue_complexity_increasing
+	•	technical_leadership_gap
+	•	operational_strain_indicator
+
+Rules:
+	•	Signals are defined in the core taxonomy.
+	•	Derivers are core-owned.
+	•	Packs may not define signals.
+	•	Given identical Core Events, derived signals must be identical across packs.
+
+⸻
+
+2.4 Derivation Rule
+
+The derive stage must:
+	•	Accept Core Events
+	•	Use core derivers
+	•	Output canonical Core Signals
+	•	Be independent of active pack
+
+If switching packs changes derived signals, the architecture contract is violated.
+
+⸻
+
+3. Pack Responsibilities (Interpretation Layer)
+
+Packs are domain-specific interpretation overlays.
+
+Packs may define:
+	•	Analysis weights (signal weighting)
+	•	ESL rubrics (criteria + thresholds)
+	•	Prompt bundles
+	•	Playbooks
+	•	Messaging templates
+	•	Optional query emphasis hints (search phrasing only)
+
+Packs must not define:
+	•	Evidence schemas
+	•	Entity schemas
+	•	Core Event types
+	•	Core Signal types
+	•	Derivers
+	•	Ingestion adapters
+	•	Verification rules
+	•	Monitoring rules
+
+⸻
+
+3.1 Analysis Weights
+
+Packs may weight core signals differently.
+
+Example:
+
+Core Signal	CTO Weight	CFO Weight
+hiring_detected	High	Medium
+pricing_changed	Low	High
+
+Weights must reference existing core signal IDs only.
+
+⸻
+
+3.2 ESL Rubrics
+
+Packs may:
+	•	Define suitability scoring criteria
+	•	Apply thresholds
+	•	Define constraints
+
+Packs may not:
+	•	Alter what signals exist
+	•	Redefine signal semantics
+
+⸻
+
+3.3 Prompts & Playbooks
+
+Packs may contain:
+	•	Outreach prompts
+	•	LLM system messages
+	•	Domain-specific framing
+	•	Messaging guardrails
+
+Prompts must consume core facts and signals.
+Prompts must not invent data.
+
+⸻
+
+4. LLM Boundary Rules
+
+LLMs operate in three places:
+	1.	Discovery Scout
+	2.	Extractor
+	3.	Event Interpretation
+
+In all cases:
+	•	LLMs may classify into existing core schemas.
+	•	LLMs may not create new event types.
+	•	LLMs may not create new signal types.
+	•	All outputs must be citation-backed.
+	•	All outputs must pass schema validation.
+
+If an LLM invents a type not in core taxonomy, it must be rejected.
+
+⸻
+
+5. Pack Switching Guarantee
+
+Switching packs must:
+	•	Change scoring output
+	•	Change ranking
+	•	Change messaging
+
+Switching packs must not:
+	•	Change Core Events
+	•	Change derived Core Signals
+	•	Change entity facts
+	•	Change verification outcomes
+
+If switching packs alters factual layers, the system is misconfigured.
+
+⸻
+
+6. Versioning Requirements
+
+All evidence bundles must record:
+	•	core_taxonomy_version
+	•	core_derivers_version
+
+This ensures:
+	•	Reproducibility
+	•	Backtesting ability
+	•	Model recalibration
+	•	Explainability
+
+⸻
+
+7. Anti-Patterns (Prohibited)
+
+The following are architectural violations:
+
+❌ Pack-defined derivers
+❌ Pack-defined signals
+❌ Pack-scoped ingestion logic
+❌ LLM inventing new signal types
+❌ Scoring logic embedded in derive stage
+❌ Monitoring logic depending on pack
+
+⸻
+
+8. Guiding Principle
+
+If you ask:
+
+“Is this about what is true, or how we value what is true?”
+
+If it’s about truth → Core
+If it’s about interpretation → Pack
+
+⸻
+
+9. Mental Model
+
+Core = Physics
+Packs = Strategy
+
+Physics does not change when you change strategy.
+
+⸻
+
+10. Enforcement Recommendation (Optional but Strongly Encouraged)
+
+Add CI checks that:
+	•	Fail if a pack introduces unknown signal_id
+	•	Fail if a pack introduces new event_type
+	•	Validate derive output consistency across packs
+	•	Validate LLM outputs against core schemas
+
+⸻
+
+Final Statement
+
+SignalForge must maintain:
+
+Stable facts.
+Flexible interpretation.
+Explicit boundaries.
+
+This contract protects:
+	•	Auditability
+	•	Commercial safety
+	•	Bias safeguards
+	•	Long-term extensibility
+	•	Multi-domain expansion
