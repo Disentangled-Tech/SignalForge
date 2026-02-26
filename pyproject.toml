@@ -61,6 +61,7 @@ pythonpath = ["."]
 addopts = "-p no:xdist"
 markers = [
     "integration: marks tests requiring real DB (deselect with -m 'not integration')",
+    "serial: marks tests that must run serially to avoid ShareLock deadlock (e.g. with pytest-xdist)",
 ]
 
 [tool.mypy]

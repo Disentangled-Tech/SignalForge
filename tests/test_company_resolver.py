@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
-
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
 from app.models.company_alias import CompanyAlias
-from app.schemas.company import CompanyCreate, CompanySource
+from app.schemas.company import CompanyCreate
 from app.services.company_resolver import (
     extract_domain,
+    normalize_company_input,
     normalize_name,
     resolve_or_create_company,
 )
-
 
 # ── normalize_name tests ─────────────────────────────────────────────
 
@@ -85,6 +82,71 @@ class TestExtractDomain:
         assert result == "foo.com"
 
 
+# ── normalize_company_input tests (pure, no DB) ───────────────────────
+
+
+class TestNormalizeCompanyInput:
+    """Pure unit tests for normalize_company_input — no DB dependency."""
+
+    def test_returns_domain_from_website_url(self) -> None:
+        data = CompanyCreate(
+            company_name="Acme Inc",
+            website_url="https://www.acme.com/about",
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] == "acme.com"
+        assert result["norm_name"] == "acme"
+        assert result["linkedin"] is None
+
+    def test_returns_norm_name_from_company_name(self) -> None:
+        data = CompanyCreate(
+            company_name="Beta Corp, LLC",
+            website_url=None,
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] is None
+        assert result["norm_name"] == "beta"
+        assert result["linkedin"] is None
+
+    def test_returns_linkedin_stripped(self) -> None:
+        data = CompanyCreate(
+            company_name="LinkedIn Co",
+            website_url=None,
+            company_linkedin_url="  https://linkedin.com/company/foo  ",
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] is None
+        assert result["norm_name"] == "linkedin"  # "Co" suffix stripped
+        assert result["linkedin"] == "https://linkedin.com/company/foo"
+
+    def test_empty_linkedin_becomes_none(self) -> None:
+        data = CompanyCreate(
+            company_name="Foo",
+            company_linkedin_url="   ",
+        )
+        result = normalize_company_input(data)
+        assert result["linkedin"] is None
+
+    def test_all_fields_populated(self) -> None:
+        data = CompanyCreate(
+            company_name="Gamma Inc",
+            website_url="https://gamma.io",
+            company_linkedin_url="https://linkedin.com/company/gamma",
+        )
+        result = normalize_company_input(data)
+        assert result["domain"] == "gamma.io"
+        assert result["norm_name"] == "gamma"
+        assert result["linkedin"] == "https://linkedin.com/company/gamma"
+
+    def test_whitespace_only_company_name_yields_empty_norm_name(self) -> None:
+        data = CompanyCreate(
+            company_name="   ",
+            website_url=None,
+        )
+        result = normalize_company_input(data)
+        assert result["norm_name"] == ""
+
+
 # ── resolve_or_create_company tests ──────────────────────────────────
 
 
@@ -97,12 +159,14 @@ def clean_db(db: Session) -> Session:
     return db
 
 
+@pytest.mark.serial
 class TestResolveOrCreateCompany:
-    """Integration-style tests using real DB session from conftest."""
+    """Integration-style tests using real DB session from conftest.
 
-    def test_two_urls_same_domain_resolve_to_one(
-        self, clean_db: Session
-    ) -> None:
+    Marked serial to avoid ShareLock deadlock when run in parallel (pytest-xdist).
+    """
+
+    def test_two_urls_same_domain_resolve_to_one(self, clean_db: Session) -> None:
         """Two URLs with same domain should resolve to one company."""
         data_a = CompanyCreate(
             company_name="DomainTest Inc",
@@ -122,11 +186,7 @@ class TestResolveOrCreateCompany:
         assert company_b.id == company_a.id
         assert company_b.name == "DomainTest Inc"
 
-    # TODO(flaky): Intermittent deadlock when run in parallel; consider isolating
-    # or fixing DELETE ordering to avoid ShareLock contention across processes.
-    def test_inc_vs_llc_variants_resolve_to_one(
-        self, clean_db: Session
-    ) -> None:
+    def test_inc_vs_llc_variants_resolve_to_one(self, clean_db: Session) -> None:
         """Inc vs LLC name variants (no URL) should resolve to same company."""
         data_a = CompanyCreate(company_name="NameVariant Inc")
         company_a, created_a = resolve_or_create_company(clean_db, data_a)
@@ -137,9 +197,7 @@ class TestResolveOrCreateCompany:
         assert created_b is False
         assert company_b.id == company_a.id
 
-    def test_different_domains_create_two_companies(
-        self, clean_db: Session
-    ) -> None:
+    def test_different_domains_create_two_companies(self, clean_db: Session) -> None:
         """Different domains should create different companies."""
         data_a = CompanyCreate(
             company_name="DomainAlpha Corp",
@@ -156,9 +214,7 @@ class TestResolveOrCreateCompany:
         assert created_b is True
         assert company_b.id != company_a.id
 
-    def test_no_domain_name_match_only_resolves(
-        self, clean_db: Session
-    ) -> None:
+    def test_no_domain_name_match_only_resolves(self, clean_db: Session) -> None:
         """When no domain/URL/LinkedIn, name match only (current behavior)."""
         data_a = CompanyCreate(company_name="NameMatch Foo Bar Company")
         company_a, created_a = resolve_or_create_company(clean_db, data_a)
@@ -169,9 +225,7 @@ class TestResolveOrCreateCompany:
         assert created_b is False
         assert company_b.id == company_a.id
 
-    def test_linkedin_match_resolves(
-        self, clean_db: Session
-    ) -> None:
+    def test_linkedin_match_resolves(self, clean_db: Session) -> None:
         """LinkedIn URL match should resolve to existing company."""
         linkedin_url = "https://linkedin.com/company/linkedin-test-unique-88"
         data_a = CompanyCreate(

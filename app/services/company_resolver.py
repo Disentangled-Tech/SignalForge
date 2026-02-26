@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import TypedDict
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
@@ -10,6 +11,15 @@ from sqlalchemy.orm import Session
 from app.models.company import Company
 from app.models.company_alias import CompanyAlias
 from app.schemas.company import CompanyCreate
+
+
+class NormalizedCompanyInput(TypedDict):
+    """Output of normalize_company_input — pure normalization, no DB."""
+
+    domain: str | None
+    norm_name: str
+    linkedin: str | None
+
 
 # Suffixes to strip when normalizing company names (case-insensitive)
 _NAME_SUFFIXES = ("inc", "llc", "ltd", "corp", "corporation", "co", "company")
@@ -63,6 +73,17 @@ def extract_domain(url: str) -> str | None:
         return None
 
 
+def normalize_company_input(data: CompanyCreate) -> NormalizedCompanyInput:
+    """Normalize CompanyCreate to domain, norm_name, linkedin — pure, no DB.
+
+    Used for deterministic matching and unit-testable normalization logic.
+    """
+    domain = extract_domain(data.website_url) if data.website_url else None
+    linkedin = (data.company_linkedin_url or "").strip() or None
+    norm_name = normalize_name(data.company_name) if data.company_name else ""
+    return {"domain": domain, "norm_name": norm_name, "linkedin": linkedin}
+
+
 def resolve_or_create_company(db: Session, data: CompanyCreate) -> tuple[Company, bool]:
     """Resolve to existing company or create new one.
 
@@ -74,9 +95,10 @@ def resolve_or_create_company(db: Session, data: CompanyCreate) -> tuple[Company
 
     Returns (company, created) where created is True if a new company was inserted.
     """
-    domain = extract_domain(data.website_url) if data.website_url else None
-    linkedin = (data.company_linkedin_url or "").strip() or None
-    norm_name = normalize_name(data.company_name) if data.company_name else ""
+    normalized = normalize_company_input(data)
+    domain = normalized["domain"]
+    linkedin = normalized["linkedin"]
+    norm_name = normalized["norm_name"]
 
     # 1. Domain match
     if domain:
@@ -103,9 +125,7 @@ def resolve_or_create_company(db: Session, data: CompanyCreate) -> tuple[Company
 
     # 3. LinkedIn match
     if linkedin:
-        existing = db.query(Company).filter(
-            Company.company_linkedin_url == linkedin
-        ).first()
+        existing = db.query(Company).filter(Company.company_linkedin_url == linkedin).first()
         if existing:
             return existing, False
         alias_match = (
