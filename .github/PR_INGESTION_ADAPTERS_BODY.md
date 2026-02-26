@@ -22,7 +22,7 @@ Core types (`repo_activity`, `incorporation`) are always accepted by normalizati
 
 - **`app/ingestion/event_types.py`**: Add `repo_activity` to `SIGNAL_EVENT_TYPES`
 - **`app/ingestion/normalize.py`**: Core types always accepted; pack taxonomy types also accepted when pack provided
-- **`app/ingestion/adapters/github_adapter.py`** (new): Fetches repo/org events; maps to `RawEvent` with `event_type_candidate='repo_activity'`; fetches org metadata for `website_url` (company resolution)
+- **`app/ingestion/adapters/github_adapter.py`** (new): Fetches repo/org events; maps to `RawEvent` with `event_type_candidate='repo_activity'`; fetches org metadata for `website_url` (company resolution); caches owner metadata across runs (`INGEST_GITHUB_CACHE_DIR`, `INGEST_GITHUB_METADATA_CACHE_TTL_SECS`)
 - **`app/ingestion/adapters/__init__.py`**: Export `GitHubAdapter`
 - **`app/services/ingestion/ingest_daily.py`**: Wire when `INGEST_GITHUB_ENABLED=1` and `GITHUB_TOKEN`/`GITHUB_PAT` set
 - **`packs/fractional_cto_v1/`**: Add `repo_activity` to taxonomy, derivers, scoring, esl_policy
@@ -37,6 +37,8 @@ export INGEST_GITHUB_ENABLED=1
 export INGEST_GITHUB_REPOS=owner/repo1,owner/repo2   # and/or
 export INGEST_GITHUB_ORGS=org1,org2
 ```
+
+Optional: `INGEST_GITHUB_CACHE_DIR` (default: `~/.cache/signalforge`), `INGEST_GITHUB_METADATA_CACHE_TTL_SECS` (default: 86400; 0 disables cache).
 
 ---
 

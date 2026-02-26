@@ -6,14 +6,19 @@ When unset, returns [] and logs at debug. No exception.
 
 Config: INGEST_GITHUB_REPOS (comma-separated owner/repo) or
 INGEST_GITHUB_ORGS (comma-separated org names). At least one required.
+
+Owner metadata (blog, html_url) is cached to reduce API calls across runs.
+See INGEST_GITHUB_CACHE_DIR and INGEST_GITHUB_METADATA_CACHE_TTL_SECS.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -28,6 +33,8 @@ _DEFAULT_PAGE_SIZE = 100
 _OWNER_METADATA_DELAY_SECS = 0.5  # Throttle between org/user metadata fetches
 _RETRY_429_ATTEMPTS = 3
 _RETRY_429_BACKOFF_SECS = (60, 120, 300)  # Exponential backoff for 429
+_CACHE_FILENAME = "github_owner_metadata.json"
+_DEFAULT_CACHE_TTL_SECS = 86400  # 24 hours
 
 
 def _get_token() -> str | None:
@@ -101,6 +108,112 @@ def _retry_after_seconds(resp: httpx.Response, attempt: int) -> int:
     return _RETRY_429_BACKOFF_SECS[min(attempt, len(_RETRY_429_BACKOFF_SECS) - 1)]
 
 
+def _get_cache_dir() -> Path | None:
+    """Return cache directory for owner metadata, or None if disabled."""
+    val = os.getenv("INGEST_GITHUB_CACHE_DIR", "").strip()
+    if not val:
+        return Path.home() / ".cache" / "signalforge"
+    return Path(val)
+
+
+def _get_cache_ttl_secs() -> int:
+    """Return cache TTL in seconds. 0 disables cache."""
+    val = os.getenv("INGEST_GITHUB_METADATA_CACHE_TTL_SECS", "").strip()
+    if not val:
+        return _DEFAULT_CACHE_TTL_SECS
+    try:
+        ttl = int(val)
+        return max(0, ttl)
+    except ValueError:
+        return _DEFAULT_CACHE_TTL_SECS
+
+
+def _load_owner_metadata_cache() -> dict[str, dict[str, str | None]]:
+    """Load owner metadata from file cache. Returns {} on failure or disabled."""
+    cache_dir = _get_cache_dir()
+    if cache_dir is None:
+        return {}
+    ttl = _get_cache_ttl_secs()
+    if ttl <= 0:
+        return {}
+    cache_file = cache_dir / _CACHE_FILENAME
+    if not cache_file.exists():
+        return {}
+    try:
+        data = json.loads(cache_file.read_text())
+        if not isinstance(data, dict):
+            return {}
+        now = datetime.now(UTC)
+        result: dict[str, dict[str, str | None]] = {}
+        for owner, entry in data.items():
+            if not isinstance(entry, dict):
+                continue
+            cached_at_str = entry.get("cached_at")
+            if not cached_at_str:
+                continue
+            try:
+                cached_at = datetime.fromisoformat(
+                    str(cached_at_str).replace("Z", "+00:00")
+                )
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=UTC)
+                if (now - cached_at).total_seconds() > ttl:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            result[str(owner)] = {
+                "blog": entry.get("blog"),
+                "html_url": entry.get("html_url"),
+            }
+        return result
+    except Exception as exc:
+        logger.debug("GitHub metadata cache load failed: %s", exc)
+        return {}
+
+
+def _save_owner_metadata_to_cache(
+    owner: str, metadata: dict[str, str | None]
+) -> None:
+    """Save owner metadata to file cache."""
+    cache_dir = _get_cache_dir()
+    if cache_dir is None:
+        return
+    if _get_cache_ttl_secs() <= 0:
+        return
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / _CACHE_FILENAME
+        existing = {}
+        if cache_file.exists():
+            try:
+                data = json.loads(cache_file.read_text())
+                if isinstance(data, dict):
+                    existing = data
+            except Exception:
+                pass
+        entry = {
+            "blog": metadata.get("blog"),
+            "html_url": metadata.get("html_url"),
+            "cached_at": datetime.now(UTC).isoformat(),
+        }
+        existing[owner] = entry
+        cache_file.write_text(json.dumps(existing, indent=0))
+    except Exception as exc:
+        logger.debug("GitHub metadata cache save failed: %s", exc)
+
+
+def clear_owner_metadata_cache() -> None:
+    """Clear in-memory cache and force re-load from file on next fetch. For testing."""
+    global _file_cache_loaded
+    _owner_metadata_memory_cache.clear()
+    _file_cache_loaded = False
+
+
+# In-memory cache for current run (avoids re-read from file within same fetch_events)
+_owner_metadata_memory_cache: dict[str, dict[str, str | None]] = {}
+_file_cache_loaded = False
+
+
 def _fetch_owner_metadata(
     client: httpx.Client,
     token: str,
@@ -108,10 +221,17 @@ def _fetch_owner_metadata(
 ) -> dict[str, str | None]:
     """Fetch org or user metadata. Returns {blog, html_url}.
 
-    Tries GET /orgs/{owner} first, then GET /users/{owner} if 404.
+    Checks file cache first (with TTL). On cache hit, skips API call.
+    On miss: tries GET /orgs/{owner} first, then GET /users/{owner} if 404.
     Throttles with delay between fetches; retries on 429 with backoff.
     Returns empty dict on failure; caller uses None for website_url.
     """
+    global _file_cache_loaded
+    if not _file_cache_loaded and _get_cache_ttl_secs() > 0:
+        _owner_metadata_memory_cache.update(_load_owner_metadata_cache())
+        _file_cache_loaded = True
+    if owner in _owner_metadata_memory_cache:
+        return _owner_metadata_memory_cache[owner]
     time.sleep(_OWNER_METADATA_DELAY_SECS)
     headers = {
         "Authorization": f"Bearer {token}",
@@ -137,10 +257,13 @@ def _fetch_owner_metadata(
                 if isinstance(data, dict):
                     blog = data.get("blog")
                     html_url = data.get("html_url")
-                    return {
+                    meta = {
                         "blog": str(blog).strip() if blog else None,
                         "html_url": str(html_url).strip() if html_url else None,
                     }
+                    _owner_metadata_memory_cache[owner] = meta
+                    _save_owner_metadata_to_cache(owner, meta)
+                    return meta
             except Exception:
                 break
             # Exit attempt loop: 200 but body not a dict, or non-429 error; try next path

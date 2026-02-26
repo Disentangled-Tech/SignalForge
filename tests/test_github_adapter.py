@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from app.ingestion.adapters.github_adapter import GitHubAdapter
+from app.ingestion.adapters.github_adapter import (
+    GitHubAdapter,
+    clear_owner_metadata_cache,
+)
 
 
 class TestGitHubAdapterSourceName:
@@ -508,3 +513,255 @@ class TestGitHubAdapterMocked:
 
         assert len(events) == 1
         assert "commit/abc123def" in (events[0].url or "")
+
+
+@patch("app.ingestion.adapters.github_adapter.time.sleep")
+class TestGitHubAdapterMetadataCache:
+    """Owner metadata cache reduces API calls across runs (follow-up #4)."""
+
+    def test_github_adapter_metadata_cache_hit_skips_api_call(
+        self, mock_sleep: MagicMock, tmp_path: Path
+    ) -> None:
+        """When cache has valid entry for owner, no /orgs/ or /users/ GET."""
+        clear_owner_metadata_cache()
+        cache_file = tmp_path / "github_owner_metadata.json"
+        cache_file.write_text(
+            json.dumps(
+                {
+                    "acme": {
+                        "blog": "https://acme.example.com",
+                        "html_url": "https://github.com/acme",
+                        "cached_at": datetime.now(UTC).isoformat(),
+                    }
+                }
+            )
+        )
+
+        adapter = GitHubAdapter()
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "ev1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "acme/repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GITHUB_TOKEN": "test-token",
+                "INGEST_GITHUB_REPOS": "acme/repo",
+                "INGEST_GITHUB_CACHE_DIR": str(tmp_path),
+                "INGEST_GITHUB_METADATA_CACHE_TTL_SECS": "86400",
+            },
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.return_value = mock_events
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert events[0].website_url == "https://acme.example.com"
+        # Only events endpoint called, not orgs/users metadata
+        call_urls = [
+            str(c[0][0]) if c[0] else str(c[1].get("url", ""))
+            for c in mock_client.get.call_args_list
+        ]
+        assert not any("/orgs/" in u or "/users/" in u for u in call_urls)
+
+    def test_github_adapter_metadata_cache_miss_fetches_and_stores(
+        self, mock_sleep: MagicMock, tmp_path: Path
+    ) -> None:
+        """When cache empty, fetch metadata and store in cache file."""
+        clear_owner_metadata_cache()
+
+        adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {
+            "login": "neworg",
+            "blog": "https://neworg.io",
+            "html_url": "https://github.com/neworg",
+        }
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "ev1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "neworg/repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GITHUB_TOKEN": "test-token",
+                "INGEST_GITHUB_REPOS": "neworg/repo",
+                "INGEST_GITHUB_CACHE_DIR": str(tmp_path),
+                "INGEST_GITHUB_METADATA_CACHE_TTL_SECS": "86400",
+            },
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert events[0].website_url == "https://neworg.io"
+        cache_file = tmp_path / "github_owner_metadata.json"
+        assert cache_file.exists()
+        data = json.loads(cache_file.read_text())
+        assert "neworg" in data
+        assert data["neworg"]["blog"] == "https://neworg.io"
+
+    def test_github_adapter_metadata_cache_ttl_expired_refetches(
+        self, mock_sleep: MagicMock, tmp_path: Path
+    ) -> None:
+        """When cache entry expired (TTL=1, old cached_at), refetch from API."""
+        clear_owner_metadata_cache()
+        from datetime import timedelta
+
+        old_time = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+        cache_file = tmp_path / "github_owner_metadata.json"
+        cache_file.write_text(
+            json.dumps(
+                {
+                    "stale": {
+                        "blog": "https://old.example.com",
+                        "html_url": "https://github.com/stale",
+                        "cached_at": old_time,
+                    }
+                }
+            )
+        )
+
+        adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {
+            "login": "stale",
+            "blog": "https://fresh.example.com",
+            "html_url": "https://github.com/stale",
+        }
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "ev1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "stale/repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GITHUB_TOKEN": "test-token",
+                "INGEST_GITHUB_REPOS": "stale/repo",
+                "INGEST_GITHUB_CACHE_DIR": str(tmp_path),
+                "INGEST_GITHUB_METADATA_CACHE_TTL_SECS": "1",
+            },
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert events[0].website_url == "https://fresh.example.com"
+        data = json.loads(cache_file.read_text())
+        assert data["stale"]["blog"] == "https://fresh.example.com"
+
+    def test_github_adapter_metadata_cache_disabled_when_ttl_zero(
+        self, mock_sleep: MagicMock, tmp_path: Path
+    ) -> None:
+        """When INGEST_GITHUB_METADATA_CACHE_TTL_SECS=0, cache disabled, always fetch."""
+        clear_owner_metadata_cache()
+        cache_file = tmp_path / "github_owner_metadata.json"
+        cache_file.write_text(
+            json.dumps(
+                {
+                    "acme": {
+                        "blog": "https://cached.example.com",
+                        "html_url": "https://github.com/acme",
+                        "cached_at": datetime.now(UTC).isoformat(),
+                    }
+                }
+            )
+        )
+
+        adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {
+            "login": "acme",
+            "blog": "https://api-fetched.example.com",
+            "html_url": "https://github.com/acme",
+        }
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "ev1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "acme/repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GITHUB_TOKEN": "test-token",
+                "INGEST_GITHUB_REPOS": "acme/repo",
+                "INGEST_GITHUB_CACHE_DIR": str(tmp_path),
+                "INGEST_GITHUB_METADATA_CACHE_TTL_SECS": "0",
+            },
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert events[0].website_url == "https://api-fetched.example.com"

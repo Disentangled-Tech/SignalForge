@@ -168,6 +168,11 @@ export INGEST_GITHUB_ENABLED=1
 
 When `GITHUB_TOKEN` (or `GITHUB_PAT`) is unset or empty, the adapter returns `[]` and logs at debug. No exception is raised. When both `INGEST_GITHUB_REPOS` and `INGEST_GITHUB_ORGS` are unset, the adapter is skipped.
 
+**Optional — Owner metadata cache** (reduces API calls across runs):
+
+- **`INGEST_GITHUB_CACHE_DIR`**: Directory for cache file (default: `~/.cache/signalforge`). Metadata is stored in `github_owner_metadata.json`.
+- **`INGEST_GITHUB_METADATA_CACHE_TTL_SECS`**: Cache TTL in seconds (default: 86400 = 24 hours). Set to `0` to disable caching.
+
 ### Rate Limits and Behavior
 
 - GitHub API rate limits apply (5,000 requests/hour for authenticated requests).
@@ -194,6 +199,8 @@ Repository and organization events are mapped to `RawEvent` with:
 ### Company Resolution (Phase 3)
 
 The adapter fetches org/user metadata (`GET /orgs/{owner}` or `GET /users/{owner}`) to obtain the `blog` field. When present and valid, it is normalized to `website_url` in `RawEvent`, enabling the company resolver to match or create companies by domain. If `blog` is empty or points to github.com, `website_url` remains `None` and resolution falls back to name matching.
+
+**Metadata caching**: Org/user metadata is cached to reduce API calls across runs. When cache is enabled (default), repeated ingest runs for the same orgs/repos skip metadata fetches until the TTL expires. This reduces latency and rate-limit usage when many repos share the same owner.
 
 ---
 
