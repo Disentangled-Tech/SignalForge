@@ -27,6 +27,9 @@ SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     "fractional_request",
     "advisor_request",
     "cto_hired",  # suppressor
+    # Core platform types (Issue #244, #250); packs may omit from taxonomy
+    "repo_activity",
+    "incorporation",
 })
 
 
