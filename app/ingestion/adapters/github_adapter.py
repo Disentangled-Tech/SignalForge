@@ -143,6 +143,7 @@ def _fetch_owner_metadata(
                     }
             except Exception:
                 break
+            # Exit attempt loop: 200 but body not a dict, or non-429 error; try next path
             break
     return {}
 

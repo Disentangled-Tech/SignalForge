@@ -31,10 +31,11 @@ class TestGitHubAdapterNoToken:
         assert events == []
 
 
+@patch("app.ingestion.adapters.github_adapter.time.sleep")
 class TestGitHubAdapterMocked:
-    """Tests with mocked httpx."""
+    """Tests with mocked httpx. time.sleep is mocked to avoid 0.5s delay per owner metadata fetch."""
 
-    def test_github_adapter_returns_raw_events_when_mocked(self) -> None:
+    def test_github_adapter_returns_raw_events_when_mocked(self, mock_sleep: MagicMock) -> None:
         """Mock httpx, assert RawEvent shape, event_type_candidate='repo_activity'."""
         adapter = GitHubAdapter()
         mock_response = MagicMock()
@@ -72,7 +73,7 @@ class TestGitHubAdapterMocked:
         assert ev.source_event_id
         assert len(ev.source_event_id) <= 255
 
-    def test_github_adapter_deduplicates_by_source_event_id(self) -> None:
+    def test_github_adapter_deduplicates_by_source_event_id(self, mock_sleep: MagicMock) -> None:
         """Same event in response twice → one RawEvent."""
         adapter = GitHubAdapter()
         event = {
@@ -103,7 +104,7 @@ class TestGitHubAdapterMocked:
 
         assert len(events) == 1
 
-    def test_github_adapter_respects_since(self) -> None:
+    def test_github_adapter_respects_since(self, mock_sleep: MagicMock) -> None:
         """Events older than since are filtered out."""
         adapter = GitHubAdapter()
         mock_response = MagicMock()
@@ -136,7 +137,7 @@ class TestGitHubAdapterMocked:
 
         assert len(events) == 0
 
-    def test_github_adapter_includes_events_after_since(self) -> None:
+    def test_github_adapter_includes_events_after_since(self, mock_sleep: MagicMock) -> None:
         """Events after since are included."""
         adapter = GitHubAdapter()
         mock_response = MagicMock()
@@ -169,7 +170,7 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].event_time.year == 2025
 
-    def test_github_adapter_returns_empty_when_no_repos_or_orgs(self) -> None:
+    def test_github_adapter_returns_empty_when_no_repos_or_orgs(self, mock_sleep: MagicMock) -> None:
         """INGEST_GITHUB_REPOS and INGEST_GITHUB_ORGS both unset → []."""
         adapter = GitHubAdapter()
         with patch.dict(
@@ -186,7 +187,7 @@ class TestGitHubAdapterMocked:
                 events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
         assert events == []
 
-    def test_github_adapter_handles_api_error(self) -> None:
+    def test_github_adapter_handles_api_error(self, mock_sleep: MagicMock) -> None:
         """401/500 → [] without raising."""
         adapter = GitHubAdapter()
         mock_response = MagicMock()
@@ -209,7 +210,7 @@ class TestGitHubAdapterMocked:
 
         assert events == []
 
-    def test_github_adapter_handles_404(self) -> None:
+    def test_github_adapter_handles_404(self, mock_sleep: MagicMock) -> None:
         """404 (repo not found) → skip repo, continue."""
         adapter = GitHubAdapter()
         mock_404 = MagicMock()
@@ -253,7 +254,7 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].raw_payload and events[0].raw_payload.get("repo") == "org/valid-repo"
 
-    def test_github_adapter_populates_website_url_from_org_metadata(self) -> None:
+    def test_github_adapter_populates_website_url_from_org_metadata(self, mock_sleep: MagicMock) -> None:
         """Org with blog → RawEvent.website_url set (Phase 3 company resolution)."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -296,7 +297,7 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url == "https://acme.example.com"
 
-    def test_github_adapter_website_url_none_when_org_has_no_blog(self) -> None:
+    def test_github_adapter_website_url_none_when_org_has_no_blog(self, mock_sleep: MagicMock) -> None:
         """Org with empty blog → website_url=None."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -335,7 +336,7 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url is None
 
-    def test_github_adapter_website_url_adds_https_when_blog_has_no_scheme(self) -> None:
+    def test_github_adapter_website_url_adds_https_when_blog_has_no_scheme(self, mock_sleep: MagicMock) -> None:
         """Blog 'example.com' → website_url 'https://example.com'."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -378,7 +379,7 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url == "https://example.com"
 
-    def test_github_adapter_website_url_none_when_blog_is_github(self) -> None:
+    def test_github_adapter_website_url_none_when_blog_is_github(self, mock_sleep: MagicMock) -> None:
         """Blog pointing to github.com → website_url=None (org profile, not company site)."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -421,7 +422,7 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url is None
 
-    def test_github_adapter_org_events_use_owner_metadata(self) -> None:
+    def test_github_adapter_org_events_use_owner_metadata(self, mock_sleep: MagicMock) -> None:
         """Org events (INGEST_GITHUB_ORGS) fetch owner metadata for website_url."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -468,7 +469,7 @@ class TestGitHubAdapterMocked:
         assert events[0].website_url == "https://myorg.io"
         assert events[0].company_name == "myorg"
 
-    def test_github_adapter_push_event_commit_url_from_payload(self) -> None:
+    def test_github_adapter_push_event_commit_url_from_payload(self, mock_sleep: MagicMock) -> None:
         """PushEvent with payload.head uses commit URL."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()

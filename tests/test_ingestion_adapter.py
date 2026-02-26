@@ -145,12 +145,13 @@ def test_run_ingest_github_stores_signal_event_with_company_id(db: Session) -> N
         },
         clear=False,
     ):
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client_cls.return_value.__enter__.return_value = mock_client
+        with patch("app.ingestion.adapters.github_adapter.time.sleep"):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client_cls.return_value.__enter__.return_value = mock_client
 
-            adapter = GitHubAdapter()
-            since = datetime(2026, 2, 1, tzinfo=UTC)
-            result = run_ingest(db, adapter, since)
+                adapter = GitHubAdapter()
+                since = datetime(2026, 2, 1, tzinfo=UTC)
+                result = run_ingest(db, adapter, since)
 
     assert result["inserted"] == 1, f"Expected 1 inserted, got {result}"
     assert result["skipped_duplicate"] == 0
