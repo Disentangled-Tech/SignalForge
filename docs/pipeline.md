@@ -48,6 +48,52 @@ When `INGEST_USE_TEST_ADAPTER=1`, only TestAdapter is returned. Otherwise, Crunc
 
 For detailed setup, API key acquisition, rate limits, and pagination, see [ingestion-adapters.md](ingestion-adapters.md).
 
+## Daily Aggregation Job (Issue #246)
+
+The **daily aggregation job** is the recommended entry point for cron. It runs ingest → derive → score in a single call, ensuring correct stage order and returning a ranked list of emerging companies.
+
+### Flow
+
+| Step | Stage | Action |
+|------|-------|--------|
+| 1 | Ingest | `run_ingest_daily` — fetch events, normalize, resolve companies, store `signal_events` |
+| 2 | Derive | `run_deriver` — populate `signal_instances` from `SignalEvents` |
+| 3 | Score | `run_score_nightly` — compute TRS + ESL, write snapshots, update lead_feed |
+| 4 | Output | Ranked companies via `get_emerging_companies` (or `get_emerging_companies_from_feed`) |
+
+### Endpoint
+
+- **`POST /internal/run_daily_aggregation`**
+  - **Auth**: `X-Internal-Token` header required.
+  - **Idempotency**: `X-Idempotency-Key` header (optional). Use workspace-scoped keys (e.g. `{workspace_id}:{date}`).
+  - **Query params**: `workspace_id`, `pack_id` (optional; same resolution as other stages).
+  - **Response**: `status`, `job_run_id`, `inserted`, `companies_scored`, `ranked_count`, `error`.
+
+### Cron Recommendation
+
+- **Option A (recommended)**: Call `POST /internal/run_daily_aggregation` once per day.
+- **Option B (granular)**: `POST /internal/run_ingest` (hourly) + `POST /internal/run_derive` + `POST /internal/run_score` (daily).
+
+Option A simplifies operations and ensures correct stage order.
+
+### Environment Variables
+
+Same as individual stages. See [ingestion-adapters.md](ingestion-adapters.md) for adapter-specific vars:
+
+- `INGEST_USE_TEST_ADAPTER=1` — tests only; uses TestAdapter only.
+- `CRUNCHBASE_API_KEY`, `INGEST_CRUNCHBASE_ENABLED=1` — Crunchbase.
+- `PRODUCTHUNT_API_TOKEN`, `INGEST_PRODUCTHUNT_ENABLED=1` — Product Hunt.
+- `NEWSAPI_API_KEY`, `INGEST_NEWSAPI_ENABLED=1` — NewsAPI.
+- `INTERNAL_JOB_TOKEN` — required for all `/internal/*` endpoints.
+
+### CLI
+
+```bash
+make signals-daily
+# or
+uv run python scripts/run_daily_aggregation.py
+```
+
 ## Scan vs Ingest/Derive/Score
 
 Two pipelines feed the fractional CTO use case; they use different data models and entry points.

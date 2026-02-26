@@ -4,6 +4,8 @@ This document describes the source adapters used by the daily ingestion pipeline
 
 See [pipeline.md](pipeline.md) for the high-level adapter table and pipeline flow.
 
+**Recommended entry point for cron**: Use `POST /internal/run_daily_aggregation` (see [pipeline.md](pipeline.md#daily-aggregation-job-issue-246)) to run ingest → derive → score in one call. For granular control, you can call `run_ingest`, `run_derive`, and `run_score` separately.
+
 ---
 
 ## Overview
