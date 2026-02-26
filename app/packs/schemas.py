@@ -5,6 +5,8 @@ for cross-reference consistency. Raises ValidationError on invalid config.
 
 Phase 1 (Issue #190): playbook refs, semver (optional), ethical gates.
 Phase 2 (Issue #190): regex safety validation for derivers (ADR-008).
+Pack v2 (pack_v2_contract): schema_version optional in manifest (default "1"); v2
+validation (core signal_ids, optional taxonomy/derivers) in later milestones.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import logging
 import re
 from typing import Any
 
+from app.core_taxonomy.loader import get_core_signal_ids
 from app.packs.ethical_constants import validate_esl_policy_against_core_bans
 from app.packs.regex_validator import validate_deriver_regex_safety
 
@@ -38,6 +41,20 @@ class ValidationError(Exception):
     pass
 
 
+def get_schema_version(manifest: dict[str, Any]) -> str:
+    """Return pack schema version from manifest (Pack v2 contract).
+
+    When schema_version is missing or empty, returns "1". Used by validation
+    and loader to branch behavior for v2 (core signal_ids, optional taxonomy/derivers).
+    """
+    val = manifest.get("schema_version")
+    if val is None:
+        return "1"
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    return "1"
+
+
 def validate_pack_schema(
     manifest: dict[str, Any],
     taxonomy: dict[str, Any],
@@ -52,7 +69,7 @@ def validate_pack_schema(
     """Validate pack config for required fields and cross-references.
 
     Args:
-        manifest: pack.json content
+        manifest: pack.json content (schema_version optional; default "1").
         taxonomy: taxonomy.yaml content
         scoring: scoring.yaml content
         esl_policy: esl_policy.yaml content
@@ -67,11 +84,11 @@ def validate_pack_schema(
     _validate_manifest(manifest)
     if strict_semver:
         _validate_version_semver(manifest)
-    signal_ids = _validate_taxonomy(taxonomy)
+    signal_ids = _validate_taxonomy(manifest, taxonomy)
     if strict_explainability:
         _validate_explainability(taxonomy, signal_ids)
     _validate_scoring(scoring, signal_ids)
-    _validate_derivers(derivers, signal_ids)
+    _validate_derivers(derivers, signal_ids, manifest)
     validate_deriver_regex_safety(derivers)
     _validate_esl_policy(esl_policy, signal_ids)
     _validate_playbooks(playbooks, taxonomy, esl_policy)
@@ -79,30 +96,51 @@ def validate_pack_schema(
 
 
 def _validate_manifest(manifest: dict[str, Any]) -> None:
-    """Validate manifest has required fields: id, version, name, schema_version."""
+    """Validate manifest has required fields: id, version, name.
+
+    schema_version is optional (default "1", see get_schema_version). If present,
+    it must be a non-empty string.
+    """
     if not manifest:
         raise ValidationError("manifest is required and must not be empty")
-    required = ("id", "version", "name", "schema_version")
+    required = ("id", "version", "name")
     for key in required:
         if key not in manifest:
             raise ValidationError(f"manifest missing required field: {key}")
         val = manifest[key]
         if val is None or (isinstance(val, str) and not val.strip()):
             raise ValidationError(f"manifest field '{key}' must not be empty")
+    # schema_version optional; when present must be non-empty
+    sv = manifest.get("schema_version")
+    if sv is not None and (not isinstance(sv, str) or not sv.strip()):
+        raise ValidationError("manifest field 'schema_version' when present must be non-empty")
 
 
-def _validate_taxonomy(taxonomy: dict[str, Any]) -> set[str]:
-    """Validate taxonomy has non-empty signal_ids. Returns signal_ids set."""
+def _get_allowed_signal_ids(manifest: dict[str, Any], taxonomy: dict[str, Any]) -> set[str]:
+    """Return allowed signal_ids for scoring/ESL/derivers validation (Pack v2 M2).
+
+    For schema_version "2": returns core taxonomy signal_ids (pack may omit
+    signal_ids or have labels/explainability only). For schema_version "1":
+    returns pack taxonomy signal_ids (taxonomy must have non-empty signal_ids).
+    """
+    if manifest.get("schema_version") == "2":
+        return set(get_core_signal_ids())
+    ids = taxonomy.get("signal_ids")
+    if ids is None or not isinstance(ids, list) or len(ids) == 0:
+        raise ValidationError("taxonomy must have non-empty signal_ids (schema_version 1)")
+    return {str(s) for s in ids if s is not None and str(s).strip()}
+
+
+def _validate_taxonomy(manifest: dict[str, Any], taxonomy: dict[str, Any]) -> set[str]:
+    """Validate taxonomy and return allowed signal_ids set for cross-ref validation.
+
+    schema_version "2": taxonomy must be a dict; signal_ids optional (labels/
+    explainability only). Returns core signal_ids. schema_version "1": requires
+    non-empty taxonomy.signal_ids; returns pack signal_ids.
+    """
     if not isinstance(taxonomy, dict):
         raise ValidationError("taxonomy must be a dict")
-    ids = taxonomy.get("signal_ids")
-    if ids is None:
-        raise ValidationError("taxonomy must have signal_ids")
-    if not isinstance(ids, list):
-        raise ValidationError("taxonomy signal_ids must be a list")
-    if len(ids) == 0:
-        raise ValidationError("taxonomy signal_ids must not be empty")
-    return {str(s) for s in ids if s is not None and str(s).strip()}
+    return _get_allowed_signal_ids(manifest, taxonomy)
 
 
 def _validate_scoring(scoring: dict[str, Any], signal_ids: set[str]) -> None:
@@ -176,14 +214,20 @@ def _validate_scoring(scoring: dict[str, Any], signal_ids: set[str]) -> None:
                 )
 
 
-def _validate_derivers(derivers: dict[str, Any], signal_ids: set[str]) -> None:
-    """Validate derivers passthrough and pattern signal_ids are in taxonomy.
+def _validate_derivers(
+    derivers: dict[str, Any],
+    signal_ids: set[str],
+    manifest: dict[str, Any],
+) -> None:
+    """Validate derivers passthrough and pattern signal_ids are in allowed set.
 
     Pack structure: derivers must be under the "derivers" key, e.g.:
       derivers:
         passthrough: [...]
         pattern: [...]
 
+    For schema_version "2": if derivers absent or empty (no passthrough/pattern),
+    skip validation. Otherwise validate against allowed signal_ids (core).
     Pattern source_fields (when present) must be a subset of allowed fields:
     title, summary, url, source.
     """
@@ -192,9 +236,12 @@ def _validate_derivers(derivers: dict[str, Any], signal_ids: set[str]) -> None:
     inner = derivers.get("derivers") or {}
     if not isinstance(inner, dict):
         return
+    passthrough = inner.get("passthrough") or []
+    pattern_list = inner.get("pattern") or []
+    if manifest.get("schema_version") == "2" and not passthrough and not pattern_list:
+        return
 
     # Passthrough derivers
-    passthrough = inner.get("passthrough") or []
     if isinstance(passthrough, list):
         for i, entry in enumerate(passthrough):
             if not isinstance(entry, dict):
@@ -210,7 +257,6 @@ def _validate_derivers(derivers: dict[str, Any], signal_ids: set[str]) -> None:
                 )
 
     # Pattern derivers (Phase 1, Issue #173)
-    pattern_list = inner.get("pattern") or []
     if isinstance(pattern_list, list):
         for i, entry in enumerate(pattern_list):
             if not isinstance(entry, dict):

@@ -1,4 +1,3 @@
-"""Tests for daily aggregation job (Issue #246, Phase 1)."""
 """Tests for daily aggregation job (Issue #246, Phase 4)."""
 
 from __future__ import annotations

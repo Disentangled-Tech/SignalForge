@@ -12,9 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, SignalEvent, SignalInstance
 from app.pipeline.deriver_engine import (
-    _build_passthrough_map,
-    _build_pattern_derivers,
     _evaluate_event_derivers,
+    _load_core_derivers,
     run_deriver,
 )
 
@@ -111,94 +110,17 @@ def _make_event(
     return ev
 
 
-class TestBuildPassthroughMap:
-    """Tests for _build_passthrough_map."""
+class TestLoadCoreDerivers:
+    """Tests for _load_core_derivers (Issue #285: core derivers only)."""
 
-    def test_empty_pack_returns_empty(self) -> None:
-        """None or empty pack returns empty map."""
-        assert _build_passthrough_map(None) == {}
-        from types import SimpleNamespace
-
-        empty = SimpleNamespace(derivers=None)
-        assert _build_passthrough_map(empty) == {}
-
-    def test_passthrough_from_pack(self) -> None:
-        """Pack with passthrough derivers produces event_type -> signal_id map."""
-        pack = SimpleNamespace(
-            derivers={
-                "passthrough": [
-                    {"event_type": "funding_raised", "signal_id": "funding_raised"},
-                    {"event_type": "cto_role_posted", "signal_id": "cto_role_posted"},
-                ]
-            }
-        )
-        m = _build_passthrough_map(pack)
-        assert m["funding_raised"] == "funding_raised"
-        assert m["cto_role_posted"] == "cto_role_posted"
-
-
-class TestBuildPatternDerivers:
-    """Tests for _build_pattern_derivers (Phase 1, Issue #173)."""
-
-    def test_empty_pack_returns_empty(self) -> None:
-        """None or empty pack returns empty list."""
-        assert _build_pattern_derivers(None) == []
-        assert _build_pattern_derivers(SimpleNamespace(derivers=None)) == []
-
-    def test_pattern_from_pack(self) -> None:
-        """Pack with pattern derivers produces list of configs with compiled regex."""
-        pack = SimpleNamespace(
-            derivers={
-                "derivers": {
-                    "pattern": [
-                        {
-                            "pattern": r"(?i)compliance",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["title", "summary"],
-                        },
-                    ],
-                }
-            }
-        )
-        result = _build_pattern_derivers(pack)
-        assert len(result) == 1
-        assert result[0]["signal_id"] == "compliance_mentioned"
-        assert result[0]["compiled"].search("We need SOC2 compliance")
-        assert result[0]["source_fields"] == ["title", "summary"]
-        assert result[0]["min_confidence"] is None
-
-    def test_pattern_source_fields_url_and_source_preserved(self) -> None:
-        """Pack source_fields url/source pass runtime filter (ALLOWED_PATTERN_SOURCE_FIELDS).
-
-        Schema validates url and source; deriver must not silently fall back to
-        title/summary when pack specifies valid url or source.
-        """
-        pack = SimpleNamespace(
-            derivers={
-                "derivers": {
-                    "pattern": [
-                        {
-                            "pattern": r"compliance",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["url"],
-                        },
-                        {
-                            "pattern": r"crunchbase",
-                            "signal_id": "funding_raised",
-                            "source_fields": ["title", "summary", "url", "source"],
-                        },
-                    ],
-                }
-            }
-        )
-        result = _build_pattern_derivers(pack)
-        assert len(result) == 2
-        assert result[0]["source_fields"] == ["url"], (
-            "url must be preserved; was silently filtered by _DEFAULT_PATTERN_SOURCE_FIELDS"
-        )
-        assert result[1]["source_fields"] == ["title", "summary", "url", "source"], (
-            "url and source must be preserved with title/summary"
-        )
+    def test_load_core_derivers_returns_passthrough_and_patterns(self) -> None:
+        """_load_core_derivers returns (passthrough_map, pattern_derivers)."""
+        passthrough, pattern_derivers = _load_core_derivers()
+        assert isinstance(passthrough, dict)
+        assert isinstance(pattern_derivers, list)
+        assert len(passthrough) > 0, "Core derivers must define passthrough mappings"
+        assert passthrough.get("funding_raised") == "funding_raised"
+        assert passthrough.get("cto_role_posted") == "cto_role_posted"
 
 
 class TestEvaluateEventDerivers:
@@ -508,9 +430,7 @@ class TestRunDeriver:
     def test_deriver_pattern_produces_signal_instance(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Pattern deriver matches title/summary and produces SignalInstance (Phase 1)."""
-        from app.packs.loader import Pack
-
+        """Passthrough deriver produces SignalInstance; core derivers only (Issue #285)."""
         company = Company(
             name="PatternTestCo",
             domain="pattern.example.com",
@@ -530,37 +450,12 @@ class TestRunDeriver:
         )
         db.commit()
 
-        mock_pack = Pack(
-            manifest={"id": "test", "version": "1", "name": "Test", "schema_version": "1"},
-            taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
-            scoring={},
-            esl_policy={},
-            playbooks={},
-            derivers={
-                "derivers": {
-                    "passthrough": [
-                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
-                    ],
-                    "pattern": [
-                        {
-                            "pattern": r"(?i)(soc2|compliance)",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["title", "summary"],
-                        },
-                    ],
-                }
-            },
-            config_checksum="",
-        )
-
-        with patch(
-            "app.pipeline.deriver_engine.resolve_pack",
-            return_value=mock_pack,
-        ):
-            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        # Deriver uses core derivers only (Issue #285); pack derivers are ignored.
+        # Core has passthrough for funding_raised but no pattern for compliance_mentioned.
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
         assert result["status"] == "completed"
-        assert result["instances_upserted"] == 2
+        assert result["instances_upserted"] == 1
         assert result["events_processed"] == 1
 
         instances = (
@@ -572,7 +467,7 @@ class TestRunDeriver:
             .all()
         )
         signal_ids = {i.signal_id for i in instances}
-        assert signal_ids == {"funding_raised", "compliance_mentioned"}
+        assert signal_ids == {"funding_raised"}
 
     def test_deriver_evidence_populated(self, db: Session, fractional_cto_pack_id) -> None:
         """Deriver populates evidence_event_ids with contributing SignalEvent IDs (Phase 2)."""
@@ -815,7 +710,7 @@ class TestRunDeriver:
     def test_cross_pack_different_signals_from_same_events(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Two packs produce different signal_ids from the same events (pack isolation)."""
+        """Same events produce same signal_ids (core derivers); instances are pack-scoped (Issue #285)."""
         from app.models import SignalPack
         from app.packs.loader import Pack
 
@@ -924,9 +819,10 @@ class TestRunDeriver:
             )
             signal_ids_b = {i.signal_id for i in instances_b}
 
-        assert signal_ids_cto == {"funding_raised", "compliance_mentioned"}
-        assert signal_ids_b == {"revenue_milestone"}
-        assert signal_ids_cto != signal_ids_b
+        # Deriver uses core derivers only (Issue #285); both packs get same core passthrough.
+        assert signal_ids_cto == {"funding_raised"}
+        assert signal_ids_b == {"funding_raised"}
+        assert signal_ids_cto == signal_ids_b
 
         # Cleanup: remove test pack (cascade deletes its signal_instances)
         db.query(SignalPack).filter(SignalPack.id == pack_b_id).delete()

@@ -118,11 +118,15 @@ def load_pack(pack_id: str, version: str) -> Pack:
     if manifest.get("version") != version:
         raise ValueError(f"Pack {pack_id} version {manifest.get('version')} != requested {version}")
 
+    is_v2 = manifest.get("schema_version") == "2"
     taxonomy_path = pack_dir / "taxonomy.yaml"
-    if not taxonomy_path.exists():
+    if taxonomy_path.exists():
+        with taxonomy_path.open() as f:
+            taxonomy = yaml.safe_load(f) or {}
+    elif is_v2:
+        taxonomy = {}
+    else:
         raise FileNotFoundError(f"taxonomy.yaml not found: {taxonomy_path}")
-    with taxonomy_path.open() as f:
-        taxonomy = yaml.safe_load(f) or {}
 
     scoring_path = pack_dir / "scoring.yaml"
     if not scoring_path.exists():
@@ -137,10 +141,13 @@ def load_pack(pack_id: str, version: str) -> Pack:
         esl_policy = yaml.safe_load(f) or {}
 
     derivers_path = pack_dir / "derivers.yaml"
-    if not derivers_path.exists():
+    if derivers_path.exists():
+        with derivers_path.open() as f:
+            derivers = yaml.safe_load(f) or {}
+    elif is_v2:
+        derivers = {}
+    else:
         raise FileNotFoundError(f"derivers.yaml not found: {derivers_path}")
-    with derivers_path.open() as f:
-        derivers = yaml.safe_load(f) or {}
 
     playbooks_dir = pack_dir / "playbooks"
     playbooks_dict: dict = {}
