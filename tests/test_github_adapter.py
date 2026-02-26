@@ -234,10 +234,19 @@ class TestGitHubAdapterMocked:
             },
             clear=False,
         ):
-            with patch("app.ingestion.adapters.github_adapter.httpx") as mock_httpx:
+            with patch("httpx.Client") as mock_client_cls:
                 mock_client = MagicMock()
-                mock_httpx.Client.return_value.__enter__.return_value = mock_client
-                mock_client.get.side_effect = [mock_404, mock_200]
+
+                def _mock_get(*args, **kwargs):
+                    url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+                    if "/orgs/" in url_str or "/users/" in url_str:
+                        return mock_404
+                    if "/repos/org/nonexistent/" in url_str:
+                        return mock_404
+                    return mock_200
+
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
 
                 events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
 
@@ -245,19 +254,8 @@ class TestGitHubAdapterMocked:
         assert events[0].raw_payload and events[0].raw_payload.get("repo") == "org/valid-repo"
 
     def test_github_adapter_populates_website_url_from_org_metadata(self) -> None:
-        """When org API returns blog, RawEvent has website_url (Phase 3 company resolution)."""
+        """Org with blog → RawEvent.website_url set (Phase 3 company resolution)."""
         adapter = GitHubAdapter()
-        mock_events = MagicMock()
-        mock_events.status_code = 200
-        mock_events.json.return_value = [
-            {
-                "id": "42",
-                "type": "PushEvent",
-                "created_at": "2025-01-20T10:00:00Z",
-                "repo": {"name": "acme/cool-repo"},
-                "actor": {"login": "dev"},
-            }
-        ]
         mock_org = MagicMock()
         mock_org.status_code = 200
         mock_org.json.return_value = {
@@ -265,60 +263,71 @@ class TestGitHubAdapterMocked:
             "blog": "https://acme.example.com",
             "html_url": "https://github.com/acme",
         }
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "ev1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "acme/repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
 
         with patch.dict(
             "os.environ",
-            {
-                "GITHUB_TOKEN": "test-token",
-                "INGEST_GITHUB_REPOS": "acme/cool-repo",
-            },
+            {"GITHUB_TOKEN": "test-token", "INGEST_GITHUB_REPOS": "acme/repo"},
             clear=False,
         ):
             with patch("httpx.Client") as mock_client_cls:
                 mock_client = MagicMock()
-                # Call order: orgs/acme (org metadata), repos/acme/cool-repo/events
-                mock_client.get.side_effect = [mock_org, mock_events]
+                mock_client.get.side_effect = _mock_get
                 mock_client_cls.return_value.__enter__.return_value = mock_client
 
                 events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
 
         assert len(events) == 1
         assert events[0].website_url == "https://acme.example.com"
-        assert events[0].company_name == "acme"
 
     def test_github_adapter_website_url_none_when_org_has_no_blog(self) -> None:
-        """When org API returns empty blog, RawEvent has website_url=None."""
+        """Org with empty blog → website_url=None."""
         adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {"login": "noblog", "blog": "", "html_url": "https://github.com/noblog"}
         mock_events = MagicMock()
         mock_events.status_code = 200
         mock_events.json.return_value = [
             {
-                "id": "99",
+                "id": "ev2",
                 "type": "PushEvent",
-                "created_at": "2025-01-20T10:00:00Z",
+                "created_at": "2025-01-15T12:00:00Z",
                 "repo": {"name": "noblog/repo"},
                 "actor": {"login": "dev"},
             }
         ]
-        mock_org = MagicMock()
-        mock_org.status_code = 200
-        mock_org.json.return_value = {
-            "login": "noblog",
-            "blog": "",
-            "html_url": "https://github.com/noblog",
-        }
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
 
         with patch.dict(
             "os.environ",
-            {
-                "GITHUB_TOKEN": "test-token",
-                "INGEST_GITHUB_REPOS": "noblog/repo",
-            },
+            {"GITHUB_TOKEN": "test-token", "INGEST_GITHUB_REPOS": "noblog/repo"},
             clear=False,
         ):
             with patch("httpx.Client") as mock_client_cls:
                 mock_client = MagicMock()
-                mock_client.get.side_effect = [mock_org, mock_events]
+                mock_client.get.side_effect = _mock_get
                 mock_client_cls.return_value.__enter__.return_value = mock_client
 
                 events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
@@ -326,44 +335,175 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url is None
 
-    def test_github_adapter_website_url_adds_https_when_blog_has_no_scheme(
-        self,
-    ) -> None:
+    def test_github_adapter_website_url_adds_https_when_blog_has_no_scheme(self) -> None:
         """Blog 'example.com' → website_url 'https://example.com'."""
         adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {
+            "login": "bare",
+            "blog": "example.com",
+            "html_url": "https://github.com/bare",
+        }
         mock_events = MagicMock()
         mock_events.status_code = 200
         mock_events.json.return_value = [
             {
-                "id": "77",
+                "id": "ev3",
                 "type": "PushEvent",
-                "created_at": "2025-01-20T10:00:00Z",
-                "repo": {"name": "foo/bar"},
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "bare/repo"},
                 "actor": {"login": "dev"},
             }
         ]
-        mock_org = MagicMock()
-        mock_org.status_code = 200
-        mock_org.json.return_value = {
-            "login": "foo",
-            "blog": "example.com",
-            "html_url": "https://github.com/foo",
-        }
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
 
         with patch.dict(
             "os.environ",
-            {
-                "GITHUB_TOKEN": "test-token",
-                "INGEST_GITHUB_REPOS": "foo/bar",
-            },
+            {"GITHUB_TOKEN": "test-token", "INGEST_GITHUB_REPOS": "bare/repo"},
             clear=False,
         ):
             with patch("httpx.Client") as mock_client_cls:
                 mock_client = MagicMock()
-                mock_client.get.side_effect = [mock_org, mock_events]
+                mock_client.get.side_effect = _mock_get
                 mock_client_cls.return_value.__enter__.return_value = mock_client
 
                 events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
 
         assert len(events) == 1
         assert events[0].website_url == "https://example.com"
+
+    def test_github_adapter_website_url_none_when_blog_is_github(self) -> None:
+        """Blog pointing to github.com → website_url=None (org profile, not company site)."""
+        adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {
+            "login": "ghorg",
+            "blog": "https://github.com/ghorg",
+            "html_url": "https://github.com/ghorg",
+        }
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "ev4",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "ghorg/repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
+
+        with patch.dict(
+            "os.environ",
+            {"GITHUB_TOKEN": "test-token", "INGEST_GITHUB_REPOS": "ghorg/repo"},
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert events[0].website_url is None
+
+    def test_github_adapter_org_events_use_owner_metadata(self) -> None:
+        """Org events (INGEST_GITHUB_ORGS) fetch owner metadata for website_url."""
+        adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {
+            "login": "myorg",
+            "blog": "https://myorg.io",
+            "html_url": "https://github.com/myorg",
+        }
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "org-ev1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "myorg/some-repo"},
+                "actor": {"login": "dev"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            # /orgs/X or /users/X (no /events) -> org/user metadata
+            if "/orgs/" in url_str and "/events" not in url_str:
+                return mock_org
+            if "/users/" in url_str and "/events" not in url_str:
+                return mock_org
+            return mock_events
+
+        with patch.dict(
+            "os.environ",
+            {"GITHUB_TOKEN": "test-token", "INGEST_GITHUB_ORGS": "myorg"},
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert events[0].website_url == "https://myorg.io"
+        assert events[0].company_name == "myorg"
+
+    def test_github_adapter_push_event_commit_url_from_payload(self) -> None:
+        """PushEvent with payload.head uses commit URL."""
+        adapter = GitHubAdapter()
+        mock_org = MagicMock()
+        mock_org.status_code = 200
+        mock_org.json.return_value = {"login": "acme", "blog": "", "html_url": "https://github.com/acme"}
+        mock_events = MagicMock()
+        mock_events.status_code = 200
+        mock_events.json.return_value = [
+            {
+                "id": "push1",
+                "type": "PushEvent",
+                "created_at": "2025-01-15T12:00:00Z",
+                "repo": {"name": "acme/repo"},
+                "actor": {"login": "dev"},
+                "payload": {"head": "abc123def", "before": "000"},
+            }
+        ]
+
+        def _mock_get(*args, **kwargs):
+            url_str = str(args[0]) if args else str(kwargs.get("url", ""))
+            if "/orgs/" in url_str or "/users/" in url_str:
+                return mock_org
+            return mock_events
+
+        with patch.dict(
+            "os.environ",
+            {"GITHUB_TOKEN": "test-token", "INGEST_GITHUB_REPOS": "acme/repo"},
+            clear=False,
+        ):
+            with patch("httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get.side_effect = _mock_get
+                mock_client_cls.return_value.__enter__.return_value = mock_client
+
+                events = adapter.fetch_events(since=datetime(2025, 1, 1, tzinfo=UTC))
+
+        assert len(events) == 1
+        assert "commit/abc123def" in (events[0].url or "")

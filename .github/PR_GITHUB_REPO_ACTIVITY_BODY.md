@@ -1,6 +1,6 @@
 # GitHub Provider + REPO_ACTIVITY (Issue #244)
 
-Relates to https://github.com/Disentangled-Tech/SignalForge/issues/244
+Relates to #244
 
 ## Summary
 

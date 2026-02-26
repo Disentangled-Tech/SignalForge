@@ -170,8 +170,10 @@ When `GITHUB_TOKEN` (or `GITHUB_PAT`) is unset or empty, the adapter returns `[]
 ### Rate Limits and Behavior
 
 - GitHub API rate limits apply (5,000 requests/hour for authenticated requests).
-- **401/403/404/429/500**: Pagination stops for that repo/org; a warning is logged.
+- **429 Too Many Requests**: Adapter retries up to 3 times with exponential backoff (60s, 120s, 300s) or `Retry-After` header when present.
+- **401/403/404/500**: Pagination stops for that repo/org; a warning is logged.
 - **404**: Repo or org not found; logged at debug.
+- **Owner metadata throttling**: A 0.5s delay is applied between org/user metadata fetches to avoid burst rate limiting.
 - Events are filtered by `event_time >= since`; pagination continues until the page is full or no more events.
 
 ### Security: Token in API Requests
@@ -187,6 +189,10 @@ Repository and organization events are mapped to `RawEvent` with:
 - `event_time` from `created_at`
 - `url`: repo URL, commit URL (PushEvent), or PR URL (PullRequestEvent)
 - `url` is truncated to 2048 characters; `source_event_id` is stable and unique per event
+
+### Company Resolution (Phase 3)
+
+The adapter fetches org/user metadata (`GET /orgs/{owner}` or `GET /users/{owner}`) to obtain the `blog` field. When present and valid, it is normalized to `website_url` in `RawEvent`, enabling the company resolver to match or create companies by domain. If `blog` is empty or points to github.com, `website_url` remains `None` and resolution falls back to name matching.
 
 ---
 

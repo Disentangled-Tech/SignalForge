@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 _GITHUB_API_BASE = "https://api.github.com"
 _DEFAULT_PAGE_SIZE = 100
+_OWNER_METADATA_DELAY_SECS = 0.5  # Throttle between org/user metadata fetches
+_RETRY_429_ATTEMPTS = 3
+_RETRY_429_BACKOFF_SECS = (60, 120, 300)  # Exponential backoff for 429
 
 
 def _get_token() -> str | None:
@@ -73,7 +77,81 @@ def _source_event_id(repo_name: str, event_id: str | int, event_type: str) -> st
     return sid[:255] if len(sid) > 255 else sid
 
 
-def _event_to_raw_event(ev: dict, repo_name: str) -> RawEvent | None:
+def _website_url_from_blog(blog: str | None) -> str | None:
+    """Normalize GitHub org/user blog to website_url for company resolution.
+
+    Returns None if blog is empty, or if it points to github.com (org profile).
+    Otherwise returns a valid URL (adds https:// if missing).
+    """
+    if not blog or not str(blog).strip():
+        return None
+    s = str(blog).strip()
+    if "github.com" in s.lower():
+        return None
+    if s.startswith(("http://", "https://")):
+        return s[:2048] if len(s) > 2048 else s
+    return f"https://{s}"[:2048]
+
+
+def _retry_after_seconds(resp: httpx.Response, attempt: int) -> int:
+    """Return seconds to wait before retry. Uses Retry-After header or backoff."""
+    retry_after = resp.headers.get("Retry-After")
+    if retry_after and retry_after.isdigit():
+        return int(retry_after)
+    return _RETRY_429_BACKOFF_SECS[min(attempt, len(_RETRY_429_BACKOFF_SECS) - 1)]
+
+
+def _fetch_owner_metadata(
+    client: httpx.Client,
+    token: str,
+    owner: str,
+) -> dict[str, str | None]:
+    """Fetch org or user metadata. Returns {blog, html_url}.
+
+    Tries GET /orgs/{owner} first, then GET /users/{owner} if 404.
+    Throttles with delay between fetches; retries on 429 with backoff.
+    Returns empty dict on failure; caller uses None for website_url.
+    """
+    time.sleep(_OWNER_METADATA_DELAY_SECS)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    for path in (f"/orgs/{owner}", f"/users/{owner}"):
+        for attempt in range(_RETRY_429_ATTEMPTS):
+            try:
+                resp = client.get(
+                    f"{_GITHUB_API_BASE}{path}",
+                    headers=headers,
+                    timeout=10.0,
+                )
+                if resp.status_code == 429 and attempt < _RETRY_429_ATTEMPTS - 1:
+                    wait = _retry_after_seconds(resp, attempt)
+                    logger.warning("GitHub 429 for %s – retrying in %ds", path, wait)
+                    time.sleep(wait)
+                    continue
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+                if isinstance(data, dict):
+                    blog = data.get("blog")
+                    html_url = data.get("html_url")
+                    return {
+                        "blog": str(blog).strip() if blog else None,
+                        "html_url": str(html_url).strip() if html_url else None,
+                    }
+            except Exception:
+                break
+            break
+    return {}
+
+
+def _event_to_raw_event(
+    ev: dict,
+    repo_name: str,
+    owner_metadata: dict[str, dict[str, str | None]] | None = None,
+) -> RawEvent | None:
     """Map a GitHub API event to RawEvent."""
     ev_id = ev.get("id")
     if ev_id is None:
@@ -93,6 +171,13 @@ def _event_to_raw_event(ev: dict, repo_name: str) -> RawEvent | None:
     if not company_name or len(company_name) > 255:
         company_name = company_name[:255] if company_name else "Unknown"
 
+    # website_url from org/user metadata (Phase 3: company resolution)
+    website_url: str | None = None
+    if owner_metadata and owner in owner_metadata:
+        meta = owner_metadata[owner]
+        blog = meta.get("blog") if isinstance(meta, dict) else None
+        website_url = _website_url_from_blog(blog)
+
     url = f"https://github.com/{repo_name}"
     if ev_type == "PushEvent" and isinstance(ev.get("payload"), dict):
         payload = ev["payload"]
@@ -108,7 +193,7 @@ def _event_to_raw_event(ev: dict, repo_name: str) -> RawEvent | None:
     return RawEvent(
         company_name=company_name,
         domain=None,
-        website_url=None,
+        website_url=website_url,
         company_profile_url=None,
         event_type_candidate="repo_activity",
         event_time=created_at,
@@ -122,6 +207,30 @@ def _event_to_raw_event(ev: dict, repo_name: str) -> RawEvent | None:
             "repo": repo_name,
         },
     )
+
+
+def _fetch_with_retry(
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    params: dict[str, int],
+) -> tuple[httpx.Response | None, int]:
+    """GET with 429 retry. Returns (response, status_code)."""
+    last_status = 500
+    for attempt in range(_RETRY_429_ATTEMPTS):
+        try:
+            response = client.get(url, headers=headers, params=params, timeout=30.0)
+            last_status = response.status_code
+            if response.status_code == 429 and attempt < _RETRY_429_ATTEMPTS - 1:
+                wait = _retry_after_seconds(response, attempt)
+                logger.warning("GitHub 429 for %s – retrying in %ds", url[:80], wait)
+                time.sleep(wait)
+                continue
+            return response, last_status
+        except Exception as exc:
+            logger.warning("GitHub request failed: %s", exc)
+            return None, 500
+    return None, last_status
 
 
 def _fetch_repo_events(
@@ -140,16 +249,16 @@ def _fetch_repo_events(
         "X-GitHub-Api-Version": "2022-11-28",
     }
     params = {"per_page": _DEFAULT_PAGE_SIZE, "page": page}
+    response, status = _fetch_with_retry(client, url, headers, params)
+    if response is None or status != 200:
+        return [], status
     try:
-        response = client.get(url, headers=headers, params=params, timeout=30.0)
-        if response.status_code != 200:
-            return [], response.status_code
         data = response.json()
         if not isinstance(data, list):
             return [], 500
         return data, 200
     except Exception as exc:
-        logger.warning("GitHub repo events request failed: %s", exc)
+        logger.warning("GitHub repo events parse failed: %s", exc)
         return [], 500
 
 
@@ -168,16 +277,16 @@ def _fetch_org_events(
         "X-GitHub-Api-Version": "2022-11-28",
     }
     params = {"per_page": _DEFAULT_PAGE_SIZE, "page": page}
+    response, status = _fetch_with_retry(client, url, headers, params)
+    if response is None or status != 200:
+        return [], status
     try:
-        response = client.get(url, headers=headers, params=params, timeout=30.0)
-        if response.status_code != 200:
-            return [], response.status_code
         data = response.json()
         if not isinstance(data, list):
             return [], 500
         return data, 200
     except Exception as exc:
-        logger.warning("GitHub org events request failed: %s", exc)
+        logger.warning("GitHub org events parse failed: %s", exc)
         return [], 500
 
 
@@ -207,6 +316,11 @@ class GitHubAdapter(SourceAdapter):
 
         events: list[RawEvent] = []
         seen_ids: set[str] = set()
+        owner_metadata: dict[str, dict[str, str | None]] = {}
+
+        def _ensure_owner_metadata(owner: str) -> None:
+            if owner and owner not in owner_metadata:
+                owner_metadata[owner] = _fetch_owner_metadata(client, token, owner)
 
         with httpx.Client() as client:
             for repo_spec in repos:
@@ -215,6 +329,7 @@ class GitHubAdapter(SourceAdapter):
                     continue
                 parts = repo_spec.split("/", 1)
                 owner, repo = parts[0], parts[1]
+                _ensure_owner_metadata(owner)
                 page = 1
                 while True:
                     evs, status = _fetch_repo_events(client, token, owner, repo, since, page)
@@ -225,7 +340,7 @@ class GitHubAdapter(SourceAdapter):
                             logger.warning("GitHub returned %s for %s", status, repo_spec[:30])
                         break
                     for ev in evs:
-                        raw = _event_to_raw_event(ev, repo_spec)
+                        raw = _event_to_raw_event(ev, repo_spec, owner_metadata)
                         if raw and raw.source_event_id and raw.source_event_id not in seen_ids:
                             if raw.event_time >= since:
                                 seen_ids.add(raw.source_event_id)
@@ -235,6 +350,7 @@ class GitHubAdapter(SourceAdapter):
                     page += 1
 
             for org in orgs:
+                _ensure_owner_metadata(org)
                 page = 1
                 while True:
                     evs, status = _fetch_org_events(client, token, org, since, page)
@@ -247,7 +363,9 @@ class GitHubAdapter(SourceAdapter):
                     for ev in evs:
                         repo_info = ev.get("repo") or {}
                         repo_name = repo_info.get("name", org) if isinstance(repo_info, dict) else org
-                        raw = _event_to_raw_event(ev, repo_name)
+                        ev_owner = repo_name.split("/")[0] if "/" in repo_name else repo_name
+                        _ensure_owner_metadata(ev_owner)
+                        raw = _event_to_raw_event(ev, repo_name, owner_metadata)
                         if raw and raw.source_event_id and raw.source_event_id not in seen_ids:
                             if raw.event_time >= since:
                                 seen_ids.add(raw.source_event_id)
