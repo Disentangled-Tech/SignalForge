@@ -279,6 +279,48 @@ class TestGetAdaptersUnit:
 
         assert len(adapters) == 0
 
+    def test_debug_fallback_uses_test_adapter_when_no_adapters_configured(
+        self,
+    ) -> None:
+        """When no adapters configured and DEBUG=true, fallback to TestAdapter (Issue #90)."""
+        from app.services.ingestion.ingest_daily import _get_adapters
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "",
+                "INGEST_CRUNCHBASE_ENABLED": "",
+                "INGEST_PRODUCTHUNT_ENABLED": "",
+                "INGEST_NEWSAPI_ENABLED": "",
+                "INGEST_GITHUB_ENABLED": "",
+                "INGEST_DELAWARE_SOCRATA_ENABLED": "",
+                "DEBUG": "true",
+            },
+            clear=False,
+        ):
+            adapters = _get_adapters()
+
+        assert len(adapters) == 1
+        assert isinstance(adapters[0], TestAdapter)
+        assert adapters[0].source_name == "test"
+
+    def test_no_debug_fallback_when_debug_false(self) -> None:
+        """When no adapters configured and DEBUG=false, return empty list."""
+        from app.services.ingestion.ingest_daily import _get_adapters
+
+        with patch.dict(
+            "os.environ",
+            {
+                "INGEST_USE_TEST_ADAPTER": "",
+                "INGEST_CRUNCHBASE_ENABLED": "",
+                "DEBUG": "false",
+            },
+            clear=False,
+        ):
+            adapters = _get_adapters()
+
+        assert len(adapters) == 0
+
     def test_crunchbase_excluded_when_disabled(self) -> None:
         """INGEST_CRUNCHBASE_ENABLED=0 or unset → no Crunchbase."""
         from app.services.ingestion.ingest_daily import _get_adapters
