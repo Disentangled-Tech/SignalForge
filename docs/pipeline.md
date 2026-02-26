@@ -18,6 +18,7 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
   - `pack_id` (UUID): Pack to use for scoring. When omitted, uses workspace's `active_pack_id`; falls back to default pack when workspace has none.
 - **Validation**: Invalid UUIDs for `workspace_id` or `pack_id` return **422 Unprocessable Entity** with detail `"Invalid {param}: must be a valid UUID"`.
 - **Pack resolution**: When `pack_id` omitted, `get_pack_for_workspace(db, workspace_id)` resolves the pack. Ensures workspace-specific pack selection for multi-tenant readiness.
+- **Issue #287 (M3)**: Score reads from core SignalInstances (via evidence events); applies the workspace pack for weights and ESL rubric; writes pack-scoped ReadinessSnapshot and EngagementSnapshot.
 
 ### POST /internal/run_derive
 

@@ -771,3 +771,67 @@ class TestIngestDeriveScoreParity:
             f"Derive→core score composite should match legacy within 1 point: "
             f"legacy={composite_legacy} core={composite_core}"
         )
+
+    @pytest.mark.integration
+    def test_parity_run_derive_no_pack_then_score_with_pack_produces_composite(
+        self,
+        db: Session,
+        fractional_cto_pack_id,
+        core_pack_id,
+    ) -> None:
+        """run_derive(pack_id=None) → run_score(pack_id=workspace_pack) produces valid composite (Issue #287 M6).
+
+        Backward compatibility: derive without pack (writes to core) then score with
+        workspace pack yields same snapshot shape and composite as derive-with-pack path.
+        """
+        from app.pipeline.deriver_engine import run_deriver
+        from app.services.ingestion.ingest_daily import run_ingest_daily
+        from app.services.readiness.score_nightly import run_score_nightly
+
+        with patch("app.services.readiness.score_nightly.date") as mock_date:
+            mock_date.today.return_value = _PARITY_INGEST_AS_OF
+
+            run_ingest_daily(db)
+            companies = (
+                db.query(Company)
+                .filter(Company.domain.in_(_PARITY_TEST_DOMAINS))
+                .order_by(Company.domain)
+                .all()
+            )
+            assert len(companies) >= 1
+
+            derive_result = run_deriver(db, pack_id=None, company_ids=[c.id for c in companies])
+            assert derive_result["status"] == "completed", (
+                f"run_deriver(pack_id=None) must complete when core pack exists: {derive_result}"
+            )
+            assert derive_result["instances_upserted"] >= 1
+
+            instances = (
+                db.query(SignalInstance)
+                .filter(
+                    SignalInstance.entity_id.in_(c.id for c in companies),
+                    SignalInstance.pack_id == core_pack_id,
+                )
+                .all()
+            )
+            assert len(instances) >= 1, "Derive (no pack) must write to core SignalInstances"
+
+            score_result = run_score_nightly(db, pack_id=fractional_cto_pack_id)
+            assert score_result["status"] == "completed"
+            assert score_result["companies_scored"] >= 1
+
+            snapshots = (
+                db.query(ReadinessSnapshot)
+                .filter(
+                    ReadinessSnapshot.company_id.in_(c.id for c in companies),
+                    ReadinessSnapshot.as_of == _PARITY_INGEST_AS_OF,
+                    ReadinessSnapshot.pack_id == fractional_cto_pack_id,
+                )
+                .all()
+            )
+            assert len(snapshots) >= 1, (
+                "run_score(with pack) must produce pack-scoped ReadinessSnapshots from core instances"
+            )
+            for snap in snapshots:
+                assert 0 <= snap.composite <= 100
+                assert snap.explain is not None

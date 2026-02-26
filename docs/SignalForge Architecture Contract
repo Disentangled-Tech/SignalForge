@@ -34,7 +34,7 @@ SignalForge operates in five conceptual layers:
 	4.	Scoring / ESL — Weighted interpretation of signals
 	5.	Outreach / Recommendations — Prompt-driven action suggestions
 
-Only layers 4 and 5 are pack-influenced.
+Only layers 4 and 5 are pack-influenced. The score stage reads core signals (SignalInstances) and applies pack interpretation (weights and ESL rubric); see Issue #287.
 
 ⸻
 
