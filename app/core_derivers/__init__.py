@@ -1,3 +1,9 @@
+"""Core Derivers (Issue #285, Milestone 2).
+
+Provides pack-independent canonical event_type -> signal_id mappings and
+compiled pattern derivers for the derive stage.
+"""
+
 """Core derivers package (Issue #285, Milestone 2).
 
 Provides canonical passthrough and pattern derivers that are pack-independent.

@@ -570,7 +570,8 @@ class TestRunDeriver:
             result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
         assert result["status"] == "completed"
-        assert result["instances_upserted"] == 2
+        # Core overrides pack: only passthrough applies (no pattern in core), so 1 instance
+        assert result["instances_upserted"] == 1
         assert result["events_processed"] == 1
 
         instances = (
@@ -582,7 +583,8 @@ class TestRunDeriver:
             .all()
         )
         signal_ids = {i.signal_id for i in instances}
-        assert signal_ids == {"funding_raised", "compliance_mentioned"}
+        # Core passthrough: funding_raised -> funding_raised; pack pattern ignored
+        assert signal_ids == {"funding_raised"}
 
     def test_deriver_evidence_populated(self, db: Session, fractional_cto_pack_id) -> None:
         """Deriver populates evidence_event_ids with contributing SignalEvent IDs (Phase 2)."""
@@ -825,7 +827,13 @@ class TestRunDeriver:
     def test_cross_pack_different_signals_from_same_events(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Two packs produce different signal_ids from the same events (pack isolation)."""
+        """Core derivers override pack-specific mappings; pack isolation via event filtering.
+
+        Issue #285, Milestone 3: core derivers produce the same signal_ids regardless of
+        pack-specific deriver config. Pack isolation is maintained by event filtering
+        (SignalEvent.pack_id == pack_uuid): each pack's run processes only its own events,
+        producing signal_instances in its own pack namespace.
+        """
         from app.models import SignalPack
         from app.packs.loader import Pack
 
@@ -868,7 +876,7 @@ class TestRunDeriver:
         )
         db.commit()
 
-        # Pack A (fractional_cto): passthrough funding_raised + pattern compliance
+        # Pack A (fractional_cto): custom derivers — funding_raised + compliance pattern
         pack_cto = Pack(
             manifest={"id": "cto", "version": "1", "name": "CTO", "schema_version": "1"},
             taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
@@ -892,7 +900,7 @@ class TestRunDeriver:
             config_checksum="",
         )
 
-        # Pack B (bookkeeping): only maps funding_raised -> revenue_milestone, no pattern
+        # Pack B (bookkeeping): custom derivers — funding_raised -> revenue_milestone
         pack_bookkeeping = Pack(
             manifest={
                 "id": "bookkeeping",
@@ -949,9 +957,20 @@ class TestRunDeriver:
             )
             signal_ids_b = {i.signal_id for i in instances_b}
 
-        assert signal_ids_cto == {"funding_raised", "compliance_mentioned"}
-        assert signal_ids_b == {"revenue_milestone"}
-        assert signal_ids_cto != signal_ids_b
+        # Core overrides both packs: funding_raised -> funding_raised (not pack-custom signals)
+        assert signal_ids_cto == {"funding_raised"}, (
+            f"Core override: expected {{'funding_raised'}}, got {signal_ids_cto!r}"
+        )
+        assert signal_ids_b == {"funding_raised"}, (
+            f"Core override: expected {{'funding_raised'}}, got {signal_ids_b!r}"
+        )
+        # Both produce same signal_ids (core is pack-agnostic)
+        assert signal_ids_cto == signal_ids_b
+        # Pack isolation maintained: each pack has its own signal_instances (separate pack_id)
+        assert len(instances_cto) == 1
+        assert len(instances_b) == 1
+        assert instances_cto[0].pack_id == fractional_cto_pack_id
+        assert instances_b[0].pack_id == pack_b_id
 
         # Cleanup: remove test pack (cascade deletes its signal_instances)
         db.query(SignalPack).filter(SignalPack.id == pack_b_id).delete()

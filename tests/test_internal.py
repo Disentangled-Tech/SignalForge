@@ -638,6 +638,37 @@ class TestRunDailyAggregation:
         mock_run_stage.assert_called_once()
         assert mock_run_stage.call_args[1]["job_type"] == "daily_aggregation"
 
+    @patch("app.pipeline.executor.run_stage")
+    def test_ranked_count_reflects_all_scored_companies_not_outreach_threshold(
+        self, mock_run_stage, client: TestClient
+    ):
+        """ranked_count = all scored companies; outreach_score_threshold=0 is applied by orchestrator.
+
+        The orchestrator passes outreach_score_threshold=0 to get_emerging_companies, so
+        ranked_count includes every company with any readiness score, not just those above
+        the configured outreach threshold (default 30). The API surfaces this count unchanged.
+        """
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 101,
+            "ingest_result": {"inserted": 5},
+            "score_result": {"companies_scored": 8},
+            # 8 companies scored; all 8 appear in ranked_count because threshold=0
+            "ranked_count": 8,
+            "error": None,
+        }
+
+        response = client.post(
+            "/internal/run_daily_aggregation",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # ranked_count surfaces the orchestrator's all-scored count, not a filtered subset
+        assert data["ranked_count"] == 8
+        assert data["companies_scored"] == 8
+
     def test_run_daily_aggregation_requires_token(self, client: TestClient):
         """POST /internal/run_daily_aggregation without token returns 422."""
         response = client.post("/internal/run_daily_aggregation")
