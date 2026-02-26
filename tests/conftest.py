@@ -137,6 +137,16 @@ def fractional_cto_pack_id(db):
 
 
 @pytest.fixture
+def core_pack_id(db):
+    """UUID of core pack sentinel (Issue #287 M1). Use for derive output assertions."""
+    from app.services.pack_resolver import get_core_pack_id
+    core_id = get_core_pack_id(db)
+    if core_id is None:
+        pytest.skip("core pack not installed (run migration 20260226_core_pack_sentinel)")
+    return core_id
+
+
+@pytest.fixture
 def bookkeeping_pack_id(db):
     """UUID of bookkeeping_v1 pack (Issue #175, Phase 3). Use for ESL gate tests."""
     from app.models import SignalPack

@@ -57,6 +57,7 @@ def generate_ore_recommendation(
     trs = snapshot.composite
 
     # Compute or use provided ESL (Issue #106)
+    # ESL signal set: legacy (pack-scoped); not passing core_pack_id (Issue #287).
     if stability_modifier is not None:
         sm = stability_modifier
         esl_composite = sm

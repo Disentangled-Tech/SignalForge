@@ -517,28 +517,45 @@ class TestRunDerive:
         )
         assert response.status_code == 403
 
-    def test_run_derive_returns_400_when_no_pack(self, client: TestClient):
-        """POST /internal/run_derive returns 400 when executor raises (no pack, Phase 3)."""
-        from fastapi import HTTPException
+    def test_run_derive_without_pack_returns_200(self, client: TestClient):
+        """POST /internal/run_derive without pack_id returns 200 (Issue #287 M2).
 
-        def _raise_no_pack(*args, **kwargs):
-            raise HTTPException(
-                status_code=400,
-                detail="Derive stage requires a pack; no pack available",
-            )
+        Derive runs without a pack; uses core pack. Response is 200 with status
+        completed or skipped (never 400 for missing pack).
+        """
+        response = client.post(
+            "/internal/run_derive",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] in ("completed", "skipped")
+        assert "job_run_id" in data
+        assert "instances_upserted" in data
+        assert "events_processed" in data
 
-        with patch(
-            "app.pipeline.executor.run_stage",
-            side_effect=_raise_no_pack,
-        ):
+    def test_run_derive_without_pack_calls_stage_with_pack_id_none(
+        self, client: TestClient
+    ) -> None:
+        """POST /internal/run_derive without pack_id passes pack_id=None to run_stage (M2)."""
+        with patch("app.pipeline.executor.run_stage") as mock_run_stage:
+            mock_run_stage.return_value = {
+                "status": "completed",
+                "job_run_id": 1,
+                "instances_upserted": 0,
+                "events_processed": 0,
+                "events_skipped": 0,
+                "error": None,
+            }
             response = client.post(
                 "/internal/run_derive",
                 headers={"X-Internal-Token": VALID_TOKEN},
             )
-        assert response.status_code == 400
-        data = response.json()
-        assert "detail" in data
-        assert "Derive stage requires a pack" in str(data["detail"])
+        assert response.status_code == 200
+        mock_run_stage.assert_called_once()
+        call_kwargs = mock_run_stage.call_args[1]
+        assert call_kwargs["job_type"] == "derive"
+        assert call_kwargs["pack_id"] is None
 
 
 # ── /internal/run_ingest ────────────────────────────────────────────

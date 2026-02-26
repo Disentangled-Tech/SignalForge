@@ -250,17 +250,46 @@ class TestRunDeriver:
     """Tests for run_deriver."""
 
     def test_no_pack_skipped(self, db: Session) -> None:
-        """When no pack available, returns skipped."""
-        with patch("app.pipeline.deriver_engine.get_default_pack_id", return_value=None):
+        """When core pack not installed, returns skipped (Issue #287 M2)."""
+        with patch("app.pipeline.deriver_engine.get_core_pack_id", return_value=None):
             result = run_deriver(db, pack_id=None)
         assert result["status"] == "skipped"
         assert result["instances_upserted"] == 0
-        assert "No pack" in (result.get("error") or "")
+        assert "Core pack" in (result.get("error") or "")
+
+    def test_deriver_with_pack_id_none_succeeds_when_core_installed(
+        self, db: Session, fractional_cto_pack_id, core_pack_id
+    ) -> None:
+        """run_deriver(pack_id=None) completes and writes to core when core pack exists (Issue #287 M2)."""
+        company = Company(
+            name="NoPackCo",
+            domain="stablecore.example.com",
+            website_url="https://stablecore.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+        _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
+        db.commit()
+
+        result = run_deriver(db, pack_id=None, company_ids=[company.id])
+        assert result["status"] == "completed"
+        assert result["instances_upserted"] == 1
+        instances = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.pack_id == core_pack_id,
+            )
+            .all()
+        )
+        assert len(instances) == 1
+        assert instances[0].signal_id == "funding_raised"
 
     def test_deriver_passthrough_populates_signal_instances(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
-        """Deriver applies passthrough, upserts signal_instances from SignalEvents."""
+        """Deriver applies passthrough, upserts signal_instances to core pack (Issue #287 M2)."""
         company = Company(
             name="DeriverTestCo",
             domain="deriver.example.com",
@@ -284,7 +313,7 @@ class TestRunDeriver:
             db.query(SignalInstance)
             .filter(
                 SignalInstance.entity_id == company.id,
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .all()
         )
@@ -330,7 +359,7 @@ class TestRunDeriver:
             )
 
     def test_deriver_aggregates_multiple_events_same_signal(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
         """Multiple events for same (entity, signal) aggregate first_seen/last_seen."""
         company = Company(
@@ -355,7 +384,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -363,7 +392,9 @@ class TestRunDeriver:
         assert inst.first_seen == t1
         assert inst.last_seen == t2
 
-    def test_deriver_idempotent_rerun_same_count(self, db: Session, fractional_cto_pack_id) -> None:
+    def test_deriver_idempotent_rerun_same_count(
+        self, db: Session, fractional_cto_pack_id, core_pack_id
+    ) -> None:
         """Run derive twice; second run produces same signal_instances (idempotent)."""
         company = Company(
             name="IdemCo",
@@ -385,7 +416,7 @@ class TestRunDeriver:
             db.query(SignalInstance)
             .filter(
                 SignalInstance.entity_id == company.id,
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .count()
         )
@@ -399,14 +430,14 @@ class TestRunDeriver:
             db.query(SignalInstance)
             .filter(
                 SignalInstance.entity_id == company.id,
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .count()
         )
         assert count_after_second == 1, "Idempotent: rerun must not duplicate"
 
     def test_deriver_skips_events_not_in_passthrough(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
         """Events with event_type not in pack passthrough are skipped."""
         company = Company(
@@ -469,7 +500,7 @@ class TestRunDeriver:
         assert result["events_skipped"] >= 1
 
     def test_deriver_pattern_produces_signal_instance(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
         """Core derivers passthrough produces SignalInstance (Issue #285 M6: core only).
 
@@ -504,14 +535,16 @@ class TestRunDeriver:
             db.query(SignalInstance)
             .filter(
                 SignalInstance.entity_id == company.id,
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .all()
         )
         signal_ids = {i.signal_id for i in instances}
         assert signal_ids == {"funding_raised"}
 
-    def test_deriver_evidence_populated(self, db: Session, fractional_cto_pack_id) -> None:
+    def test_deriver_evidence_populated(
+        self, db: Session, fractional_cto_pack_id, core_pack_id
+    ) -> None:
         """Deriver populates evidence_event_ids with contributing SignalEvent IDs (Phase 2)."""
         company = Company(
             name="EvidenceCo",
@@ -535,7 +568,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -543,7 +576,9 @@ class TestRunDeriver:
         assert inst.evidence_event_ids is not None
         assert set(inst.evidence_event_ids) == {ev1.id, ev2.id}
 
-    def test_deriver_evidence_single_event(self, db: Session, fractional_cto_pack_id) -> None:
+    def test_deriver_evidence_single_event(
+        self, db: Session, fractional_cto_pack_id, core_pack_id
+    ) -> None:
         """Single event produces evidence_event_ids with one ID."""
         company = Company(
             name="SingleEvCo",
@@ -565,14 +600,16 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
         assert inst is not None
         assert inst.evidence_event_ids == [ev.id]
 
-    def test_deriver_evidence_merge_on_rerun(self, db: Session, fractional_cto_pack_id) -> None:
+    def test_deriver_evidence_merge_on_rerun(
+        self, db: Session, fractional_cto_pack_id, core_pack_id
+    ) -> None:
         """Re-run merges evidence_event_ids instead of replacing (idempotency, traceability)."""
         company = Company(
             name="MergeCo",
@@ -594,7 +631,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -613,7 +650,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -624,7 +661,7 @@ class TestRunDeriver:
         )
 
     def test_deriver_evidence_merge_handles_null_and_empty_existing(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
         """Merge works when existing evidence_event_ids is NULL or [] (idempotency)."""
         company = Company(
@@ -648,7 +685,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -663,7 +700,7 @@ class TestRunDeriver:
                 "UPDATE signal_instances SET evidence_event_ids = '[]'::jsonb "
                 "WHERE entity_id = :eid AND signal_id = :sid AND pack_id = CAST(:pid AS uuid)"
             ),
-            {"eid": company.id, "sid": "funding_raised", "pid": str(fractional_cto_pack_id)},
+            {"eid": company.id, "sid": "funding_raised", "pid": str(core_pack_id)},
         )
         db.commit()
 
@@ -677,7 +714,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -694,7 +731,7 @@ class TestRunDeriver:
             .where(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .values(evidence_event_ids=None)
         )
@@ -710,7 +747,7 @@ class TestRunDeriver:
             .filter(
                 SignalInstance.entity_id == company.id,
                 SignalInstance.signal_id == "funding_raised",
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .first()
         )
@@ -719,7 +756,9 @@ class TestRunDeriver:
         ids = [x for x in (inst.evidence_event_ids or []) if x is not None]
         assert ev.id in ids, f"Merge from NULL failed: ev.id not in {inst.evidence_event_ids}"
 
-    def test_deriver_logs_triggered(self, db: Session, fractional_cto_pack_id, caplog) -> None:
+    def test_deriver_logs_triggered(
+        self, db: Session, fractional_cto_pack_id, core_pack_id, caplog
+    ) -> None:
         """Deriver logs deriver_triggered at INFO for each signal produced (Phase 3)."""
         import logging
 
@@ -750,17 +789,15 @@ class TestRunDeriver:
         assert "deriver_type=passthrough" in triggered[0].message
 
     def test_cross_pack_different_signals_from_same_events(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
-        """Core derivers override pack-specific mappings; pack isolation via event filtering.
+        """Core derivers produce same signal_ids; all instances written to core (Issue #287 M2).
 
-        Issue #285, Milestone 3: core derivers produce the same signal_ids regardless of
-        pack-specific deriver config. Pack isolation is maintained by event filtering
-        (SignalEvent.pack_id == pack_uuid): each pack's run processes only its own events,
-        producing signal_instances in its own pack namespace.
+        Issue #285: core derivers are pack-agnostic. Issue #287 M2: derive always writes
+        to core pack_id regardless of passed pack. Events from any pack are processed
+        (no SignalEvent.pack_id filter); all instances go to core.
         """
         from app.models import SignalPack
-        from app.packs.loader import Pack
 
         company = Company(
             name="CrossPackCo",
@@ -782,7 +819,7 @@ class TestRunDeriver:
         db.refresh(pack_b_row)
         pack_b_id = pack_b_row.id
 
-        # Same event content, but pack-scoped: one event per pack
+        # Same event content, events in two different packs
         _make_event(
             db,
             company.id,
@@ -801,97 +838,22 @@ class TestRunDeriver:
         )
         db.commit()
 
-        # Pack A (fractional_cto): custom derivers — funding_raised + compliance pattern
-        pack_cto = Pack(
-            manifest={"id": "cto", "version": "1", "name": "CTO", "schema_version": "1"},
-            taxonomy={"signal_ids": ["funding_raised", "compliance_mentioned"]},
-            scoring={},
-            esl_policy={},
-            playbooks={},
-            derivers={
-                "derivers": {
-                    "passthrough": [
-                        {"event_type": "funding_raised", "signal_id": "funding_raised"},
-                    ],
-                    "pattern": [
-                        {
-                            "pattern": r"(?i)(soc2|compliance)",
-                            "signal_id": "compliance_mentioned",
-                            "source_fields": ["title", "summary"],
-                        },
-                    ],
-                }
-            },
-            config_checksum="",
-        )
-
-        # Pack B (bookkeeping): custom derivers — funding_raised -> revenue_milestone
-        pack_bookkeeping = Pack(
-            manifest={
-                "id": "bookkeeping",
-                "version": "1",
-                "name": "Bookkeeping",
-                "schema_version": "1",
-            },
-            taxonomy={"signal_ids": ["revenue_milestone"]},
-            scoring={},
-            esl_policy={},
-            playbooks={},
-            derivers={
-                "derivers": {
-                    "passthrough": [
-                        {"event_type": "funding_raised", "signal_id": "revenue_milestone"},
-                    ],
-                }
-            },
-            config_checksum="",
-        )
-
-        with patch(
-            "app.pipeline.deriver_engine.resolve_pack",
-            side_effect=[pack_cto, pack_bookkeeping],
-        ):
-            # Core derivers only (Issue #285 M6): both packs get same signal_ids from core.
-            # Run deriver with pack A (CTO)
-            run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
-            instances_cto = (
-                db.query(SignalInstance)
-                .filter(
-                    SignalInstance.entity_id == company.id,
-                    SignalInstance.pack_id == fractional_cto_pack_id,
-                )
-                .all()
+        # Run deriver (no pack filter on events); both events processed, instances to core
+        run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        instances_core = (
+            db.query(SignalInstance)
+            .filter(
+                SignalInstance.entity_id == company.id,
+                SignalInstance.pack_id == core_pack_id,
             )
-            signal_ids_cto = {i.signal_id for i in instances_cto}
-
-            # Run deriver with pack B (bookkeeping) - use different pack_id
-            run_deriver(db, pack_id=pack_b_id, company_ids=[company.id])
-            instances_b = (
-                db.query(SignalInstance)
-                .filter(
-                    SignalInstance.entity_id == company.id,
-                    SignalInstance.pack_id == pack_b_id,
-                )
-                .all()
-            )
-            signal_ids_b = {i.signal_id for i in instances_b}
-
-        # Core overrides both packs: funding_raised -> funding_raised (not pack-custom signals)
-        assert signal_ids_cto == {"funding_raised"}, (
-            f"Core override: expected {{'funding_raised'}}, got {signal_ids_cto!r}"
+            .all()
         )
-        assert signal_ids_b == {"funding_raised"}, (
-            f"Core override: expected {{'funding_raised'}}, got {signal_ids_b!r}"
-        )
-        # Both produce same signal_ids (core is pack-agnostic)
-        assert signal_ids_cto == signal_ids_b
-        # Pack isolation maintained: each pack has its own signal_instances (separate pack_id)
-        assert len(instances_cto) == 1
-        assert len(instances_b) == 1
-        assert instances_cto[0].pack_id == fractional_cto_pack_id
-        assert instances_b[0].pack_id == pack_b_id
+        # Two events (same signal) aggregate to one instance under core
+        assert len(instances_core) == 1
+        assert instances_core[0].signal_id == "funding_raised"
+        assert instances_core[0].pack_id == core_pack_id
 
-        # Cleanup: remove test pack (cascade deletes its signal_instances)
+        # Cleanup: remove test pack
         db.query(SignalPack).filter(SignalPack.id == pack_b_id).delete()
         db.commit()
 
@@ -900,14 +862,13 @@ class TestMilestone3CoreDeriverBehavior:
     """Issue #285: deriver uses core derivers only (Milestone 6: pack fallback removed)."""
 
     def test_deriver_missing_pack_does_not_block(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
         """When pack has no derivers, core derivers are used; derive succeeds (not skipped).
 
         Issue #285, Milestone 3: pack.derivers = {} / None must not block derive.
+        Issue #287 M2: derive does not load pack manifest; uses core derivers only.
         """
-        from app.packs.loader import Pack
-
         company = Company(
             name="NoDeriversCo",
             domain="noderivers.example.com",
@@ -920,21 +881,9 @@ class TestMilestone3CoreDeriverBehavior:
         _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
         db.commit()
 
-        # Pack with empty derivers dict (no passthrough, no pattern)
-        mock_pack = Pack(
-            manifest={"id": "empty", "version": "1", "name": "Empty", "schema_version": "1"},
-            taxonomy={"signal_ids": ["funding_raised"]},
-            scoring={},
-            esl_policy={},
-            playbooks={},
-            derivers={},
-            config_checksum="",
-        )
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
-        with patch("app.pipeline.deriver_engine.resolve_pack", return_value=mock_pack):
-            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
-
-        # Core derivers succeed; derive is not skipped even though pack has no derivers
+        # Core derivers succeed; derive is not skipped
         assert result["status"] == "completed", (
             f"Expected 'completed' (core derivers used), got {result['status']!r}: "
             f"{result.get('error')}"
@@ -946,7 +895,7 @@ class TestMilestone3CoreDeriverBehavior:
             db.query(SignalInstance)
             .filter(
                 SignalInstance.entity_id == company.id,
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .all()
         )
@@ -956,15 +905,12 @@ class TestMilestone3CoreDeriverBehavior:
         )
 
     def test_deriver_with_v2_pack_without_derivers_file_uses_core(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
-        """Pack that omits derivers.yaml (example_v2) loads and derive uses core derivers (M5).
+        """Pack that omits derivers.yaml (example_v2): derive uses core derivers and completes.
 
-        Issue #285, Milestone 5: load_pack('example_v2', '1') has no derivers.yaml on disk;
-        resolve_pack returns that pack; deriver uses core derivers and completes.
+        Issue #285 M5 / #287 M2: deriver does not load pack; uses core derivers only.
         """
-        from app.packs.loader import load_pack
-
         company = Company(
             name="V2NoDeriversCo",
             domain="v2noderivers.example.com",
@@ -977,14 +923,10 @@ class TestMilestone3CoreDeriverBehavior:
         _make_event(db, company.id, "funding_raised", fractional_cto_pack_id)
         db.commit()
 
-        v2_pack = load_pack("example_v2", "1")
-        assert v2_pack.derivers == {}, "example_v2 must have no derivers (omits derivers.yaml)"
-
-        with patch("app.pipeline.deriver_engine.resolve_pack", return_value=v2_pack):
-            result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+        result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
         assert result["status"] == "completed", (
-            f"Expected 'completed' (core derivers used for pack without derivers), "
+            f"Expected 'completed' (core derivers used), "
             f"got {result['status']!r}: {result.get('error')}"
         )
         assert result["instances_upserted"] == 1
@@ -994,7 +936,7 @@ class TestMilestone3CoreDeriverBehavior:
             db.query(SignalInstance)
             .filter(
                 SignalInstance.entity_id == company.id,
-                SignalInstance.pack_id == fractional_cto_pack_id,
+                SignalInstance.pack_id == core_pack_id,
             )
             .all()
         )

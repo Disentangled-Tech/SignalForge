@@ -136,26 +136,15 @@ class TestRunScoreNightly:
         result = run_score_nightly(db, workspace_id=ws_id, pack_id=None)
 
         assert result["status"] == "completed"
-        job = (
-            db.query(JobRun)
-            .filter(JobRun.job_type == "score")
-            .order_by(JobRun.id.desc())
-            .first()
-        )
+        job = db.query(JobRun).filter(JobRun.job_type == "score").order_by(JobRun.id.desc()).first()
         assert job is not None
         assert job.workspace_id == ws_id
         assert job.pack_id == fractional_cto_pack_id
 
     @pytest.mark.integration
-    def test_run_score_nightly_with_explicit_pack_id_uses_pack(
-        self, db: Session
-    ) -> None:
+    def test_run_score_nightly_with_explicit_pack_id_uses_pack(self, db: Session) -> None:
         """run_score_nightly(pack_id=X) creates snapshots with pack_id=X."""
-        pack = (
-            db.query(SignalPack)
-            .filter(SignalPack.pack_id == "fractional_cto_v1")
-            .first()
-        )
+        pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
         if pack is None:
             pytest.skip("fractional_cto_v1 pack not found")
 
@@ -291,7 +280,7 @@ class TestRunScoreNightly:
             call_count += 1
             if company_id == c2.id:
                 raise RuntimeError("Simulated failure")
-            return real_write(inner_db, company_id, as_of, company_status, pack_id)
+            return real_write(inner_db, company_id, as_of, company_status, pack_id, **kwargs)
 
         with patch(
             "app.services.readiness.score_nightly.write_readiness_snapshot",
@@ -378,22 +367,24 @@ class TestRunScoreNightly:
         db.refresh(company)
 
         # funding_raised 5d ago (conf 0.9) -> M ~31-32; cto_role_posted 50d ago -> G=70
-        db.add_all([
-            SignalEvent(
-                company_id=company.id,
-                source="test",
-                event_type="funding_raised",
-                event_time=_days_ago(5),
-                confidence=0.9,
-            ),
-            SignalEvent(
-                company_id=company.id,
-                source="test",
-                event_type="cto_role_posted",
-                event_time=_days_ago(50),
-                confidence=0.7,
-            ),
-        ])
+        db.add_all(
+            [
+                SignalEvent(
+                    company_id=company.id,
+                    source="test",
+                    event_type="funding_raised",
+                    event_time=_days_ago(5),
+                    confidence=0.9,
+                ),
+                SignalEvent(
+                    company_id=company.id,
+                    source="test",
+                    event_type="cto_role_posted",
+                    event_time=_days_ago(50),
+                    confidence=0.7,
+                ),
+            ]
+        )
         db.commit()
 
         result = run_score_nightly(db)
@@ -416,6 +407,47 @@ class TestRunScoreNightly:
         # R = 0.30*M + 0.30*C + 0.25*P + 0.15*G; funding adds to P too
         assert snapshot.composite >= 20
         assert snapshot.composite <= 35
+
+    def test_score_uses_legacy_event_path_when_core_pack_missing(self, db: Session) -> None:
+        """When get_core_pack_id returns None, score still creates snapshot from SignalEvents (Issue #287)."""
+        company = Company(
+            name="LegacyPathCo",
+            website_url="https://legacy-path.example.com",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        db.add(
+            SignalEvent(
+                company_id=company.id,
+                source="test",
+                event_type="funding_raised",
+                event_time=_days_ago(5),
+                confidence=0.9,
+            )
+        )
+        db.commit()
+
+        with patch(
+            "app.services.readiness.score_nightly.get_core_pack_id",
+            return_value=None,
+        ):
+            result = run_score_nightly(db)
+
+        assert result["status"] == "completed"
+        assert result["companies_scored"] >= 1
+        snapshot = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company.id,
+                ReadinessSnapshot.as_of == date.today(),
+            )
+            .first()
+        )
+        assert snapshot is not None
+        assert snapshot.composite >= 0
+        assert snapshot.explain is not None
 
     def test_nightly_creates_engagement_snapshots(self, db: Session) -> None:
         """Nightly job creates both ReadinessSnapshot and EngagementSnapshot (Issue #107)."""
@@ -463,9 +495,7 @@ class TestRunScoreNightly:
             .first()
         )
         assert engagement is not None
-        assert engagement.outreach_score == round(
-            readiness.composite * engagement.esl_score
-        )
+        assert engagement.outreach_score == round(readiness.composite * engagement.esl_score)
 
     def test_no_engagement_snapshot_when_trs_missing(self, db: Session) -> None:
         """When TRS is missing (no events), no EngagementSnapshot is created (Issue #107)."""

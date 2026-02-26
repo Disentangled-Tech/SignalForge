@@ -466,6 +466,8 @@ Negative
 	•	Increased storage footprint
 	•	More rows in DB
 
+Amendment (Issue #287): For the core-vs-pack refactor, SignalInstances are written with a single canonical "core" pack_id (core pack sentinel). Pack scoping for snapshots and lead_feed is unchanged: ReadinessSnapshot, EngagementSnapshot, and lead_feed projection remain keyed by workspace pack_id; only the source of the event list for scoring switches to core instances.
+
 ⸻
 
 ⸻

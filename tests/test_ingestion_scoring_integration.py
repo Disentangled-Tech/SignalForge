@@ -121,8 +121,9 @@ def test_ingestion_to_scoring_pipeline_produces_expected_snapshot(
 def test_ingest_then_derive_then_score(
     db: Session,
     fractional_cto_pack_id,
+    core_pack_id,
 ) -> None:
-    """End-to-end: ingest → derive → score. Deriver populates signal_instances."""
+    """End-to-end: ingest → derive → score. Deriver populates signal_instances (Issue #287 M2: core pack)."""
 
     with patch("app.services.readiness.score_nightly.date") as mock_date:
         mock_date.today.return_value = _AS_OF
@@ -143,7 +144,7 @@ def test_ingest_then_derive_then_score(
         )
         assert len(companies) == 3
 
-        # 2. Run derive (populates signal_instances from SignalEvents)
+        # 2. Run derive (writes to core pack; Issue #287 M2)
         derive_result = run_deriver(
             db, pack_id=fractional_cto_pack_id, company_ids=[c.id for c in companies]
         )
@@ -154,7 +155,7 @@ def test_ingest_then_derive_then_score(
         instances = (
             db.query(SignalInstance)
             .filter(SignalInstance.entity_id.in_(c.id for c in companies))
-            .filter(SignalInstance.pack_id == fractional_cto_pack_id)
+            .filter(SignalInstance.pack_id == core_pack_id)
             .all()
         )
         assert len(instances) == 3

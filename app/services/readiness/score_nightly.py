@@ -18,7 +18,7 @@ from app.models import JobRun, SignalEvent, Watchlist
 from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
 from app.services.lead_feed.projection_builder import upsert_lead_feed_from_snapshots
-from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
+from app.services.pack_resolver import get_core_pack_id, get_default_pack_id, get_pack_for_workspace
 from app.services.readiness.snapshot_writer import write_readiness_snapshot
 
 logger = logging.getLogger(__name__)
@@ -82,10 +82,7 @@ def run_score_nightly(
             )
         ids_from_events = {
             row[0]
-            for row in db.query(SignalEvent.company_id)
-            .filter(*event_filters)
-            .distinct()
-            .all()
+            for row in db.query(SignalEvent.company_id).filter(*event_filters).distinct().all()
             if row[0] is not None
         }
 
@@ -104,14 +101,25 @@ def run_score_nightly(
         companies_engagement = 0
         companies_esl_suppressed = 0
         ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
+        core_pack_id = get_core_pack_id(db)
         for company_id in company_ids:
             try:
-                snapshot = write_readiness_snapshot(db, company_id, as_of, pack_id=resolved_pack_id)
+                snapshot = write_readiness_snapshot(
+                    db,
+                    company_id,
+                    as_of,
+                    pack_id=resolved_pack_id,
+                    core_pack_id=core_pack_id,
+                )
                 if snapshot is not None:
                     companies_scored += 1
                     # Write EngagementSnapshot after ReadinessSnapshot (Issue #106)
                     eng_snap = write_engagement_snapshot(
-                        db, company_id, as_of, pack_id=resolved_pack_id
+                        db,
+                        company_id,
+                        as_of,
+                        pack_id=resolved_pack_id,
+                        core_pack_id=core_pack_id,
                     )
                     if eng_snap is not None:
                         companies_engagement += 1
