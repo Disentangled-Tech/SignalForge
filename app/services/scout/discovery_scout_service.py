@@ -22,7 +22,7 @@ from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.prompts.loader import render_prompt
 from app.schemas.scout import EvidenceBundle, ScoutRunMetadata
-from app.scout.query_planner import plan as plan_queries
+from app.scout.query_planner import plan_queries
 from app.scout.sources import filter_allowed_sources
 
 if TYPE_CHECKING:
