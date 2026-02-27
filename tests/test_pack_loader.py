@@ -371,3 +371,84 @@ class TestPackV2FractionalCtoM1Smoke:
             "watch_max": 69,
             "high_priority_min": 70,
         }
+
+
+class TestPackV2FractionalCmoM2Smoke:
+    """Smoke tests for fractional_cmo_v1 pack (Issue #288 M2)."""
+
+    def test_fractional_cmo_v1_loads_with_v2_layout(self) -> None:
+        """fractional_cmo_v1 loads from analysis_weights, esl_rubric, prompt_bundles."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cmo_v1", "1")
+        assert pack.manifest.get("schema_version") == "2"
+        assert pack.scoring is not None
+        assert "base_scores" in pack.scoring
+        assert pack.esl_policy is not None
+        assert "recommendation_boundaries" in pack.esl_policy
+        assert hasattr(pack, "prompt_bundles")
+        assert isinstance(pack.prompt_bundles, dict)
+        assert "templates" in pack.prompt_bundles
+        assert "ore_outreach" in pack.prompt_bundles.get("templates", {})
+
+    def test_fractional_cmo_v1_scoring_produces_expected_shape(self) -> None:
+        """from_pack(fractional_cmo_v1.scoring) produces expected keys."""
+        from app.packs.loader import load_pack
+        from app.services.readiness.scoring_constants import from_pack
+
+        pack = load_pack("fractional_cmo_v1", "1")
+        cfg = from_pack(pack.scoring)
+        assert "base_scores_momentum" in cfg
+        assert "composite_weights" in cfg
+        assert "recommendation_bands" in cfg
+        assert cfg["recommendation_bands"] == {
+            "ignore_max": 34,
+            "watch_max": 69,
+            "high_priority_min": 70,
+        }
+
+    def test_fractional_cmo_v1_weights_differ_from_cto(self) -> None:
+        """fractional_cmo_v1 has different weights than fractional_cto_v1 (ranking differs)."""
+        from app.packs.loader import load_pack
+
+        cto = load_pack("fractional_cto_v1", "1")
+        cmo = load_pack("fractional_cmo_v1", "1")
+        cto_m = cto.scoring.get("base_scores", {}).get("momentum", {})
+        cmo_m = cmo.scoring.get("base_scores", {}).get("momentum", {})
+        assert cto_m.get("launch_major") != cmo_m.get("launch_major")
+        assert cto.scoring.get("composite_weights") != cmo.scoring.get("composite_weights")
+
+
+class TestPackV2FractionalRolePacksM3M4Smoke:
+    """Smoke tests for fractional_coo_v1 (M3) and fractional_cfo_v1 (M4) packs (Issue #288)."""
+
+    def test_fractional_coo_v1_loads_with_v2_layout(self) -> None:
+        """fractional_coo_v1 loads from analysis_weights, esl_rubric, prompt_bundles."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_coo_v1", "1")
+        assert pack.manifest.get("schema_version") == "2"
+        assert pack.scoring is not None and "base_scores" in pack.scoring
+        assert pack.esl_policy is not None
+        assert "ore_outreach" in pack.prompt_bundles.get("templates", {})
+
+    def test_fractional_cfo_v1_loads_with_v2_layout(self) -> None:
+        """fractional_cfo_v1 loads from analysis_weights, esl_rubric, prompt_bundles."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cfo_v1", "1")
+        assert pack.manifest.get("schema_version") == "2"
+        assert pack.scoring is not None and "base_scores" in pack.scoring
+        assert pack.esl_policy is not None
+        assert "ore_outreach" in pack.prompt_bundles.get("templates", {})
+
+    def test_coo_cfo_weights_differ_from_cto(self) -> None:
+        """fractional_coo_v1 and fractional_cfo_v1 have different weights than CTO (ranking differs)."""
+        from app.packs.loader import load_pack
+
+        cto = load_pack("fractional_cto_v1", "1")
+        coo = load_pack("fractional_coo_v1", "1")
+        cfo = load_pack("fractional_cfo_v1", "1")
+        assert cto.scoring.get("composite_weights") != coo.scoring.get("composite_weights")
+        assert cto.scoring.get("composite_weights") != cfo.scoring.get("composite_weights")
+        assert coo.scoring.get("composite_weights") != cfo.scoring.get("composite_weights")
