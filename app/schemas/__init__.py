@@ -29,6 +29,13 @@ from app.schemas.settings import (
     SettingsRead,
     SettingsUpdate,
 )
+from app.schemas.scout import (
+    EvidenceBundle,
+    EvidenceItem,
+    ScoutRunInput,
+    ScoutRunMetadata,
+    ScoutRunResult,
+)
 from app.schemas.signal import RawEvent, SignalRecordList, SignalRecordRead
 from app.schemas.watchlist import (
     WatchlistAddRequest,
@@ -46,6 +53,12 @@ __all__ = [
     # Ranked companies
     "RankedCompanyTop",
     "RankedCompaniesResponse",
+    # Scout
+    "EvidenceBundle",
+    "EvidenceItem",
+    "ScoutRunInput",
+    "ScoutRunMetadata",
+    "ScoutRunResult",
     # Signal
     "RawEvent",
     "SignalRecordRead",
