@@ -1,5 +1,10 @@
 """Pack resolution for default/active pack (Issue #189).
 
+Default pack is fractional_cto_v1 by convention: get_default_pack_id() and
+get_pack_for_workspace() fall back to the fractional_cto_v1 row in signal_packs.
+v2 packs use the same resolution path: resolve_pack() loads via load_pack(pack_id, version)
+regardless of schema_version; the pack directory (v1 or v2 layout) is transparent to callers.
+
 V3 constraint: one active pack per workspace. Until workspaces exist,
 returns fractional_cto_v1 pack for single-tenant compatibility.
 """
@@ -55,7 +60,7 @@ def get_core_pack_id(db: Session) -> UUID | None:
 
 
 def get_default_pack_id(db: Session) -> UUID | None:
-    """Return the fractional_cto_v1 pack UUID, or None if not installed."""
+    """Return the default pack UUID (fractional_cto_v1 by convention), or None if not installed."""
     row = (
         db.query(SignalPack.id)
         .filter(SignalPack.pack_id == "fractional_cto_v1", SignalPack.version == "1")
@@ -67,8 +72,9 @@ def get_default_pack_id(db: Session) -> UUID | None:
 def get_default_pack(db: Session | None = None) -> Pack | None:
     """Return default pack: from db when available, else load from filesystem.
 
-    Phase 2: Used when pack is None. Resolves from db first; if no pack in db,
-    loads fractional_cto_v1 from filesystem for backward compatibility.
+    Default = fractional_cto_v1 (by convention). Resolves from db first; if no pack in db,
+    loads fractional_cto_v1 from filesystem for backward compatibility. v2 packs use the
+    same path: load_pack(pack_id, version) works for both v1 and v2 directory layouts.
     """
     if db is not None:
         pack_id = get_default_pack_id(db)
