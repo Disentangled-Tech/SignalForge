@@ -121,7 +121,7 @@ class TestPackLoaderDerivers:
     """
 
     def test_load_pack_returns_derivers(self) -> None:
-        """load_pack returns Pack with derivers attribute containing passthrough rules."""
+        """load_pack returns Pack with derivers attribute; v2 packs may have empty passthrough."""
         from app.packs.loader import load_pack
 
         pack = load_pack("fractional_cto_v1", "1")
@@ -129,17 +129,21 @@ class TestPackLoaderDerivers:
         assert pack.derivers is not None
         derivers = pack.derivers if isinstance(pack.derivers, dict) else {}
         passthrough = derivers.get("derivers", {}).get("passthrough", [])
-        assert len(passthrough) > 0, "Derivers passthrough must not be empty"
-        first = passthrough[0]
-        assert "event_type" in first and "signal_id" in first
+        if passthrough:
+            first = passthrough[0]
+            assert "event_type" in first and "signal_id" in first
 
     def test_derivers_match_taxonomy_signal_ids(self) -> None:
-        """All deriver signal_ids exist in taxonomy.signal_ids."""
+        """All deriver signal_ids exist in taxonomy.signal_ids (or core for v2)."""
         from app.packs.loader import load_pack
 
         pack = load_pack("fractional_cto_v1", "1")
         taxonomy_ids = set(pack.taxonomy.get("signal_ids", []))
         passthrough = (pack.derivers or {}).get("derivers", {}).get("passthrough", [])
+        if not taxonomy_ids and pack.manifest.get("schema_version") == "2":
+            from app.core_taxonomy.loader import get_core_signal_ids
+
+            taxonomy_ids = set(get_core_signal_ids())
         for entry in passthrough:
             sid = entry.get("signal_id")
             assert sid in taxonomy_ids, f"Deriver signal_id {sid} must be in taxonomy"
@@ -311,11 +315,59 @@ class TestPackV2OptionalTaxonomyDerivers:
         assert pack.scoring.get("base_scores", {}).get("momentum", {}).get("funding_raised") == 35
         assert pack.scoring.get("base_scores", {}).get("leadership_gap", {}).get("cto_role_posted") == 70
 
-    def test_v1_pack_still_requires_taxonomy_and_derivers(self) -> None:
-        """V1 pack (e.g. fractional_cto_v1) still requires taxonomy.yaml and derivers.yaml."""
+    def test_fractional_cto_v1_is_v2_optional_taxonomy_derivers(self) -> None:
+        """fractional_cto_v1 is Pack v2: schema_version '2', taxonomy/derivers optional."""
         from app.packs.loader import load_pack
 
         pack = load_pack("fractional_cto_v1", "1")
+        assert pack.manifest.get("schema_version") == "2"
+        assert pack.scoring is not None
+        assert pack.esl_policy is not None
+        assert hasattr(pack, "prompt_bundles")
+        # v2 may have empty taxonomy and derivers (core owns signals/derivers)
+        assert isinstance(pack.taxonomy, dict)
+        assert isinstance(pack.derivers, dict)
+
+    def test_v1_pack_still_requires_taxonomy_and_derivers(self) -> None:
+        """V1 pack (e.g. bookkeeping_v1) requires taxonomy.yaml and derivers.yaml."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("bookkeeping_v1", "1")
         assert pack.manifest.get("schema_version") == "1"
         assert pack.taxonomy and pack.taxonomy.get("signal_ids")
         assert pack.derivers and (pack.derivers.get("derivers") or {})
+
+
+class TestPackV2FractionalCtoM1Smoke:
+    """Smoke tests for fractional_cto_v1 Pack v2 migration (Issue #288 M1)."""
+
+    def test_fractional_cto_v1_loads_with_v2_layout(self) -> None:
+        """fractional_cto_v1 loads from analysis_weights, esl_rubric, prompt_bundles."""
+        from app.packs.loader import load_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        assert pack.manifest.get("schema_version") == "2"
+        assert pack.scoring is not None
+        assert "base_scores" in pack.scoring
+        assert pack.esl_policy is not None
+        assert "recommendation_boundaries" in pack.esl_policy
+        assert hasattr(pack, "prompt_bundles")
+        assert isinstance(pack.prompt_bundles, dict)
+        assert "templates" in pack.prompt_bundles
+        assert "ore_outreach" in pack.prompt_bundles.get("templates", {})
+
+    def test_fractional_cto_v1_scoring_same_shape_as_legacy(self) -> None:
+        """from_pack(fractional_cto_v1.scoring) produces expected keys (parity)."""
+        from app.packs.loader import load_pack
+        from app.services.readiness.scoring_constants import from_pack
+
+        pack = load_pack("fractional_cto_v1", "1")
+        cfg = from_pack(pack.scoring)
+        assert "base_scores_momentum" in cfg
+        assert "composite_weights" in cfg
+        assert "recommendation_bands" in cfg
+        assert cfg["recommendation_bands"] == {
+            "ignore_max": 34,
+            "watch_max": 69,
+            "high_priority_min": 70,
+        }
