@@ -53,6 +53,10 @@ ignore = ["E501", "B008"]  # B008: Depends/Query in defaults is FastAPI standard
 # load_dotenv() must run before other imports
 "app/config.py" = ["E402", "UP045"]
 # Forward refs for ORM relationship (circular import)
+"app/models/evidence_bundle.py" = ["F821", "UP037"]
+"app/models/evidence_bundle_source.py" = ["F821", "UP037"]
+"app/models/evidence_claim.py" = ["F821", "UP037"]
+"app/models/evidence_source.py" = ["F821", "UP037"]
 "app/models/scout_run.py" = ["F821", "UP037"]
 "app/models/scout_evidence_bundle.py" = ["F821", "UP037"]
 # str, Enum pattern used elsewhere (e.g. CompanySource)
