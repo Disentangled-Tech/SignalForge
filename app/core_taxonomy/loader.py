@@ -6,6 +6,7 @@ Labels and explainability_templates remain pack-specific.
 
 from __future__ import annotations
 
+import hashlib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,24 @@ def get_core_signal_ids() -> frozenset[str]:
     """
     taxonomy = load_core_taxonomy()
     return frozenset(taxonomy.get("signal_ids") or [])
+
+
+@lru_cache(maxsize=1)
+def get_core_taxonomy_version() -> str:
+    """Return the core taxonomy version for evidence store recording.
+
+    Reads optional top-level 'version' from taxonomy.yaml; if present and
+    non-empty, returns it. Otherwise returns a stable SHA-256 hex digest
+    of the file content (64 chars). Used by the Evidence Store (Issue #276).
+
+    Returns:
+        Non-empty version string (human-readable or content hash).
+    """
+    data = load_core_taxonomy()
+    version = data.get("version")
+    if isinstance(version, str) and version.strip():
+        return version.strip()
+    return hashlib.sha256(_TAXONOMY_PATH.read_bytes()).hexdigest()
 
 
 def is_valid_signal_id(signal_id: str) -> bool:

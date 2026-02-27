@@ -3,6 +3,9 @@
 #
 # This is the authoritative list. Labels and explainability_templates remain pack-specific.
 # Must be a strict superset of all pack taxonomies and event_types.SIGNAL_EVENT_TYPES.
+# Optional 'version' is used by Evidence Store (Issue #276); if absent, content hash is used.
+
+version: "1.0"
 
 signal_ids:
   # Momentum

@@ -54,23 +54,32 @@ def _clear_core_loader_caches() -> None:
     Clearing both before and after ensures a clean slate regardless of test order.
     """
     from app.core_derivers.loader import (
+        get_core_derivers_version,
         get_core_passthrough_map,
         get_core_pattern_derivers,
         load_core_derivers,
     )
-    from app.core_taxonomy.loader import get_core_signal_ids, load_core_taxonomy
+    from app.core_taxonomy.loader import (
+        get_core_signal_ids,
+        get_core_taxonomy_version,
+        load_core_taxonomy,
+    )
 
     load_core_taxonomy.cache_clear()
     get_core_signal_ids.cache_clear()
+    get_core_taxonomy_version.cache_clear()
     load_core_derivers.cache_clear()
     get_core_passthrough_map.cache_clear()
     get_core_pattern_derivers.cache_clear()
+    get_core_derivers_version.cache_clear()
     yield
     load_core_taxonomy.cache_clear()
     get_core_signal_ids.cache_clear()
+    get_core_taxonomy_version.cache_clear()
     load_core_derivers.cache_clear()
     get_core_passthrough_map.cache_clear()
     get_core_pattern_derivers.cache_clear()
+    get_core_derivers_version.cache_clear()
 
 
 @pytest.fixture(scope="session")
