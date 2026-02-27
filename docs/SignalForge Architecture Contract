@@ -193,7 +193,7 @@ Packs with schema_version "2" (Pack v2) formalize this contract: they define onl
 4. LLM Boundary Rules
 
 LLMs operate in three places:
-	1.	Discovery Scout
+	1.	Discovery Scout — a separate flow outside the ingest→derive→score pipeline; produces Evidence Bundles only (no signals, no domain-entity writes). See docs/discovery_scout.md and docs/pipeline.md.
 	2.	Extractor
 	3.	Event Interpretation
 
