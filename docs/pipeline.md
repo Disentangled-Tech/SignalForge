@@ -115,6 +115,7 @@ Two pipelines feed the fractional CTO use case; they use different data models a
 - **Scan**: For companies with `website_url`. Discovers pages, extracts text, stores `SignalRecord`. Runs LLM analysis (stage, pain signals) and deterministic scoring. Updates `company.cto_need_score` and `company.current_stage`. Pack is resolved via `get_default_pack(db)` and passed to `analyze_company` / `score_company`.
 - **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via **core derivers only** (pack-independent), computes TRS + ESL using workspace pack analysis config, writes pack-scoped snapshots. Workspace-scoped when multi-tenant (Issue #290).
 - **Briefing**: Uses both. `select_top_companies` (legacy) and `get_emerging_companies` (pack) can surface companies. Pack path reads from `lead_feed` when populated, else join of ReadinessSnapshot + EngagementSnapshot.
+- **Discovery Scout**: Separate flow (not in the table above). LLM discovery produces Evidence Bundles only; no signals, no entity writes. See [discovery_scout.md](discovery_scout.md).
 
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 
