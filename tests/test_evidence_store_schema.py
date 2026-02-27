@@ -168,3 +168,50 @@ def test_evidence_sources_unique_content_hash_url(db: Session) -> None:
     db.add(duplicate)
     with pytest.raises(IntegrityError):
         db.flush()
+
+
+def test_evidence_bundles_trigger_rejects_update_and_delete(db: Session) -> None:
+    """M5: DB trigger rejects UPDATE and DELETE on evidence_bundles (immutability)."""
+    from sqlalchemy.exc import InternalError, ProgrammingError
+
+    from app.core_derivers.loader import get_core_derivers_version
+    from app.core_taxonomy.loader import get_core_taxonomy_version
+
+    bundle = EvidenceBundle(
+        scout_version="v1",
+        core_taxonomy_version=get_core_taxonomy_version(),
+        core_derivers_version=get_core_derivers_version(),
+        run_context={"run_id": "trigger-test"},
+    )
+    db.add(bundle)
+    db.flush()
+    bundle_id = bundle.id
+
+    # Trigger rejects UPDATE
+    row = db.query(EvidenceBundle).filter(EvidenceBundle.id == bundle_id).first()
+    assert row is not None
+    row.scout_version = "v2"
+    with pytest.raises((InternalError, ProgrammingError)) as exc_info:
+        db.flush()
+    assert "immutable" in str(exc_info.value).lower() or "updates not allowed" in str(
+        exc_info.value
+    )
+    db.rollback()
+
+    # Re-insert bundle and verify trigger rejects DELETE
+    bundle2 = EvidenceBundle(
+        scout_version="v1",
+        core_taxonomy_version=get_core_taxonomy_version(),
+        core_derivers_version=get_core_derivers_version(),
+        run_context={"run_id": "trigger-test-2"},
+    )
+    db.add(bundle2)
+    db.flush()
+    row2 = db.query(EvidenceBundle).filter(EvidenceBundle.id == bundle2.id).first()
+    assert row2 is not None
+    db.delete(row2)
+    with pytest.raises((InternalError, ProgrammingError)) as exc_info2:
+        db.flush()
+    assert "immutable" in str(exc_info2.value).lower() or "deletes not allowed" in str(
+        exc_info2.value
+    )

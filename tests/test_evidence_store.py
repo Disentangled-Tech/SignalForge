@@ -1,9 +1,9 @@
-"""Tests for Evidence Store (M3, Issue #276): write path, versioning, immutability, source dedupe, claims."""
+"""Tests for Evidence Store (M3, Issue #276): write path, versioning, immutability, source dedupe, claims; M5 quarantine."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from app.models import (
 from app.models import (
     EvidenceBundleSource,
     EvidenceClaim,
+    EvidenceQuarantine,
     EvidenceSource,
 )
 from app.schemas.evidence import EvidenceBundleRecord
@@ -257,6 +258,77 @@ def test_store_evidence_bundle_structured_payloads_length_mismatch_raises() -> N
             raw_model_output=None,
             structured_payloads=[],  # length 0 != 1
         )
+
+
+def test_store_evidence_bundle_structured_payloads_length_mismatch_quarantines(
+    db: Session,
+) -> None:
+    """On structured_payloads length mismatch, store quarantines payload then raises (M5)."""
+    bundle = EvidenceBundle(
+        candidate_company_name="Acme",
+        company_website="https://acme.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://x.com", "s")],
+    )
+    with pytest.raises(ValueError, match="structured_payloads length must match bundles"):
+        store_evidence_bundle(
+            db,
+            run_id="run-mismatch",
+            scout_version="v1",
+            bundles=[bundle],
+            run_context={"run_id": "run-mismatch"},
+            raw_model_output=None,
+            structured_payloads=[],  # length 0 != 1
+        )
+    rows = db.query(EvidenceQuarantine).all()
+    assert len(rows) == 1
+    assert rows[0].reason == "structured_payloads length must match bundles when provided"
+    assert rows[0].payload.get("run_id") == "run-mismatch"
+    assert rows[0].payload.get("scout_version") == "v1"
+    assert len(rows[0].payload.get("bundles", [])) == 1
+
+
+def test_store_evidence_bundle_per_bundle_failure_quarantines(db: Session) -> None:
+    """When one bundle fails, store quarantines that bundle then re-raises (M5)."""
+    from app.evidence import store as evidence_store_module
+
+    bundle1 = EvidenceBundle(
+        candidate_company_name="First",
+        company_website="https://first.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://a.com", "a")],
+    )
+    bundle2 = EvidenceBundle(
+        candidate_company_name="Second",
+        company_website="https://second.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://b.com", "b")],
+    )
+    call_count = 0
+    real_get_or_create = evidence_store_module._get_or_create_source
+
+    def raise_on_second(*args, **kwargs):  # noqa: ARG001
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            raise RuntimeError("simulated per-bundle failure")
+        return real_get_or_create(*args, **kwargs)
+
+    with patch.object(evidence_store_module, "_get_or_create_source", side_effect=raise_on_second):
+        with pytest.raises(RuntimeError, match="simulated per-bundle failure"):
+            store_evidence_bundle(
+                db,
+                run_id="run-partial",
+                scout_version="v1",
+                bundles=[bundle1, bundle2],
+                run_context={"run_id": "run-partial"},
+                raw_model_output=None,
+            )
+    rows = db.query(EvidenceQuarantine).all()
+    assert len(rows) == 1
+    assert "simulated per-bundle failure" in (rows[0].reason or "")
+    assert rows[0].payload.get("bundle_index") == 1
+    assert rows[0].payload.get("bundle", {}).get("candidate_company_name") == "Second"
 
 
 def test_store_evidence_bundle_run_context_stored(db: Session) -> None:
