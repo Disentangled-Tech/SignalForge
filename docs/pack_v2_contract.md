@@ -44,7 +44,7 @@ Core owns:
 | fractional_cmo_v1   | "2"            | Fractional CMO pack (Issue #288 M2); v2 layout; same core signals, CMO weights/prompts.   |
 | fractional_coo_v1   | "2"            | Fractional COO pack (Issue #288 M3); v2 layout; same core signals, COO weights/prompts.   |
 | fractional_cfo_v1   | "2"            | Fractional CFO pack (Issue #288 M4); v2 layout; same core signals, CFO weights/prompts.   |
-| bookkeeping_v1     | "1"            | Legacy; requires taxonomy and derivers.                               |
+| bookkeeping_v1     | "1"            | **Deprecated** (Issue #289). DB row may remain with is_active=false; pack directory removed. |
 | example_v2         | "2"            | Minimal v2 example (no taxonomy/derivers on disk); used by tests.       |
 
 Fractional role packs (fractional_cmo_v1, fractional_coo_v1, fractional_cfo_v1) are added in Issue #288 M2–M4; until those milestones are implemented, their pack directories may be absent from the repo.
@@ -77,7 +77,11 @@ When a workspace's active pack is resolved (e.g. for scoring, briefing, ORE), on
 ## Backward compatibility
 
 - fractional_cto_v1 has been migrated to schema_version `"2"` (Issue #288 M1); scoring/ESL behavior is unchanged (same weights and rubrics).
-- Other packs (e.g. bookkeeping_v1) remain on v1. Migration of a pack to v2 is optional and follows the v2 contract and loader behavior.
+- Other packs may remain on v1. The **bookkeeping_v1** pack was deprecated in Issue #289: the `signal_packs` row may remain with `is_active=false` and the pack directory has been removed. Migration of a pack to v2 is optional and follows the v2 contract and loader behavior.
+
+## Deprecations
+
+- **bookkeeping_v1** (Issue #289): Deprecated. The pack directory has been removed; the `signal_packs` row may remain with `is_active=false` for referential integrity. Use `example_v1` or `example_esl_blocked` for tests; use fractional role packs for production.
 
 ## Adding a Fractional Role Pack
 
