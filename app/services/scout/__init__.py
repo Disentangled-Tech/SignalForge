@@ -1,4 +1,4 @@
-"""Scout service — Discovery Scout orchestration (Evidence-Only)."""
+"""Scout services — Discovery Scout (Evidence-Only)."""
 
 from app.services.scout.discovery_scout_service import DiscoveryScoutService
 

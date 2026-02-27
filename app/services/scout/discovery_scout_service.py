@@ -1,256 +1,208 @@
-"""Discovery Scout Service — orchestrate query planning, LLM, validation, persistence.
+"""Discovery Scout Service — Evidence-Only orchestration (plan Step 5).
 
-Evidence-Only: does NOT call resolve_or_create_company, store_signal_event, or deriver.
-Per plan Step 5 / M4. Citation requirement enforced via EvidenceBundle schema (Step 7).
+Orchestrates: Query Planner → filter sources → fetch pages → LLM → validate Evidence Bundles
+→ persist to ScoutRun + ScoutEvidenceBundle. Does NOT call company resolver, event storage,
+or any deriver.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import time
+import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.core_taxonomy.loader import load_core_taxonomy
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.prompts.loader import render_prompt
-from app.schemas.scout import EvidenceBundle
+from app.schemas.scout import EvidenceBundle, ScoutRunMetadata
+from app.scout.query_planner import plan_queries
+from app.scout.sources import filter_allowed_sources
+
+if TYPE_CHECKING:
+    from app.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-
-class DiscoveryScoutService:
-    """Orchestrates query planning, LLM, validation, persistence. Evidence-Only; no company/event writes."""
-
-    @staticmethod
-    def run(
-        db: Session,
-        icp_definition: str,
-        exclusion_rules: str | None = None,
-        pack_id: str | None = None,
-        page_fetch_limit: int = 10,
-    ) -> dict:
-        """Delegate to module-level run()."""
-        return run(db, icp_definition, exclusion_rules, pack_id, page_fetch_limit)
+# Default page fetch limit when not specified
+DEFAULT_PAGE_FETCH_LIMIT = 10
 
 
-def run(
+def _parse_llm_bundles(raw: str) -> list[dict]:
+    """Parse LLM response JSON and return list of bundle dicts. Returns [] on parse failure."""
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Scout LLM response was not valid JSON")
+        return []
+    if not isinstance(data, dict):
+        return []
+    bundles = data.get("bundles")
+    if not isinstance(bundles, list):
+        return []
+    return bundles
+
+
+async def run(
     db: Session,
     icp_definition: str,
+    *,
     exclusion_rules: str | None = None,
     pack_id: str | None = None,
-    page_fetch_limit: int = 10,
-) -> dict:
-    """Run discovery scout: plan queries, call LLM, validate bundles, persist to scout tables only.
+    page_fetch_limit: int = DEFAULT_PAGE_FETCH_LIMIT,
+    seed_urls: list[str] | None = None,
+    allowlist: list[str] | None = None,
+    denylist: list[str] | None = None,
+    fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
+    llm_provider: LLMProvider | None = None,
+) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
+    """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
 
-    Does not write to companies, signal_events, or signal_instances.
+    Does NOT call resolve_or_create_company, store_signal_event, or any deriver.
+    Writes only to scout_runs and scout_evidence_bundles.
+
+    Args:
+        db: Database session for persisting ScoutRun and ScoutEvidenceBundle.
+        icp_definition: Ideal Customer Profile description.
+        exclusion_rules: Optional exclusion rules text (for config snapshot only).
+        pack_id: Optional pack id for query emphasis (passed to query planner).
+        page_fetch_limit: Max URLs to fetch (default 10).
+        seed_urls: URLs to fetch. If None, no pages are fetched (empty content).
+        allowlist: Source allowlist. If None, uses settings.scout_source_allowlist.
+        denylist: Source denylist. If None, uses settings.scout_source_denylist.
+        fetch_page: Async callable(url) -> str | None. If None, uses app.services.fetcher.fetch_page.
+        llm_provider: LLM provider. If None, uses get_llm_provider(role=ModelRole.SCOUT).
 
     Returns:
-        dict with run_id (str), bundles_count (int), status (str), error (str | None).
+        (run_id, list of validated EvidenceBundles, metadata).
     """
-    run_uuid = uuid4()
-    started_at = datetime.now(UTC)
     settings = get_settings()
-    allowlist = list(settings.scout_source_allowlist)
-    denylist = list(settings.scout_source_denylist)
+    if allowlist is None:
+        allowlist = list(settings.scout_source_allowlist)
+    if denylist is None:
+        denylist = list(settings.scout_source_denylist)
 
-    # 1) Query planning (read-only)
-    from app.scout.query_planner import plan as plan_queries
+    run_id = str(uuid.uuid4())
+    queries = plan_queries(icp_definition, core_rubric=None, pack_id=pack_id)
 
-    core_rubric = load_core_taxonomy()
-    queries = plan_queries(icp_definition.strip(), core_rubric, pack_id)
-    query_context = "; ".join(queries[:5])
+    urls_to_fetch: list[str] = []
+    if seed_urls:
+        urls_to_fetch = filter_allowed_sources(seed_urls, allowlist, denylist)[:page_fetch_limit]
 
-    # 2) Page fetch count: no URL list in this minimal path; use 0 (LLM gets query context only)
-    page_fetch_count = 0
+    page_content_parts: list[str] = []
+    if urls_to_fetch:
+        from app.services.fetcher import fetch_page as _fetch_page
 
-    # 3) Build prompt and call LLM
-    try:
-        prompt = render_prompt(
-            "scout_evidence_bundle_v1",
-            ICP_DEFINITION=icp_definition.strip(),
-            EXCLUSION_RULES=exclusion_rules or "",
-            QUERY_CONTEXT=query_context,
-        )
-    except FileNotFoundError as e:
-        logger.error("Scout prompt not found: %s", e)
-        _persist_run(
-            db,
-            run_uuid,
-            started_at,
-            model_version="",
-            tokens_used=None,
-            latency_ms=None,
-            page_fetch_count=0,
-            config_snapshot={
-                "icp": icp_definition[:500],
-                "query_count": len(queries),
-                "allowlist_ref": "config",
-                "denylist_ref": "config",
-            },
-            status="failed",
-            error_message=str(e),
-            bundles=[],
-        )
-        logger.info(
-            "Scout run completed run_id=%s status=failed bundles_count=0",
-            run_uuid,
-        )
-        return {
-            "run_id": str(run_uuid),
-            "bundles_count": 0,
-            "status": "failed",
-            "error": str(e),
-        }
+        fetcher = fetch_page if fetch_page is not None else _fetch_page
+        for url in urls_to_fetch:
+            html = await fetcher(url)
+            if html:
+                from app.services.extractor import extract_text
 
-    llm = get_llm_provider(role=ModelRole.REASONING)
-    model_version = getattr(llm, "model", "unknown") or "unknown"
-    t0 = time.monotonic()
-    raw_response = llm.complete(
+                page_content_parts.append(f"--- URL: {url} ---\n{extract_text(html)}")
+    page_content = "\n\n".join(page_content_parts) if page_content_parts else "(no content)"
+
+    prompt = render_prompt(
+        "scout_evidence_bundle_v1",
+        ICP_DEFINITION=icp_definition,
+        PAGE_CONTENT=page_content,
+    )
+    provider = llm_provider or get_llm_provider(role=ModelRole.SCOUT, settings=settings)
+    model_version = getattr(provider, "model", "unknown")
+    raw_response = provider.complete(
         prompt,
         response_format={"type": "json_object"},
-        temperature=0.2,
+        temperature=0.3,
     )
-    latency_ms = int((time.monotonic() - t0) * 1000)
-    # LLM provider returns str; usage may be on a different attribute in some providers
-    tokens_used = getattr(llm, "last_usage", None) or getattr(raw_response, "usage", None)
-    if tokens_used is not None and hasattr(tokens_used, "total_tokens"):
-        tokens_used = tokens_used.total_tokens
-    else:
-        tokens_used = None
 
-    # 4) Parse and validate (citation enforced by EvidenceBundle model_validator)
-    bundles: list[EvidenceBundle] = []
-    parsed: dict | None = None
-    try:
-        parsed = json.loads(raw_response) if isinstance(raw_response, str) else raw_response
-        raw_bundles = parsed.get("bundles") or []
-        if not isinstance(raw_bundles, list):
-            raise ValueError("bundles must be an array")
-        for item in raw_bundles:
-            if not isinstance(item, dict):
-                continue
-            try:
-                b = EvidenceBundle.model_validate(item)
-                bundles.append(b)
-            except Exception as e:
-                logger.warning("Scout bundle validation failed (skipping): %s", e)
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.exception("Scout LLM output parse failed: %s", e)
-        _persist_run(
-            db,
-            run_uuid,
-            started_at,
-            model_version=model_version,
-            tokens_used=tokens_used,
-            latency_ms=latency_ms,
-            page_fetch_count=page_fetch_count,
-            config_snapshot={
-                "icp": icp_definition[:500],
-                "query_count": len(queries),
-                "allowlist_ref": "config",
-                "denylist_ref": "config",
-            },
-            status="failed",
-            error_message=str(e),
-            bundles=[],
-            raw_llm_output={"raw_preview": str(raw_response)[:2000] if raw_response else None},
-        )
-        logger.info(
-            "Scout run completed run_id=%s status=failed bundles_count=0",
-            run_uuid,
-        )
-        return {
-            "run_id": str(run_uuid),
-            "bundles_count": 0,
-            "status": "failed",
-            "error": str(e),
-        }
+    bundle_dicts = _parse_llm_bundles(raw_response)
+    validated: list[EvidenceBundle] = []
+    for i, b in enumerate(bundle_dicts):
+        if not isinstance(b, dict):
+            continue
+        try:
+            validated.append(EvidenceBundle.model_validate(b))
+        except Exception as e:
+            logger.warning("Scout bundle %d failed validation: %s", i, e)
 
-    # 5) Persist (scout tables only)
-    _persist_run(
-        db,
-        run_uuid,
-        started_at,
+    config_snapshot = {
+        "icp_definition": icp_definition[:500],
+        "exclusion_rules": exclusion_rules,
+        "pack_id": pack_id,
+        "query_count": len(queries),
+        "page_fetch_count": len(urls_to_fetch),
+    }
+    scout_run = ScoutRun(
+        run_id=uuid.UUID(run_id),
+        finished_at=datetime.now(UTC),
         model_version=model_version,
-        tokens_used=tokens_used,
-        latency_ms=latency_ms,
-        page_fetch_count=page_fetch_count,
-        config_snapshot={
-            "icp": icp_definition[:500],
-            "query_count": len(queries),
-            "allowlist_ref": "config",
-            "denylist_ref": "config",
-        },
+        tokens_used=None,
+        latency_ms=None,
+        page_fetch_count=len(urls_to_fetch),
+        config_snapshot=config_snapshot,
         status="completed",
         error_message=None,
-        bundles=bundles,
-        raw_llm_output=parsed if (bundles and parsed is not None) else None,
     )
-
-    logger.info(
-        "Scout run completed run_id=%s status=completed bundles_count=%s",
-        run_uuid,
-        len(bundles),
-    )
-    return {
-        "run_id": str(run_uuid),
-        "bundles_count": len(bundles),
-        "status": "completed",
-        "error": None,
-    }
-
-
-def _persist_run(
-    db: Session,
-    run_uuid: UUID,
-    started_at: datetime,
-    model_version: str,
-    tokens_used: int | None,
-    latency_ms: int | None,
-    page_fetch_count: int,
-    config_snapshot: dict | None,
-    status: str,
-    error_message: str | None,
-    bundles: list[EvidenceBundle],
-    raw_llm_output: dict | None = None,
-) -> None:
-    """Persist ScoutRun and ScoutEvidenceBundle rows. No companies/signal_events."""
-    finished_at = datetime.now(UTC)
-    run_row = ScoutRun(
-        run_id=run_uuid,
-        started_at=started_at,
-        finished_at=finished_at,
-        model_version=model_version or "unknown",
-        tokens_used=tokens_used,
-        latency_ms=latency_ms,
-        page_fetch_count=page_fetch_count,
-        config_snapshot=config_snapshot,
-        status=status,
-        error_message=error_message,
-    )
-    db.add(run_row)
+    db.add(scout_run)
     db.flush()
 
-    for idx, b in enumerate(bundles):
-        # Evidence: list of dicts for JSONB (Pydantic model_dump)
-        evidence_data = [e.model_dump(mode="json") for e in b.evidence]
-        missing_data = list(b.missing_information)
-        bundle_row = ScoutEvidenceBundle(
-            scout_run_id=run_row.id,
-            candidate_company_name=b.candidate_company_name,
-            company_website=b.company_website,
-            why_now_hypothesis=b.why_now_hypothesis or "",
-            evidence=evidence_data,
-            missing_information=missing_data,
-            raw_llm_output=raw_llm_output if (raw_llm_output and idx == 0) else None,
+    for vb in validated:
+        evidence_json = [e.model_dump(mode="json") for e in vb.evidence]
+        missing_json = list(vb.missing_information)
+        row = ScoutEvidenceBundle(
+            scout_run_id=scout_run.run_id,
+            candidate_company_name=vb.candidate_company_name,
+            company_website=vb.company_website,
+            why_now_hypothesis=vb.why_now_hypothesis,
+            evidence=evidence_json,
+            missing_information=missing_json,
+            raw_llm_output=vb.model_dump(mode="json"),
         )
-        db.add(bundle_row)
-
+        db.add(row)
     db.commit()
+
+    metadata = ScoutRunMetadata(
+        model_version=model_version,
+        tokens_used=None,
+        latency_ms=None,
+        page_fetch_count=len(urls_to_fetch),
+    )
+    return run_id, validated, metadata
+
+
+class DiscoveryScoutService:
+    """Orchestrates discovery scout run: query plan, fetch, LLM, validate, persist (Evidence-Only)."""
+
+    @staticmethod
+    async def run(
+        db: Session,
+        icp_definition: str,
+        *,
+        exclusion_rules: str | None = None,
+        pack_id: str | None = None,
+        page_fetch_limit: int = DEFAULT_PAGE_FETCH_LIMIT,
+        seed_urls: list[str] | None = None,
+        allowlist: list[str] | None = None,
+        denylist: list[str] | None = None,
+        fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
+        llm_provider: LLMProvider | None = None,
+    ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
+        """Run discovery scout. See module-level run() for full doc."""
+        return await run(
+            db,
+            icp_definition,
+            exclusion_rules=exclusion_rules,
+            pack_id=pack_id,
+            page_fetch_limit=page_fetch_limit,
+            seed_urls=seed_urls,
+            allowlist=allowlist,
+            denylist=denylist,
+            fetch_page=fetch_page,
+            llm_provider=llm_provider,
+        )

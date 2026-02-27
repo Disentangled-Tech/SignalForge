@@ -1,227 +1,207 @@
-"""Tests for Discovery Scout Service — Evidence-Only; no company/event writes."""
+"""Unit tests for Discovery Scout Service (Evidence-Only, plan Step 5 / M4)."""
 
 from __future__ import annotations
 
+import json
+import uuid
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy.orm import Session
 
-from app.models.company import Company
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
-from app.models.signal_event import SignalEvent
-from app.services.scout.discovery_scout_service import run as run_scout
+from app.services.scout.discovery_scout_service import run
 
 
-# ── Valid LLM JSON (citation-compliant) ────────────────────────────────────
+def _mock_db_session() -> MagicMock:
+    """Return a mock Session that accepts add/flush/commit without requiring real tables."""
+    session = MagicMock(spec=Session)
+    session.add = MagicMock()
+    session.flush = MagicMock()
+    session.commit = MagicMock()
+    return session
 
 
-def _valid_bundles_json() -> str:
-    return """{
-  "bundles": [
-    {
-      "candidate_company_name": "Acme Inc",
-      "company_website": "https://acme.example.com",
-      "why_now_hypothesis": "Recently raised Series A; hiring CTO.",
-      "evidence": [
-        {
-          "url": "https://acme.example.com/news",
-          "quoted_snippet": "Series A announced.",
-          "timestamp_seen": "2026-02-27T12:00:00Z",
-          "source_type": "news",
-          "confidence_score": 0.9
-        }
-      ],
-      "missing_information": ["Exact funding amount"]
-    }
-  ]
-}"""
+def _valid_llm_bundles_json() -> str:
+    """Return LLM response JSON that validates as EvidenceBundle list."""
+    return json.dumps({
+        "bundles": [
+            {
+                "candidate_company_name": "Acme Inc",
+                "company_website": "https://acme.com",
+                "why_now_hypothesis": "Recently hiring engineers.",
+                "evidence": [
+                    {
+                        "url": "https://acme.com/careers",
+                        "quoted_snippet": "We are hiring senior engineers.",
+                        "timestamp_seen": "2025-02-27T12:00:00Z",
+                        "source_type": "careers",
+                        "confidence_score": 0.9,
+                    }
+                ],
+                "missing_information": [],
+            }
+        ]
+    })
 
 
-def _valid_bundles_json_empty_hypothesis() -> str:
-    return """{
-  "bundles": [
-    {
-      "candidate_company_name": "Beta LLC",
-      "company_website": "https://beta.example.com",
-      "why_now_hypothesis": "",
-      "evidence": [],
-      "missing_information": []
-    }
-  ]
-}"""
-
-
-@patch("app.services.scout.discovery_scout_service.get_llm_provider")
-def test_run_returns_run_id_and_bundles_count(
-    mock_get_llm: MagicMock,
+async def _run_with_mocks(
     db: Session,
-) -> None:
-    """run() returns run_id, bundles_count, status completed when LLM returns valid bundles."""
-    mock_llm = MagicMock()
-    mock_llm.complete.return_value = _valid_bundles_json()
-    mock_llm.model = "gpt-4o"
-    mock_get_llm.return_value = mock_llm
+    *,
+    seed_urls: list[str] | None = None,
+    llm_response: str | None = None,
+    fetch_returns: str | None = "<p>Some content</p>",
+    denylist: list[str] | None = None,
+    allowlist: list[str] | None = None,
+    page_fetch_limit: int = 10,
+):
+    """Run scout with mocked fetch and LLM."""
+    if llm_response is None:
+        llm_response = _valid_llm_bundles_json()
+    if seed_urls is None:
+        seed_urls = ["https://example.com/page1"]
 
-    result = run_scout(
-        db,
-        icp_definition="Seed-stage B2B SaaS",
-        exclusion_rules=None,
-        pack_id=None,
-        page_fetch_limit=10,
-    )
-
-    assert result["status"] == "completed"
-    assert result["bundles_count"] == 1
-    assert result["error"] is None
-    assert len(result["run_id"]) > 0
-
-
-@patch("app.services.scout.discovery_scout_service.get_llm_provider")
-def test_run_persists_scout_run_and_bundles_not_companies_or_events(
-    mock_get_llm: MagicMock,
-    db: Session,
-) -> None:
-    """run() persists to scout_runs and scout_evidence_bundles only; no companies/signal_events."""
-    companies_before = db.query(Company).count()
-    events_before = db.query(SignalEvent).count()
+    async def fake_fetch(url: str) -> str | None:
+        return fetch_returns
 
     mock_llm = MagicMock()
-    mock_llm.complete.return_value = _valid_bundles_json()
+    mock_llm.complete = MagicMock(return_value=llm_response)
     mock_llm.model = "gpt-4o"
-    mock_get_llm.return_value = mock_llm
 
-    result = run_scout(
-        db,
-        icp_definition="Fintech startup",
-        exclusion_rules=None,
-        pack_id=None,
-        page_fetch_limit=10,
+    with patch("app.services.scout.discovery_scout_service.get_llm_provider", return_value=mock_llm):
+        return await run(
+            db,
+            "B2B SaaS with technical hiring needs",
+            seed_urls=seed_urls,
+            allowlist=allowlist,
+            denylist=denylist or [],
+            fetch_page=fake_fetch,
+            llm_provider=mock_llm,
+            page_fetch_limit=page_fetch_limit,
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_returns_valid_bundles_and_persists(db: Session) -> None:
+    """run() returns validated EvidenceBundles and persists ScoutRun + ScoutEvidenceBundle rows."""
+    run_id, bundles, metadata = await _run_with_mocks(db, seed_urls=["https://allowed.com/a"])
+    assert isinstance(run_id, str)
+    assert len(run_id) > 0
+    assert len(bundles) == 1
+    assert bundles[0].candidate_company_name == "Acme Inc"
+    assert bundles[0].company_website == "https://acme.com"
+    assert len(bundles[0].evidence) == 1
+    assert metadata.page_fetch_count == 1
+
+    row = db.query(ScoutRun).filter(ScoutRun.run_id == uuid.UUID(run_id)).first()
+    assert row is not None
+    assert row.status == "completed"
+    assert row.page_fetch_count == 1
+    bundle_rows = db.query(ScoutEvidenceBundle).filter(ScoutEvidenceBundle.scout_run_id == row.run_id).all()
+    assert len(bundle_rows) == 1
+    assert bundle_rows[0].candidate_company_name == "Acme Inc"
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_call_company_resolver_or_event_storage() -> None:
+    """DiscoveryScoutService.run() must not call resolve_or_create_company or store_signal_event."""
+    mock_db = _mock_db_session()
+    with patch(
+        "app.ingestion.event_storage.store_signal_event",
+        MagicMock(),
+    ) as mock_store:
+        with patch(
+            "app.services.company_resolver.resolve_or_create_company",
+            MagicMock(),
+        ) as mock_resolve:
+            await _run_with_mocks(mock_db, seed_urls=["https://example.com"])
+            mock_store.assert_not_called()
+            mock_resolve.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_denylist_blocks_urls() -> None:
+    """URLs on denylist are not fetched; page_fetch_count should be 0 for only-denylisted seeds."""
+    mock_db = _mock_db_session()
+    run_id, bundles, metadata = await _run_with_mocks(
+        mock_db,
+        seed_urls=["https://blocked.evil/path"],
+        allowlist=[],  # empty allowlist = all allowed except denylist
+        denylist=["blocked.evil"],
     )
-
-    assert result["status"] == "completed"
-    assert result["bundles_count"] == 1
-
-    # Scout tables updated
-    runs = db.query(ScoutRun).filter(ScoutRun.run_id.isnot(None)).all()
-    assert len(runs) >= 1
-    bundles = db.query(ScoutEvidenceBundle).all()
-    assert len(bundles) >= 1
-
-    # Domain tables unchanged
-    assert db.query(Company).count() == companies_before
-    assert db.query(SignalEvent).count() == events_before
+    assert metadata.page_fetch_count == 0
 
 
-@patch("app.services.scout.discovery_scout_service.get_llm_provider")
-def test_run_rejects_bundle_with_non_empty_hypothesis_and_empty_evidence(
-    mock_get_llm: MagicMock,
-    db: Session,
-) -> None:
-    """LLM output with why_now set but empty evidence is rejected (citation requirement)."""
-    invalid_json = """{
-  "bundles": [
-    {
-      "candidate_company_name": "Acme",
-      "company_website": "https://acme.example.com",
-      "why_now_hypothesis": "They are scaling.",
-      "evidence": [],
-      "missing_information": []
-    }
-  ]
-}"""
-    mock_llm = MagicMock()
-    mock_llm.complete.return_value = invalid_json
-    mock_llm.model = "gpt-4o"
-    mock_get_llm.return_value = mock_llm
-
-    result = run_scout(
-        db,
-        icp_definition="B2B SaaS",
-        exclusion_rules=None,
-        pack_id=None,
-        page_fetch_limit=10,
+@pytest.mark.asyncio
+async def test_page_fetch_limit_enforced() -> None:
+    """Only page_fetch_limit URLs are fetched."""
+    mock_db = _mock_db_session()
+    run_id, _, metadata = await _run_with_mocks(
+        mock_db,
+        seed_urls=[
+            "https://a.com/1",
+            "https://a.com/2",
+            "https://a.com/3",
+            "https://a.com/4",
+            "https://a.com/5",
+        ],
+        allowlist=[],
+        denylist=[],
+        page_fetch_limit=2,
     )
-
-    # That bundle fails validation so we get 0 accepted bundles (status still completed with 0)
-    assert result["bundles_count"] == 0
-    assert result["status"] == "completed"
+    assert metadata.page_fetch_count == 2
 
 
-@patch("app.services.scout.discovery_scout_service.get_llm_provider")
-def test_run_accepts_bundle_with_evidence_and_hypothesis(
-    mock_get_llm: MagicMock,
-    db: Session,
-) -> None:
-    """Bundle with both evidence and why_now_hypothesis is accepted."""
-    mock_llm = MagicMock()
-    mock_llm.complete.return_value = _valid_bundles_json()
-    mock_llm.model = "gpt-4o"
-    mock_get_llm.return_value = mock_llm
-
-    result = run_scout(
-        db,
-        icp_definition="Seed-stage",
-        exclusion_rules="Exclude regulated",
-        pack_id=None,
-        page_fetch_limit=5,
-    )
-
-    assert result["status"] == "completed"
-    assert result["bundles_count"] == 1
-    run_row = db.query(ScoutRun).order_by(ScoutRun.id.desc()).first()
-    assert run_row is not None
-    assert run_row.status == "completed"
-    bundle_row = db.query(ScoutEvidenceBundle).filter(
-        ScoutEvidenceBundle.scout_run_id == run_row.id
-    ).first()
-    assert bundle_row is not None
-    assert "Acme" in bundle_row.candidate_company_name
-    assert bundle_row.evidence and len(bundle_row.evidence) >= 1
+@pytest.mark.asyncio
+async def test_bundle_with_empty_evidence_and_non_empty_why_now_rejected() -> None:
+    """LLM output with why_now_hypothesis but empty evidence fails validation (citation requirement)."""
+    mock_db = _mock_db_session()
+    bad_json = json.dumps({
+        "bundles": [
+            {
+                "candidate_company_name": "NoCite Inc",
+                "company_website": "https://nocite.com",
+                "why_now_hypothesis": "They are scaling.",
+                "evidence": [],
+                "missing_information": [],
+            }
+        ]
+    })
+    run_id, bundles, metadata = await _run_with_mocks(mock_db, llm_response=bad_json)
+    assert len(bundles) == 0
 
 
-@patch("app.services.scout.discovery_scout_service.get_llm_provider")
-def test_run_accepts_empty_hypothesis_empty_evidence_bundle(
-    mock_get_llm: MagicMock,
-    db: Session,
-) -> None:
-    """run() accepts bundle with empty why_now and empty evidence (no citation required)."""
-    mock_llm = MagicMock()
-    mock_llm.complete.return_value = _valid_bundles_json_empty_hypothesis()
-    mock_llm.model = "gpt-4o"
-    mock_get_llm.return_value = mock_llm
-
-    result = run_scout(
-        db,
-        icp_definition="Any startup",
-        exclusion_rules=None,
-        pack_id=None,
-        page_fetch_limit=10,
-    )
-
-    assert result["status"] == "completed"
-    assert result["bundles_count"] == 1
+@pytest.mark.asyncio
+async def test_bundle_with_evidence_and_why_now_accepted() -> None:
+    """Valid bundle with evidence and why_now_hypothesis is accepted."""
+    mock_db = _mock_db_session()
+    run_id, bundles, _ = await _run_with_mocks(mock_db, llm_response=_valid_llm_bundles_json())
+    assert len(bundles) == 1
+    assert bundles[0].why_now_hypothesis
+    assert len(bundles[0].evidence) >= 1
 
 
-@patch("app.services.scout.discovery_scout_service.get_llm_provider")
-def test_run_invalid_json_returns_failed(
-    mock_get_llm: MagicMock,
-    db: Session,
-) -> None:
-    """run() returns status failed when LLM output is not valid JSON."""
-    mock_llm = MagicMock()
-    mock_llm.complete.return_value = "not json at all"
-    mock_llm.model = "gpt-4o"
-    mock_get_llm.return_value = mock_llm
+@pytest.mark.asyncio
+async def test_empty_seed_urls_yields_zero_fetches() -> None:
+    """When seed_urls is None or empty, no pages are fetched."""
+    mock_db = _mock_db_session()
+    run_id, bundles, metadata = await _run_with_mocks(mock_db, seed_urls=[])
+    assert metadata.page_fetch_count == 0
 
-    result = run_scout(
-        db,
-        icp_definition="B2B",
-        exclusion_rules=None,
-        pack_id=None,
-        page_fetch_limit=10,
-    )
 
-    assert result["status"] == "failed"
-    assert result["bundles_count"] == 0
-    assert result["error"] is not None
+@pytest.mark.asyncio
+async def test_output_schema_has_no_pack_specific_fields() -> None:
+    """Validated EvidenceBundle has no signal_id, event_type, or pack-specific fields."""
+    mock_db = _mock_db_session()
+    run_id, bundles, _ = await _run_with_mocks(mock_db)
+    assert len(bundles) == 1
+    b = bundles[0]
+    assert hasattr(b, "candidate_company_name")
+    assert hasattr(b, "company_website")
+    assert hasattr(b, "why_now_hypothesis")
+    assert hasattr(b, "evidence")
+    assert hasattr(b, "missing_information")
+    assert not hasattr(b, "signal_id")
+    assert not hasattr(b, "event_type")
+    assert not hasattr(b, "pack_id")

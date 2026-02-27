@@ -120,7 +120,7 @@ Cloudways cron will call:
 
 Both require the `X-Internal-Token` header matching `INTERNAL_JOB_TOKEN`.
 
-**Event-driven pipeline** (ingest → derive → score → update_lead_feed): see [docs/pipeline.md](docs/pipeline.md).
+**Event-driven pipeline** (ingest → derive → score → update_lead_feed): see [docs/pipeline.md](docs/pipeline.md). Changing a workspace's active pack only reloads analysis config (no re-derive or re-ingest); see [Pack selection](docs/pipeline.md#pack-selection) and [GLOSSARY](docs/GLOSSARY.md).
 
 ## Documentation
 

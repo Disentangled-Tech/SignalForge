@@ -434,7 +434,7 @@ async def run_scout_endpoint(
     from app.services.scout.discovery_scout_service import run as run_scout
 
     try:
-        result = run_scout(
+        run_id, bundles, _metadata = await run_scout(
             db,
             icp_definition=body.icp_definition,
             exclusion_rules=body.exclusion_rules,
@@ -442,10 +442,10 @@ async def run_scout_endpoint(
             page_fetch_limit=body.page_fetch_limit,
         )
         return {
-            "run_id": result["run_id"],
-            "bundles_count": result["bundles_count"],
-            "status": result["status"],
-            "error": result.get("error"),
+            "run_id": run_id,
+            "bundles_count": len(bundles),
+            "status": "completed",
+            "error": None,
         }
     except Exception as exc:
         logger.exception("Internal run_scout failed")

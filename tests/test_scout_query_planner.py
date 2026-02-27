@@ -1,53 +1,131 @@
-"""Tests for scout query planner — read-only, output is list of query strings."""
+"""Tests for scout Query Planner — read-only core taxonomy + optional pack emphasis.
+
+Given fixed ICP + rubric, output is non-empty and contains expected query shapes;
+optional pack_id changes emphasis, not structure. No DB, no HTTP.
+"""
 
 from __future__ import annotations
 
-from app.scout.query_planner import plan
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+from app.scout.query_planner import QueryPlanner, plan_queries
 
 
-def test_plan_returns_non_empty_list() -> None:
-    """Given fixed ICP, output is non-empty."""
-    queries = plan("Seed-stage B2B SaaS in fintech", core_rubric=None, pack_id=None)
+def _minimal_core_rubric() -> dict:
+    """Minimal core taxonomy shape: signal_ids + dimensions."""
+    return {
+        "signal_ids": ["funding_raised", "cto_role_posted", "headcount_growth"],
+        "dimensions": {
+            "M": ["funding_raised", "headcount_growth"],
+            "G": ["cto_role_posted"],
+        },
+    }
+
+
+# ── plan returns non-empty, expected shape ───────────────────────────────────
+
+
+def test_plan_returns_non_empty_given_icp_and_rubric() -> None:
+    """Given fixed ICP and core rubric, plan() returns a non-empty list of query strings."""
+    planner = QueryPlanner()
+    queries = planner.plan(
+        icp="Seed-stage B2B SaaS in fintech",
+        core_rubric=_minimal_core_rubric(),
+    )
     assert isinstance(queries, list)
+    assert len(queries) > 0
+    for q in queries:
+        assert isinstance(q, str)
+        assert len(q.strip()) > 0
+
+
+def test_plan_uses_core_taxonomy_when_rubric_none() -> None:
+    """When core_rubric is None, planner loads from load_core_taxonomy() and returns non-empty."""
+    planner = QueryPlanner()
+    queries = planner.plan(icp="Startups hiring technical leadership", core_rubric=None)
+    assert isinstance(queries, list)
+    assert len(queries) > 0
+    for q in queries:
+        assert isinstance(q, str)
+        assert q.strip()
+
+
+def test_plan_query_shapes_contain_icp_and_signal_related_phrases() -> None:
+    """Output queries incorporate ICP text and rubric-derived phrases (diversified)."""
+    planner = QueryPlanner()
+    icp = "B2B SaaS fintech"
+    rubric = _minimal_core_rubric()
+    queries = planner.plan(icp=icp, core_rubric=rubric)
     assert len(queries) >= 1
-    assert all(isinstance(q, str) and len(q) > 0 for q in queries)
+    # At least one query should contain ICP-related wording
+    icp_lower = icp.lower()
+    assert any(icp_lower in q.lower() for q in queries)
+    # At least one query should reflect rubric (e.g. funding, CTO, headcount)
+    rubric_phrases = ["funding", "cto", "headcount", "role", "growth"]
+    assert any(
+        any(p in q.lower() for p in rubric_phrases) for q in queries
+    ), f"Expected some rubric-derived phrasing in {queries}"
 
 
-def test_plan_contains_expected_shapes() -> None:
-    """Output contains query shapes derived from ICP."""
-    icp = "Seed-stage B2B SaaS"
-    queries = plan(icp, core_rubric=None, pack_id=None)
-    assert any(icp in q for q in queries)
-    assert any("startup" in q.lower() for q in queries)
+def test_plan_with_pack_id_no_emphasis_unchanged_structure() -> None:
+    """When pack_id is provided but pack has no scout_emphasis, result is still list[str]."""
+    planner = QueryPlanner()
+    # Use a real pack that has no scout_emphasis key (e.g. example_v2)
+    queries = planner.plan(
+        icp="Any startup",
+        core_rubric=_minimal_core_rubric(),
+        pack_id="example_v2",
+    )
+    assert isinstance(queries, list)
+    assert len(queries) > 0
+    for q in queries:
+        assert isinstance(q, str)
 
 
-def test_plan_with_core_rubric_adds_diversity() -> None:
-    """Optional core_rubric can add signal-based query phrasing."""
-    rubric = {"signal_ids": ["funding_raised", "job_posted_engineering", "cto_role_posted"]}
-    queries = plan("Fintech", core_rubric=rubric, pack_id=None)
-    assert len(queries) >= 1
-    # May include a signal-derived query
-    assert any("fintech" in q.lower() for q in queries)
+def test_optional_pack_id_adds_emphasis_not_structure(tmp_path: Path) -> None:
+    """When pack has scout_emphasis, queries include those keywords; structure remains list[str]."""
+    (tmp_path / "pack.json").write_text(
+        json.dumps({
+            "id": "test_scout_pack",
+            "version": "1",
+            "name": "Test",
+            "scout_emphasis": ["fractional CTO", "technical leadership"],
+        }),
+        encoding="utf-8",
+    )
+    planner = QueryPlanner()
+    with patch("app.scout.query_planner.get_pack_dir", return_value=tmp_path):
+        queries = planner.plan(
+            icp="B2B SaaS",
+            core_rubric=_minimal_core_rubric(),
+            pack_id="test_scout_pack",
+        )
+    assert isinstance(queries, list)
+    assert len(queries) > 0
+    combined = " ".join(queries).lower()
+    assert "fractional" in combined or "cto" in combined
+    assert "technical" in combined or "leadership" in combined
 
 
-def test_plan_with_pack_id_adds_emphasis() -> None:
-    """Optional pack_id changes emphasis (e.g. CTO keywords)."""
-    queries_cto = plan("B2B", core_rubric=None, pack_id="fractional_cto_v1")
-    queries_cfo = plan("B2B", core_rubric=None, pack_id="fractional_cfo_v1")
-    assert len(queries_cto) >= 1
-    assert len(queries_cfo) >= 1
-    assert any("CTO" in q or "cto" in q for q in queries_cto)
-    assert any("CFO" in q or "cfo" in q or "finance" in q.lower() for q in queries_cfo)
+def test_plan_queries_convenience_function() -> None:
+    """plan_queries() is a convenience that returns same shape as QueryPlanner().plan()."""
+    queries = plan_queries(
+        icp="Fintech startup",
+        core_rubric=_minimal_core_rubric(),
+    )
+    assert isinstance(queries, list)
+    assert len(queries) > 0
+    for q in queries:
+        assert isinstance(q, str)
 
 
-def test_plan_empty_icp_returns_fallback() -> None:
-    """Empty ICP returns a single fallback query."""
-    queries = plan("", core_rubric=None, pack_id=None)
-    assert queries == ["startup hiring growth"]
-
-
-def test_plan_strips_icp() -> None:
-    """Whitespace-only or stripped ICP is handled."""
-    queries = plan("  Seed stage  ", core_rubric=None, pack_id=None)
-    assert len(queries) >= 1
-    assert any("Seed stage" in q for q in queries)
+def test_plan_no_duplicate_queries() -> None:
+    """Planner returns deduplicated queries (no exact duplicate strings)."""
+    planner = QueryPlanner()
+    queries = planner.plan(
+        icp="SaaS",
+        core_rubric=_minimal_core_rubric(),
+    )
+    assert len(queries) == len(set(queries)), "Queries should be deduplicated"

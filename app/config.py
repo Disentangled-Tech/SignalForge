@@ -41,6 +41,7 @@ class Settings:
     llm_model_reasoning: str = "gpt-4o"
     llm_model_json: str = "gpt-4o-mini"
     llm_model_outreach: str = "gpt-4o-mini"
+    llm_model_scout: str = "gpt-4o"  # discovery scout evidence extraction (issue #275)
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
@@ -113,6 +114,9 @@ class Settings:
         self.llm_model_json = os.getenv("LLM_MODEL_JSON") or legacy_model or self.llm_model_json
         self.llm_model_outreach = (
             os.getenv("LLM_MODEL_OUTREACH") or legacy_model or self.llm_model_outreach
+        )
+        self.llm_model_scout = (
+            os.getenv("LLM_MODEL_SCOUT") or legacy_model or self.llm_model_scout
         )
         self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
         self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))

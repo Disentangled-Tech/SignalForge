@@ -1,6 +1,6 @@
-"""ScoutRun model — metadata for a single discovery scout run (Evidence-Only).
+"""ScoutRun ORM — metadata for a discovery scout run (Evidence-Only mode).
 
-No FK to companies or signal_events. Per plan: scout runs are separate from the ingest→derive→score pipeline.
+No FK to companies or signal_events. Per plan Step 4.
 """
 
 from __future__ import annotations
@@ -9,21 +9,20 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import DateTime, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 
 
 class ScoutRun(Base):
-    """Metadata for one LLM Discovery Scout run: timing, model, tokens, config snapshot."""
+    """Metadata for one discovery scout run: model version, tokens, latency, config snapshot."""
 
     __tablename__ = "scout_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=False, unique=True, index=True
-    )
+    run_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False, unique=True, index=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -36,8 +35,6 @@ class ScoutRun(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    evidence_bundles: Mapped[list["ScoutEvidenceBundle"]] = relationship(
-        "ScoutEvidenceBundle",
-        back_populates="scout_run",
-        cascade="all, delete-orphan",
+    bundles: Mapped[list["ScoutEvidenceBundle"]] = relationship(
+        "ScoutEvidenceBundle", back_populates="scout_run", cascade="all, delete-orphan"
     )

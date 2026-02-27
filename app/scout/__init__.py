@@ -3,7 +3,12 @@
 No writes to companies, signal_events, or signal_instances.
 """
 
-from app.scout.query_planner import plan as plan_queries
+from app.scout.query_planner import QueryPlanner, plan_queries
 from app.scout.sources import filter_allowed_sources, is_source_allowed
 
-__all__ = ["filter_allowed_sources", "is_source_allowed", "plan_queries"]
+__all__ = [
+    "filter_allowed_sources",
+    "is_source_allowed",
+    "QueryPlanner",
+    "plan_queries",
+]
