@@ -7,6 +7,9 @@
 # omitted from this passthrough list. Derive does not produce SignalInstances for
 # incorporation. If scoring of incorporation signals is required in future, add the
 # passthrough entry here and update the core taxonomy dimension mapping.
+# Optional 'version' is used by Evidence Store (Issue #276); if absent, content hash is used.
+
+version: "1.0"
 
 derivers:
   passthrough:

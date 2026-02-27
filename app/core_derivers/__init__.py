@@ -3,6 +3,7 @@
 Provides pack-independent canonical event_type -> signal_id mappings and
 compiled pattern derivers for the derive stage.
 """
+
 from __future__ import annotations
 
 from app.core_derivers.loader import (

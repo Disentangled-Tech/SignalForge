@@ -7,6 +7,7 @@ and get_core_pattern_derivers() for cached access.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections.abc import Mapping
@@ -46,6 +47,24 @@ def load_core_derivers() -> dict[str, Any]:
         raise ValueError(f"Core derivers YAML is malformed: {exc}") from exc
     validate_core_derivers(data)
     return data
+
+
+@lru_cache(maxsize=1)
+def get_core_derivers_version() -> str:
+    """Return the core derivers version for evidence store recording.
+
+    Reads optional top-level 'version' from derivers.yaml; if present and
+    non-empty, returns it. Otherwise returns a stable SHA-256 hex digest
+    of the file content (64 chars). Used by the Evidence Store (Issue #276).
+
+    Returns:
+        Non-empty version string (human-readable or content hash).
+    """
+    data = load_core_derivers()
+    version = data.get("version")
+    if isinstance(version, str) and version.strip():
+        return version.strip()
+    return hashlib.sha256(_DERIVERS_PATH.read_bytes()).hexdigest()
 
 
 @lru_cache(maxsize=1)
@@ -93,9 +112,7 @@ def get_core_pattern_derivers() -> tuple[dict[str, Any], ...]:
         try:
             compiled = re.compile(pat_str)
         except re.error:
-            logger.warning(
-                "Invalid core pattern deriver regex for signal_id=%s, skipping", sid
-            )
+            logger.warning("Invalid core pattern deriver regex for signal_id=%s, skipping", sid)
             continue
         source_fields = item.get("source_fields")
         if source_fields is None:
