@@ -9,6 +9,8 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 | **score** | `POST /internal/run_score` | Compute TRS + ESL using workspace pack **analysis config only** (weights, ESL); company eligibility for scoring is not narrowed by pack (Issue #290) | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
+**Separate from the pipeline:** The **LLM Discovery Scout** (`POST /internal/run_scout`) is an evidence-only flow: it produces Evidence Bundles and writes only to `scout_runs` and `scout_evidence_bundles`. It is not a stage, not workspace- or pack-scoped for storage, and does not write to companies or signal_events. See [discovery_scout.md](discovery_scout.md).
+
 ## API Behavior
 
 ### POST /internal/run_score

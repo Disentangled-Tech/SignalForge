@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import validate_uuid_param_or_422
+from app.schemas.scout import RunScoutRequest
 from app.config import get_settings
 from app.db.session import get_db
 
@@ -417,6 +418,38 @@ async def run_daily_aggregation_endpoint(
     except Exception as exc:
         logger.exception("Internal daily aggregation job failed")
         return {"status": "failed", "error": str(exc)}
+
+
+@router.post("/run_scout")
+async def run_scout_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    body: RunScoutRequest = ...,
+):
+    """Trigger LLM Discovery Scout (Evidence-Only). Returns run_id, bundles_count, status.
+
+    Body: icp_definition, optional exclusion_rules, optional pack_id, optional page_fetch_limit.
+    Does not write to companies or signal_events; output is stored in scout_runs and scout_evidence_bundles.
+    """
+    from app.services.scout.discovery_scout_service import run as run_scout
+
+    try:
+        result = run_scout(
+            db,
+            icp_definition=body.icp_definition,
+            exclusion_rules=body.exclusion_rules,
+            pack_id=body.pack_id,
+            page_fetch_limit=body.page_fetch_limit,
+        )
+        return {
+            "run_id": result["run_id"],
+            "bundles_count": result["bundles_count"],
+            "status": result["status"],
+            "error": result.get("error"),
+        }
+    except Exception as exc:
+        logger.exception("Internal run_scout failed")
+        return {"status": "failed", "run_id": "", "bundles_count": 0, "error": str(exc)}
 
 
 @router.post("/run_bias_audit")
