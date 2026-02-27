@@ -15,19 +15,34 @@ This document defines the **Pack v2** contract for SignalForge. It aligns with t
 
 ## Pack-owned (interpretation)
 
-Packs define:
+| File                  | v1       | v2                                                                  |
+|-----------------------|----------|---------------------------------------------------------------------|
+| pack.json             | Required | Required                                                            |
+| scoring.yaml          | Required | Optional if `analysis_weights.yaml` present (v2 preferred)           |
+| esl_policy.yaml       | Required | Optional if `esl_rubric.yaml` present (v2 preferred)               |
+| analysis_weights.yaml | —        | Optional (v2); same semantics as scoring; loader maps to Pack.scoring |
+| esl_rubric.yaml       | —        | Optional (v2); same semantics as esl_policy; loader maps to Pack.esl_policy |
+| prompt_bundles/       | —        | Optional (v2); system + templates + few_shot; loader sets Pack.prompt_bundles |
+| taxonomy.yaml         | Required | Optional (labels/explainability only; signal_ids come from core)    |
+| derivers.yaml         | Required | Optional (derive uses core derivers only)                           |
+| playbooks/            | Optional | Optional                                                            |
 
-- **Analysis weights**: scoring.yaml (base_scores, decay, composite_weights, recommendation_bands, suppressors, pain_signal_weights).
-- **ESL rubrics**: esl_policy.yaml (blocked_signals, prohibited_combinations, downgrade_rules, sensitivity_mapping, recommendation_boundaries). Core hard bans (e.g. `CORE_BAN_SIGNAL_IDS`) remain enforced by core and cannot be overridden by packs.
-- **Prompt bundles** (v2): optional `packs/{pack_id}/prompts/*.md`; when present, used in preference to `app/prompts/` for that pack.
-- **Labels and explainability**: optional in taxonomy (labels, explainability_templates) for human-facing text.
+For v2, if `taxonomy.yaml` or `derivers.yaml` is absent, the loader uses empty dicts and the derive stage uses **core derivers** only. For v2, the loader prefers `analysis_weights.yaml` over `scoring.yaml` and `esl_rubric.yaml` over `esl_policy.yaml` when present. Scoring and ESL policy must reference **core signal_ids** only (validated at load time). Core hard bans (e.g. `CORE_BAN_SIGNAL_IDS`) remain enforced and cannot be overridden by packs.
 
 ## Core-owned (facts)
 
 Core owns:
 
-- **Signal identifiers**: canonical `signal_ids` and dimensions (see `app/core_taxonomy/`). Derivation uses core derivers first (`app/core_derivers/`); pack derivers are fallback only when core is unavailable.
+- **Signal identifiers**: canonical `signal_ids` and dimensions (see `app/core_taxonomy/`). Derivation uses core derivers (`app/core_derivers/`); for v2 packs, pack derivers are optional (empty dict when absent).
 - **Derivers**: event_type → signal_id mappings and pattern derivers are defined in core; packs do not introduce new signals.
+
+## Which packs are v1 vs v2
+
+| Pack               | schema_version | Notes                                                                 |
+|--------------------|----------------|-----------------------------------------------------------------------|
+| fractional_cto_v1  | "2"            | Production pack (Issue #288 M1); v2 layout: analysis_weights, esl_rubric, prompt_bundles. |
+| bookkeeping_v1     | "1"            | Legacy; requires taxonomy and derivers.                               |
+| example_v2         | "2"            | Minimal v2 example (no taxonomy/derivers on disk); used by tests.     |
 
 ## Required vs optional files
 
@@ -52,8 +67,8 @@ For v2, when taxonomy.yaml is absent or omits `signal_ids`, scoring and ESL vali
 
 ## Backward compatibility
 
-- Existing packs (e.g. fractional_cto_v1) remain on schema_version `"1"` with no change in behavior.
-- Migration of a pack to v2 is optional and done in a later milestone after the v2 contract and loader behavior are stable and tested.
+- fractional_cto_v1 has been migrated to schema_version `"2"` (Issue #288 M1); scoring/ESL behavior is unchanged (same weights and rubrics).
+- Other packs (e.g. bookkeeping_v1) remain on v1. Migration of a pack to v2 is optional and follows the v2 contract and loader behavior.
 
 ## References
 
