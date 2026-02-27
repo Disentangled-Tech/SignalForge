@@ -147,6 +147,57 @@ class TestValidatePackSchemaManifest:
                 playbooks={},
             )
 
+    def test_manifest_without_schema_version_passes(self) -> None:
+        """Manifest with only id, version, name passes (schema_version optional, default "1")."""
+        from app.packs.schemas import get_schema_version, validate_pack_schema
+
+        manifest = {"id": "test_pack", "version": "1", "name": "Test Pack"}
+        assert get_schema_version(manifest) == "1"
+        validate_pack_schema(
+            manifest=manifest,
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks={},
+        )
+
+    def test_manifest_with_schema_version_2_passes(self) -> None:
+        """Manifest with schema_version "2" passes (M1: no validation change)."""
+        from app.packs.schemas import get_schema_version, validate_pack_schema
+
+        manifest = {"id": "test_pack", "version": "1", "name": "Test Pack", "schema_version": "2"}
+        assert get_schema_version(manifest) == "2"
+        validate_pack_schema(
+            manifest=manifest,
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks={},
+        )
+
+    def test_manifest_with_empty_schema_version_raises(self) -> None:
+        """Manifest with schema_version present but empty raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        for bad_value in ("", "   "):
+            manifest = {
+                "id": "test_pack",
+                "version": "1",
+                "name": "Test Pack",
+                "schema_version": bad_value,
+            }
+            with pytest.raises(ValidationError, match="schema_version|non-empty"):
+                validate_pack_schema(
+                    manifest=manifest,
+                    taxonomy=_valid_taxonomy(),
+                    scoring=_valid_scoring(),
+                    esl_policy=_valid_esl_policy(),
+                    derivers=_valid_derivers(),
+                    playbooks={},
+                )
+
 
 class TestValidatePackSchemaTaxonomy:
     """Taxonomy structure and signal_ids."""

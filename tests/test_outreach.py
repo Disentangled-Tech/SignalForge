@@ -123,7 +123,7 @@ class TestTruncateToWordLimit:
 
 class TestGenerateOutreachHappyPath:
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_returns_subject_and_message(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -137,7 +137,7 @@ class TestGenerateOutreachHappyPath:
         assert "Jane" in result["message"]
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_llm_called_with_correct_params(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -154,7 +154,7 @@ class TestGenerateOutreachHappyPath:
         )
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_render_prompt_receives_all_placeholders(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -174,7 +174,7 @@ class TestGenerateOutreachHappyPath:
         assert call_kwargs["MOST_LIKELY_NEXT_PROBLEM"] == "Scaling the engineering team"
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_generate_outreach_uses_pack_offer_type_when_provided(
         self, mock_render, mock_get_llm
     ):
@@ -201,7 +201,7 @@ class TestGenerateOutreachHappyPath:
 
 class TestGenerateOutreachEdgeCases:
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_no_operator_profile_uses_empty_string(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -216,7 +216,7 @@ class TestGenerateOutreachEdgeCases:
         assert call_kwargs["OPERATOR_PROFILE_MARKDOWN"] == ""
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_word_count_over_140_triggers_retry(self, mock_render, mock_get_llm, caplog):
         """When message > 140 words, shorten retry includes the actual message."""
         long_message = " ".join(["word"] * 200)
@@ -255,7 +255,7 @@ class TestGenerateOutreachEdgeCases:
         assert "---BEGIN MESSAGE---" in shorten_prompt
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_word_count_retry_still_over_truncates(self, mock_render, mock_get_llm):
         """When retry also exceeds 140 words, message is truncated."""
         mock_llm = MagicMock()
@@ -270,7 +270,7 @@ class TestGenerateOutreachEdgeCases:
         assert mock_llm.complete.call_count == 2
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_word_count_under_140_no_retry(self, mock_render, mock_get_llm):
         """When message is under 140 words, no retry."""
         mock_llm = MagicMock()
@@ -284,7 +284,7 @@ class TestGenerateOutreachEdgeCases:
         mock_llm.complete.assert_called_once()
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_llm_failure_returns_empty(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -297,7 +297,7 @@ class TestGenerateOutreachEdgeCases:
         assert result == {"subject": "", "message": ""}
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_invalid_json_returns_empty(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -310,7 +310,7 @@ class TestGenerateOutreachEdgeCases:
         assert result == {"subject": "", "message": ""}
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_empty_pain_signals_still_works(self, mock_render, mock_get_llm):
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -333,7 +333,7 @@ class TestProfileOutreachIntegration:
     """Integration test: seeded OperatorProfile in DB is passed to outreach prompt."""
 
     @patch("app.services.outreach.get_llm_provider")
-    @patch("app.services.outreach.render_prompt")
+    @patch("app.services.outreach.resolve_prompt_content")
     def test_profile_from_db_flows_to_outreach_prompt(
         self, mock_render, mock_get_llm, db
     ):

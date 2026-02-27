@@ -97,6 +97,7 @@ def generate_ore_recommendation(
             pattern_frame=pattern_frame,
             value_asset=value_asset,
             cta=cta,
+            pack=pack,
         )
 
         if draft.get("subject") or draft.get("message"):

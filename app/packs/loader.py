@@ -119,6 +119,21 @@ def _packs_root() -> Path:
     return app_dir.parent / "packs"
 
 
+def get_pack_dir(pack_id: str) -> Path:
+    """Return path to pack directory packs/{pack_id}/ (M4 prompt bundles).
+
+    Does not require the directory to exist. Use for resolving pack prompts
+    when pack has schema_version \"2\".
+    """
+    if not pack_id or not isinstance(pack_id, str):
+        raise ValueError("pack_id must be a non-empty string")
+    if not _PACK_ID_PATTERN.match(pack_id):
+        raise ValueError(f"pack_id must match [a-zA-Z0-9_-]+ (got {pack_id!r})")
+    if ".." in pack_id or "/" in pack_id or "\\" in pack_id:
+        raise ValueError("pack_id must not contain path separators or '..'")
+    return _packs_root() / pack_id
+
+
 def load_pack(pack_id: str, version: str) -> Pack:
     """Load pack config from packs/{pack_id}/ directory.
 

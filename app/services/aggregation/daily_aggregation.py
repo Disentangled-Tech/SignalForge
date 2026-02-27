@@ -4,6 +4,8 @@ Orchestrates ingest, derive, and score stages. On success, queries ranked compan
 via get_emerging_companies. One adapter failure does not kill ingest.
 Stage failure: derive/score run on existing data; partial result returned on error.
 Unified orchestrator for cron. Runs stages in order, returns ranked companies.
+One adapter failure does not kill ingest. Stage failure: derive/score run on
+existing data; partial result returned on error.
 """
 
 from __future__ import annotations
@@ -125,6 +127,7 @@ def run_daily_aggregation(
             outreach_score_threshold=0,
             pack_id=resolved_pack,
             workspace_id=ws_id,
+            outreach_score_threshold=0,
         )
         for rs, es, company in emerging:
             band = (
@@ -134,7 +137,7 @@ def run_daily_aggregation(
             )
             ranked_companies.append(
                 {
-                    "company_name": company.name,
+                    "name": company.name,
                     "composite": rs.composite,
                     "band": band,
                 }

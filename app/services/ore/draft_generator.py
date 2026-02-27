@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.company import Company
-from app.prompts.loader import render_prompt
+from app.prompts.loader import resolve_prompt_content
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
@@ -70,17 +70,20 @@ def generate_ore_draft(
     pattern_frame: str,
     value_asset: str,
     cta: str,
+    pack: Pack | None = None,
 ) -> dict:
     """Generate ORE-compliant draft (no evidence, no surveillance).
 
     Returns dict with subject, message. On failure returns empty strings.
+    When pack is provided (e.g. from ORE pipeline), uses resolve_prompt_content for M4.
     """
     name = (company.founder_name or "").strip() or "there"
     company_name = (company.name or "").strip() or "your company"
 
     try:
-        prompt = render_prompt(
+        prompt = resolve_prompt_content(
             "ore_outreach_v1",
+            pack,
             NAME=name,
             COMPANY=company_name,
             PATTERN_FRAME=pattern_frame,
