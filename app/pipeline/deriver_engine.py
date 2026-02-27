@@ -25,7 +25,7 @@ from app.core_derivers.loader import get_core_passthrough_map, get_core_pattern_
 from app.models.job_run import JobRun
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
-from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.services.pack_resolver import get_core_pack_id
 
 logger = logging.getLogger(__name__)
 

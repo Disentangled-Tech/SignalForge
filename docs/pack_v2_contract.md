@@ -45,7 +45,9 @@ Core owns:
 | fractional_coo_v1   | "2"            | Fractional COO pack (Issue #288 M3); v2 layout; same core signals, COO weights/prompts.   |
 | fractional_cfo_v1   | "2"            | Fractional CFO pack (Issue #288 M4); v2 layout; same core signals, CFO weights/prompts.   |
 | bookkeeping_v1     | "1"            | Legacy; requires taxonomy and derivers.                               |
-| example_v2         | "2"            | Minimal v2 example (no taxonomy/derivers on disk); used by tests.     |
+| example_v2         | "2"            | Minimal v2 example (no taxonomy/derivers on disk); used by tests.       |
+
+Fractional role packs (fractional_cmo_v1, fractional_coo_v1, fractional_cfo_v1) are added in Issue #288 M2–M4; until those milestones are implemented, their pack directories may be absent from the repo.
 
 ## Required vs optional files
 
@@ -73,8 +75,26 @@ For v2, when taxonomy.yaml is absent or omits `signal_ids`, scoring and ESL vali
 - fractional_cto_v1 has been migrated to schema_version `"2"` (Issue #288 M1); scoring/ESL behavior is unchanged (same weights and rubrics).
 - Other packs (e.g. bookkeeping_v1) remain on v1. Migration of a pack to v2 is optional and follows the v2 contract and loader behavior.
 
+## Adding a Fractional Role Pack
+
+To add a new fractional role pack (e.g. CMO, COO, CFO) that uses the same core signals but different interpretation:
+
+1. **Pack directory layout** (v2): Create `packs/<pack_id>/` with:
+   - `pack.json` — set `"schema_version": "2"`, unique `id` and `version`.
+   - `analysis_weights.yaml` — scoring weights (same schema as scoring.yaml).
+   - `esl_rubric.yaml` — ESL policy (same schema as esl_policy.yaml).
+   - `prompt_bundles/` (optional) — `system.txt` or `system.md`, `templates/*.yaml` or `*.jinja2`, `few_shot/*.yaml`.
+   - No `taxonomy.yaml` or `derivers.yaml` — core owns signals and derivers.
+
+2. **Migration**: Add an Alembic migration that **INSERT**s a row into `signal_packs` with the new `pack_id`, `version`, and optional `industry`/`description`. Do not remove or alter existing rows. Compute `config_checksum` via `load_pack(pack_id, version).config_checksum` after the pack dir exists.
+
+3. **Validation**: Ensure all signal_ids referenced in analysis_weights and esl_rubric exist in **core** taxonomy. The pack loader validates this at load time for schema_version "2". Run `load_pack(pack_id, version)` and schema validation in tests.
+
+4. **Default pack**: The default pack remains `fractional_cto_v1` by convention. Workspaces can switch to the new pack via `active_pack_id` (existing API/settings).
+
 ## References
 
 - Architecture Contract (SignalForge Architecture Contract doc).
 - ADR-001: Declarative Signal Pack Architecture.
 - Implementation plan: Pack v2 Contract Implementation (pack_v2_contract_implementation plan).
+- Core vs Pack: `docs/CORE_VS_PACK_RESPONSIBILITIES.md`.

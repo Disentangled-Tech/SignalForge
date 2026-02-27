@@ -27,8 +27,8 @@ Core configuration lives in `app/core_taxonomy/` and `app/core_derivers/`. It is
 
 Pack configuration lives under `packs/<pack_id>/`. Packs own:
 
-- **Scoring** — Weights, decay, caps, base_scores, suppressors. Defined in `scoring.yaml`. Read by the readiness engine; determines composite and dimension scores from SignalInstances.
-- **ESL policy** — SVI/SPI/CSI, boundaries, hard bans. Defined in `esl_policy.yaml`. Used by the ESL engine for engagement scoring and gating.
+- **Scoring** — Weights, decay, caps, base_scores, suppressors. Defined in `scoring.yaml` (or for Pack v2, `analysis_weights.yaml`; loader maps to same Pack.scoring). Read by the readiness engine; determines composite and dimension scores from SignalInstances.
+- **ESL policy** — SVI/SPI/CSI, boundaries, hard bans. Defined in `esl_policy.yaml` (or for Pack v2, `esl_rubric.yaml`; loader maps to same Pack.esl_policy). Used by the ESL engine for engagement scoring and gating.
 - **Outreach** — Playbooks, offer type, outreach logic. Defined in `playbooks/` and pack manifest. Used by ORE and briefing.
 - **Labels and explainability templates** — Human-readable labels and explanation templates for signals. May live in pack `taxonomy.yaml` (optional in Pack v2). Used for UI and explainability.
 - **Optional taxonomy (Pack v2)** — Packs with `schema_version: "2"` may omit `taxonomy.yaml` or use it only for labels/explainability; core taxonomy is used for signal_id validation.
@@ -36,7 +36,9 @@ Pack configuration lives under `packs/<pack_id>/`. Packs own:
 
 **Not used by derive:** The deriver engine does not use pack `derivers.yaml` for passthrough or pattern rules (Issue #285, Milestone 6). Pack derivers are only validated at pack load time (when present) against allowed signal_ids (core for v2).
 
-**References:** `app/packs/loader.py`, `app/services/readiness/readiness_engine.py`, `app/services/esl/esl_engine.py`, `app/services/ore/ore_pipeline.py`, `app/packs/schemas.py`.
+**Default pack:** The default pack is **fractional_cto_v1** by convention (see `app/services/pack_resolver.py`). v2 packs use the same resolution path: `get_default_pack_id` / `get_pack_for_workspace` return the pack UUID from `signal_packs`; `resolve_pack` loads the pack from disk via `load_pack(pack_id, version)` regardless of schema_version.
+
+**References:** `app/packs/loader.py`, `app/services/readiness/readiness_engine.py`, `app/services/esl/esl_engine.py`, `app/services/ore/ore_pipeline.py`, `app/packs/schemas.py`, `app/services/pack_resolver.py`.
 
 ---
 
@@ -75,8 +77,8 @@ Core taxonomy (`app/core_taxonomy/taxonomy.yaml`) and core derivers (`app/core_d
 | Passthrough (event→signal) | Core    | `app/core_derivers/derivers.yaml`; used by derive    |
 | Pattern derivers           | Core    | `app/core_derivers/derivers.yaml` (optional); derive |
 | Regex safety               | Shared  | `app/packs/regex_validator.py`; core + pack          |
-| Scoring weights/decay/caps | Pack    | `packs/<pack_id>/scoring.yaml`                        |
-| ESL policy                 | Pack    | `packs/<pack_id>/esl_policy.yaml`                     |
+| Scoring weights/decay/caps | Pack    | `packs/<pack_id>/scoring.yaml` (v2: `analysis_weights.yaml`)   |
+| ESL policy                 | Pack    | `packs/<pack_id>/esl_policy.yaml` (v2: `esl_rubric.yaml`)     |
 | Outreach playbooks         | Pack    | `packs/<pack_id>/playbooks/`, manifest                |
 | Labels / explainability    | Pack    | `packs/<pack_id>/taxonomy.yaml` (optional in v2)      |
 
