@@ -5,8 +5,8 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 | Stage | Endpoint | Description | Idempotency |
 |-------|----------|-------------|-------------|
 | **ingest** | `POST /internal/run_ingest` | Fetch raw events, normalize, resolve companies, store `signal_events` | Dedup by `(source, source_event_id)` |
-| **derive** | `POST /internal/run_derive` | Populate `signal_instances` from `SignalEvents` using core derivers (writes to core pack) | Upsert by `(entity_id, signal_id, pack_id)` |
-| **score** | `POST /internal/run_score` | Compute TRS + ESL, write `ReadinessSnapshot` + `EngagementSnapshot` | Upsert by `(company_id, as_of, pack_id)` |
+| **derive** | `POST /internal/run_derive` | Populate `signal_instances` from `SignalEvents` using **core derivers only** (pack-independent; writes to core pack) | Upsert by `(entity_id, signal_id, pack_id)` |
+| **score** | `POST /internal/run_score` | Compute TRS + ESL using workspace pack **analysis config only** (weights, ESL); company eligibility for scoring is not narrowed by pack (Issue #290) | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
 ## API Behavior
@@ -109,7 +109,7 @@ Two pipelines feed the fractional CTO use case; they use different data models a
 **Relationship**
 
 - **Scan**: For companies with `website_url`. Discovers pages, extracts text, stores `SignalRecord`. Runs LLM analysis (stage, pain signals) and deterministic scoring. Updates `company.cto_need_score` and `company.current_stage`. Pack is resolved via `get_default_pack(db)` and passed to `analyze_company` / `score_company`.
-- **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via pack derivers, computes TRS + ESL, writes snapshots. Pack-scoped; workspace-scoped when multi-tenant.
+- **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via **core derivers only** (pack-independent), computes TRS + ESL using workspace pack analysis config, writes pack-scoped snapshots. Workspace-scoped when multi-tenant (Issue #290).
 - **Briefing**: Uses both. `select_top_companies` (legacy) and `get_emerging_companies` (pack) can surface companies. Pack path reads from `lead_feed` when populated, else join of ReadinessSnapshot + EngagementSnapshot.
 
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)

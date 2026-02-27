@@ -70,6 +70,10 @@ For v2, when taxonomy.yaml is absent or omits `signal_ids`, scoring and ESL vali
 - **Derivers** (if present): passthrough and pattern signal_ids must be in **core** taxonomy.
 - **Taxonomy** (if present): may contain only labels and explainability_templates; signal_ids list is not required (core is source of truth).
 
+## Runtime pack selection (Issue #290)
+
+When a workspace's active pack is resolved (e.g. for scoring, briefing, ORE), only **analysis config** is loaded: manifest, scoring (or analysis_weights), ESL policy (or esl_rubric), playbooks, prompt_bundles, and optional labels. Derivers and taxonomy (beyond labels) are not loaded or used for runtime behavior. Derivation and ingestion scope are pack-invariant; switching packs changes interpretation (weights, ESL, outreach) only.
+
 ## Backward compatibility
 
 - fractional_cto_v1 has been migrated to schema_version `"2"` (Issue #288 M1); scoring/ESL behavior is unchanged (same weights and rubrics).

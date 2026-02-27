@@ -36,7 +36,9 @@ Pack configuration lives under `packs/<pack_id>/`. Packs own:
 
 **Not used by derive:** The deriver engine does not use pack `derivers.yaml` for passthrough or pattern rules (Issue #285, Milestone 6). Pack derivers are only validated at pack load time (when present) against allowed signal_ids (core for v2).
 
-**Default pack:** The default pack is **fractional_cto_v1** by convention (see `app/services/pack_resolver.py`). v2 packs use the same resolution path: `get_default_pack_id` / `get_pack_for_workspace` return the pack UUID from `signal_packs`; `resolve_pack` loads the pack from disk via `load_pack(pack_id, version)` regardless of schema_version.
+**Default pack:** The default pack is **fractional_cto_v1** by convention (see `app/services/pack_resolver.py`). v2 packs use the same resolution path: `get_default_pack_id` / `get_pack_for_workspace` return the pack UUID from `signal_packs`; `resolve_pack` loads the pack from disk for runtime use.
+
+**Runtime vs full load (Issue #290):** At runtime, `resolve_pack(db, pack_id)` loads **analysis config only** (manifest, scoring, ESL, playbooks, prompt_bundles, optional labels). It does not load derivers or full taxonomy for behavior; derivation and ingestion scope are pack-invariant. The full `load_pack(pack_id, version)` remains for validation and CI (e.g. pack schema validation, config_checksum).
 
 **References:** `app/packs/loader.py`, `app/services/readiness/readiness_engine.py`, `app/services/esl/esl_engine.py`, `app/services/ore/ore_pipeline.py`, `app/packs/schemas.py`, `app/services/pack_resolver.py`.
 
