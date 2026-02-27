@@ -2,12 +2,11 @@
 Alembic environment. Uses app config for database URL.
 """
 
-import os
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.config import get_settings
 from app.db.session import Base
 
@@ -21,13 +20,18 @@ config.set_main_option("sqlalchemy.url", settings.database_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import models so Alembic can detect them
-from app.models import (  # noqa: F401
+# Import models so Alembic can detect them (after config; E402 intentional)
+from app.models import (  # noqa: E402, F401
     AnalysisRecord,
     AppSettings,
     BriefingItem,
     Company,
     CompanyAlias,
+    EvidenceBundle,
+    EvidenceBundleSource,
+    EvidenceClaim,
+    EvidenceQuarantine,
+    EvidenceSource,
     JobRun,
     LeadFeed,
     OperatorProfile,

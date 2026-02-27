@@ -8,6 +8,11 @@ from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.company_alias import CompanyAlias
 from app.models.engagement_snapshot import EngagementSnapshot
+from app.models.evidence_bundle import EvidenceBundle
+from app.models.evidence_bundle_source import EvidenceBundleSource
+from app.models.evidence_claim import EvidenceClaim
+from app.models.evidence_quarantine import EvidenceQuarantine
+from app.models.evidence_source import EvidenceSource
 from app.models.job_run import JobRun
 from app.models.lead_feed import LeadFeed
 from app.models.operator_profile import OperatorProfile
@@ -34,6 +39,11 @@ __all__ = [
     "Company",
     "CompanyAlias",
     "EngagementSnapshot",
+    "EvidenceBundle",
+    "EvidenceBundleSource",
+    "EvidenceClaim",
+    "EvidenceQuarantine",
+    "EvidenceSource",
     "OutreachHistory",
     "OutreachRecommendation",
     "JobRun",
