@@ -26,6 +26,7 @@ os.environ.setdefault("WORKSPACE_JOB_RATE_LIMIT_PER_HOUR", "0")  # Disable for t
 def client() -> TestClient:
     """FastAPI test client."""
     from app.main import app
+
     return TestClient(app)
 
 
@@ -84,6 +85,7 @@ def _ensure_migrations() -> None:
     _user = os.getenv("PGUSER") or os.getenv("USER") or "postgres"
     _create_db_url = f"postgresql+psycopg://{_user}@localhost:5432/postgres"
     from sqlalchemy import create_engine, text
+
     engine = create_engine(_create_db_url)
     try:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
@@ -108,6 +110,7 @@ def _ensure_migrations() -> None:
 def db(_ensure_migrations: None) -> Session:
     """Database session for model tests. All changes are rolled back after each test."""
     from app.db import engine
+
     connection = engine.connect()
     transaction = connection.begin()
     session = Session(
@@ -130,6 +133,7 @@ def db(_ensure_migrations: None) -> Session:
 def fractional_cto_pack_id(db):
     """UUID of fractional_cto_v1 pack (Issue #189). Use for pack-scoped fixtures."""
     from app.models import SignalPack
+
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
     if pack is None:
         pytest.skip("fractional_cto_v1 pack not found (run migration 20260223_signal_packs)")
@@ -140,31 +144,29 @@ def fractional_cto_pack_id(db):
 def core_pack_id(db):
     """UUID of core pack sentinel (Issue #287 M1). Use for derive output assertions."""
     from app.services.pack_resolver import get_core_pack_id
+
     core_id = get_core_pack_id(db)
     if core_id is None:
         pytest.skip("core pack not installed (run migration 20260226_core_pack_sentinel)")
     return core_id
 
 
-@pytest.fixture
-def bookkeeping_pack_id(db):
-    """UUID of bookkeeping_v1 pack (Issue #175, Phase 3). Deprecated: use esl_blocked_pack_id or second_pack_id (Issue #289 M1)."""
-    from app.models import SignalPack
-    pack = db.query(SignalPack).filter(SignalPack.pack_id == "bookkeeping_v1").first()
-    if pack is None:
-        pytest.skip("bookkeeping_v1 pack not found (run migration 20260224_bookkeeping_pack)")
-    return pack.id
-
-
-def _get_or_create_signal_pack(db, pack_id: str, version: str = "1", description: str | None = None):
+def _get_or_create_signal_pack(
+    db, pack_id: str, version: str = "1", description: str | None = None
+):
     """Get or create a SignalPack row; used by second_pack and esl_blocked_pack fixtures (Issue #289 M1)."""
     import uuid
 
     from app.models import SignalPack
-    pack = db.query(SignalPack).filter(
-        SignalPack.pack_id == pack_id,
-        SignalPack.version == version,
-    ).first()
+
+    pack = (
+        db.query(SignalPack)
+        .filter(
+            SignalPack.pack_id == pack_id,
+            SignalPack.version == version,
+        )
+        .first()
+    )
     if pack is not None:
         return pack
     pack = SignalPack(
@@ -196,7 +198,9 @@ def second_pack_id(second_pack):
 @pytest.fixture
 def esl_blocked_pack(db):
     """SignalPack row for example_esl_blocked (get or create). Use for ESL blocked_signal tests (Issue #289 M1)."""
-    return _get_or_create_signal_pack(db, "example_esl_blocked", version="1", description="ESL blocked_signal test pack")
+    return _get_or_create_signal_pack(
+        db, "example_esl_blocked", version="1", description="ESL blocked_signal test pack"
+    )
 
 
 @pytest.fixture
