@@ -694,39 +694,18 @@ class TestValidatePackSchemaEslPolicyIssue175:
                 )
 
     def test_fractional_cto_v1_with_new_keys_passes(self) -> None:
-        """fractional_cto_v1 with blocked_signals and prohibited_combinations passes (Phase 1)."""
-        import json
-        from pathlib import Path
-
-        import yaml
-
+        """fractional_cto_v1 (Pack v2) with blocked_signals and prohibited_combinations passes (Phase 1)."""
+        from app.packs.loader import load_pack
         from app.packs.schemas import validate_pack_schema
 
-        packs_root = Path(__file__).resolve().parent.parent / "packs"
-        pack_dir = packs_root / "fractional_cto_v1"
-        with (pack_dir / "pack.json").open() as f:
-            manifest = json.load(f)
-        with (pack_dir / "taxonomy.yaml").open() as f:
-            taxonomy = yaml.safe_load(f) or {}
-        with (pack_dir / "scoring.yaml").open() as f:
-            scoring = yaml.safe_load(f) or {}
-        with (pack_dir / "esl_policy.yaml").open() as f:
-            esl_policy = yaml.safe_load(f) or {}
-        with (pack_dir / "derivers.yaml").open() as f:
-            derivers = yaml.safe_load(f) or {}
-        playbooks = {}
-        if (pack_dir / "playbooks").is_dir():
-            for p in (pack_dir / "playbooks").glob("*.yaml"):
-                with p.open() as f:
-                    playbooks[p.stem] = yaml.safe_load(f) or {}
-
+        pack = load_pack("fractional_cto_v1", "1")
         validate_pack_schema(
-            manifest=manifest,
-            taxonomy=taxonomy,
-            scoring=scoring,
-            esl_policy=esl_policy,
-            derivers=derivers,
-            playbooks=playbooks,
+            manifest=pack.manifest,
+            taxonomy=pack.taxonomy,
+            scoring=pack.scoring,
+            esl_policy=pack.esl_policy,
+            derivers=pack.derivers,
+            playbooks=pack.playbooks,
         )
 
 
@@ -914,39 +893,39 @@ class TestValidatePackSchemaStrictExplainability:
         )
 
     def test_fractional_cto_v1_passes_when_explainability_enforced(self) -> None:
-        """fractional_cto_v1 passes validation with strict_explainability=True (Issue #190)."""
-        import json
-        from pathlib import Path
+        """A pack with full taxonomy and explainability_templates passes strict_explainability (Issue #190).
 
-        import yaml
-
+        fractional_cto_v1 is now Pack v2 with optional taxonomy; use synthetic pack
+        so strict_explainability is still covered.
+        """
+        from app.core_taxonomy.loader import get_core_signal_ids
         from app.packs.schemas import validate_pack_schema
 
-        packs_root = Path(__file__).resolve().parent.parent / "packs"
-        pack_dir = packs_root / "fractional_cto_v1"
-        with (pack_dir / "pack.json").open() as f:
-            manifest = json.load(f)
-        with (pack_dir / "taxonomy.yaml").open() as f:
-            taxonomy = yaml.safe_load(f) or {}
-        with (pack_dir / "scoring.yaml").open() as f:
-            scoring = yaml.safe_load(f) or {}
-        with (pack_dir / "esl_policy.yaml").open() as f:
-            esl_policy = yaml.safe_load(f) or {}
-        with (pack_dir / "derivers.yaml").open() as f:
-            derivers = yaml.safe_load(f) or {}
-        playbooks = {}
-        if (pack_dir / "playbooks").is_dir():
-            for p in (pack_dir / "playbooks").glob("*.yaml"):
-                with p.open() as f:
-                    playbooks[p.stem] = yaml.safe_load(f) or {}
-
+        signal_ids = list(get_core_signal_ids())[:3]
+        taxonomy = {
+            "signal_ids": signal_ids,
+            "explainability_templates": {sid: f"Explanation for {sid}." for sid in signal_ids},
+        }
+        manifest = {
+            "id": "test_explain",
+            "version": "1",
+            "name": "Test",
+            "schema_version": "1",
+        }
+        scoring = {
+            "base_scores": {
+                dim: dict.fromkeys(signal_ids, 10) for dim in ["momentum", "pressure"]
+            }
+        }
+        esl_policy = {"recommendation_boundaries": [[0.0, "Low"], [0.5, "High"]]}
+        derivers = {"derivers": {"passthrough": [{"event_type": s, "signal_id": s} for s in signal_ids]}}
         validate_pack_schema(
             manifest=manifest,
             taxonomy=taxonomy,
             scoring=scoring,
             esl_policy=esl_policy,
             derivers=derivers,
-            playbooks=playbooks,
+            playbooks={},
             strict_explainability=True,
         )
 

@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -48,29 +48,59 @@ def compute_pack_config_checksum(
     esl_policy: dict[str, Any],
     derivers: dict[str, Any],
     playbooks: dict[str, Any],
+    prompt_bundles: dict[str, Any] | None = None,
 ) -> str:
     """Compute SHA-256 hash of normalized pack config (Issue #190, Phase 3).
 
     Returns deterministic hex digest for config drift detection.
+    Pack v2 (M1): prompt_bundles included when present.
     """
-    canonical = json.dumps(
-        {
-            "manifest": manifest,
-            "taxonomy": taxonomy,
-            "scoring": scoring,
-            "esl_policy": esl_policy,
-            "derivers": derivers,
-            "playbooks": playbooks,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    payload: dict[str, Any] = {
+        "manifest": manifest,
+        "taxonomy": taxonomy,
+        "scoring": scoring,
+        "esl_policy": esl_policy,
+        "derivers": derivers,
+        "playbooks": playbooks,
+    }
+    if prompt_bundles is not None:
+        payload["prompt_bundles"] = prompt_bundles
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _load_prompt_bundles(pack_dir: Path) -> dict[str, Any]:
+    """Load prompt_bundles/ for v2: system, templates, few_shot (Issue #288 M1)."""
+    out: dict[str, Any] = {"system": None, "templates": {}, "few_shot": {}}
+    pb = pack_dir / "prompt_bundles"
+    if not pb.is_dir():
+        return out
+    for ext in (".txt", ".md"):
+        system_file = pb / f"system{ext}"
+        if system_file.exists():
+            out["system"] = system_file.read_text(encoding="utf-8").strip()
+            break
+    templates_dir = pb / "templates"
+    if templates_dir.is_dir():
+        for f in templates_dir.glob("*.yaml"):
+            with f.open() as fp:
+                out["templates"][f.stem] = yaml.safe_load(fp) or {}
+        for f in templates_dir.glob("*.jinja2"):
+            out["templates"][f.stem] = {"_raw": f.read_text(encoding="utf-8")}
+    few_dir = pb / "few_shot"
+    if few_dir.is_dir():
+        for f in few_dir.glob("*.yaml"):
+            with f.open() as fp:
+                out["few_shot"][f.stem] = yaml.safe_load(fp) or {}
+    return out
 
 
 @dataclass
 class Pack:
-    """Loaded pack config with taxonomy, scoring, esl_policy, playbooks, derivers (Issue #172)."""
+    """Loaded pack config with taxonomy, scoring, esl_policy, playbooks, derivers (Issue #172).
+
+    Pack v2 (M1): prompt_bundles holds system/templates/few_shot when present.
+    """
 
     manifest: dict
     taxonomy: dict
@@ -79,6 +109,7 @@ class Pack:
     playbooks: dict
     derivers: dict
     config_checksum: str
+    prompt_bundles: dict = field(default_factory=dict)
 
 
 def _packs_root() -> Path:
@@ -125,7 +156,7 @@ def load_pack(pack_id: str, version: str) -> Pack:
 
     is_v2 = manifest.get("schema_version") == "2"
     # For schema_version "2", taxonomy.yaml and derivers.yaml are optional (Issue #285 M5).
-    # scoring.yaml and esl_policy.yaml remain required for all packs.
+    # For v2 (M1): prefer analysis_weights.yaml / esl_rubric.yaml; fallback to scoring/esl_policy.
     taxonomy_path = pack_dir / "taxonomy.yaml"
     if taxonomy_path.exists():
         with taxonomy_path.open() as f:
@@ -135,17 +166,31 @@ def load_pack(pack_id: str, version: str) -> Pack:
     else:
         raise FileNotFoundError(f"taxonomy.yaml not found: {taxonomy_path}")
 
+    analysis_weights_path = pack_dir / "analysis_weights.yaml"
     scoring_path = pack_dir / "scoring.yaml"
-    if not scoring_path.exists():
-        raise FileNotFoundError(f"scoring.yaml not found: {scoring_path}")
-    with scoring_path.open() as f:
-        scoring = yaml.safe_load(f) or {}
+    if is_v2 and analysis_weights_path.exists():
+        with analysis_weights_path.open() as f:
+            scoring = yaml.safe_load(f) or {}
+    elif scoring_path.exists():
+        with scoring_path.open() as f:
+            scoring = yaml.safe_load(f) or {}
+    else:
+        raise FileNotFoundError(
+            f"scoring.yaml or analysis_weights.yaml not found in {pack_dir}"
+        )
 
+    esl_rubric_path = pack_dir / "esl_rubric.yaml"
     esl_path = pack_dir / "esl_policy.yaml"
-    if not esl_path.exists():
-        raise FileNotFoundError(f"esl_policy.yaml not found: {esl_path}")
-    with esl_path.open() as f:
-        esl_policy = yaml.safe_load(f) or {}
+    if is_v2 and esl_rubric_path.exists():
+        with esl_rubric_path.open() as f:
+            esl_policy = yaml.safe_load(f) or {}
+    elif esl_path.exists():
+        with esl_path.open() as f:
+            esl_policy = yaml.safe_load(f) or {}
+    else:
+        raise FileNotFoundError(
+            f"esl_policy.yaml or esl_rubric.yaml not found in {pack_dir}"
+        )
 
     derivers_path = pack_dir / "derivers.yaml"
     if derivers_path.exists():
@@ -162,6 +207,10 @@ def load_pack(pack_id: str, version: str) -> Pack:
         for p in playbooks_dir.glob("*.yaml"):
             with p.open() as f:
                 playbooks_dict[p.stem] = yaml.safe_load(f) or {}
+
+    prompt_bundles_dict: dict = {}
+    if is_v2:
+        prompt_bundles_dict = _load_prompt_bundles(pack_dir)
 
     try:
         validate_pack_schema(
@@ -183,6 +232,7 @@ def load_pack(pack_id: str, version: str) -> Pack:
         esl_policy=esl_policy,
         derivers=derivers,
         playbooks=playbooks_dict,
+        prompt_bundles=prompt_bundles_dict if is_v2 else None,
     )
 
     return Pack(
@@ -193,4 +243,5 @@ def load_pack(pack_id: str, version: str) -> Pack:
         playbooks=playbooks_dict,
         derivers=derivers,
         config_checksum=config_checksum,
+        prompt_bundles=prompt_bundles_dict,
     )

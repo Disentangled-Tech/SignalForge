@@ -13,16 +13,19 @@ This document defines the **Pack v2** schema contract: required vs optional file
 
 ## 2. Pack v2: Required vs optional files
 
-| File             | v1       | v2                                                                  |
-|------------------|----------|---------------------------------------------------------------------|
-| pack.json        | Required | Required                                                            |
-| scoring.yaml     | Required | Required                                                            |
-| esl_policy.yaml  | Required | Required                                                            |
-| taxonomy.yaml    | Required | Optional (labels/explainability only; signal_ids come from core)    |
-| derivers.yaml    | Required | Optional (derive uses core derivers only)                           |
-| playbooks/       | Optional | Optional                                                            |
+| File                  | v1       | v2                                                                  |
+|-----------------------|----------|---------------------------------------------------------------------|
+| pack.json             | Required | Required                                                            |
+| scoring.yaml          | Required | Optional if `analysis_weights.yaml` present (v2 preferred)           |
+| esl_policy.yaml       | Required | Optional if `esl_rubric.yaml` present (v2 preferred)               |
+| analysis_weights.yaml| —        | Optional (v2); same semantics as scoring; loader maps to Pack.scoring |
+| esl_rubric.yaml       | —        | Optional (v2); same semantics as esl_policy; loader maps to Pack.esl_policy |
+| prompt_bundles/       | —        | Optional (v2); system + templates + few_shot; loader sets Pack.prompt_bundles |
+| taxonomy.yaml         | Required | Optional (labels/explainability only; signal_ids come from core)    |
+| derivers.yaml         | Required | Optional (derive uses core derivers only)                           |
+| playbooks/            | Optional | Optional                                                            |
 
-For v2, if `taxonomy.yaml` or `derivers.yaml` is absent, the loader uses empty dicts and the derive stage uses **core derivers** only. Scoring and ESL policy must reference **core signal_ids** only (validated at load time).
+For v2, if `taxonomy.yaml` or `derivers.yaml` is absent, the loader uses empty dicts and the derive stage uses **core derivers** only. For v2, the loader prefers `analysis_weights.yaml` over `scoring.yaml` and `esl_rubric.yaml` over `esl_policy.yaml` when present. Scoring and ESL policy must reference **core signal_ids** only (validated at load time).
 
 ---
 
@@ -30,7 +33,7 @@ For v2, if `taxonomy.yaml` or `derivers.yaml` is absent, the loader uses empty d
 
 | Pack               | schema_version | Notes                                                                 |
 |--------------------|----------------|-----------------------------------------------------------------------|
-| fractional_cto_v1  | "1"            | Production pack; full taxonomy and derivers.                          |
+| fractional_cto_v1  | "2"            | Production pack (Issue #288 M1); v2 layout: analysis_weights, esl_rubric, prompt_bundles. |
 | bookkeeping_v1     | "1"            | Legacy; requires taxonomy and derivers.                               |
 | example_v2         | "2"            | Minimal v2 example (no taxonomy/derivers on disk); used by tests.     |
 
