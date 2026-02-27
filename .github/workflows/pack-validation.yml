@@ -27,5 +27,6 @@ jobs:
       - name: Run pack tests
         run: pytest tests/test_pack_*.py -v -W error
 
+      # Validates all pack dirs (e.g. example_v1, example_esl_blocked, fractional_cto_v1)
       - name: Validate all packs
         run: python -m app.packs.validate_all_packs
