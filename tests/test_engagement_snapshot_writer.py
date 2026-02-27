@@ -189,14 +189,14 @@ def test_stability_cap_under_pressure_spike(db: Session) -> None:
 def test_esl_signal_set_from_core_instances_when_core_pack_id_provided(
     db: Session,
     core_pack_id: UUID,
-    bookkeeping_pack_id: UUID,
+    esl_blocked_pack_id: UUID,
 ) -> None:
     """ESL signal set comes from core SignalInstances when core_pack_id is set (Issue #287 M4).
 
-    Bookkeeping pack blocks financial_distress. We create that signal only in the core
-    pack. Without core_pack_id the signal set would be empty (query by workspace pack)
-    and ESL would allow; with core_pack_id the signal set includes financial_distress
-    and ESL must suppress.
+    example_esl_blocked pack blocks funding_raised (core signal). We create that signal
+    only in the core pack. Without core_pack_id the signal set would be empty (query by
+    workspace pack) and ESL would allow; with core_pack_id the signal set includes
+    funding_raised and ESL must suppress (Issue #289 M1).
     """
     as_of = date(2026, 2, 18)
     company = Company(name="CoreSignalESLCo", source="manual")
@@ -212,15 +212,15 @@ def test_esl_signal_set_from_core_instances_when_core_pack_id_provided(
         pressure=50,
         leadership_gap=50,
         composite=50,
-        pack_id=bookkeeping_pack_id,
+        pack_id=esl_blocked_pack_id,
     )
     db.add(readiness)
     db.commit()
 
-    # Signal only in core pack (as after derive); no instance in bookkeeping pack
+    # Signal only in core pack (as after derive); no instance in workspace pack
     inst = SignalInstance(
         entity_id=company.id,
-        signal_id="financial_distress",
+        signal_id="funding_raised",
         pack_id=core_pack_id,
         first_seen=datetime(2026, 2, 1, tzinfo=UTC),
         last_seen=datetime(2026, 2, 10, tzinfo=UTC),
@@ -232,7 +232,7 @@ def test_esl_signal_set_from_core_instances_when_core_pack_id_provided(
         db,
         company.id,
         as_of,
-        pack_id=bookkeeping_pack_id,
+        pack_id=esl_blocked_pack_id,
         core_pack_id=core_pack_id,
     )
 

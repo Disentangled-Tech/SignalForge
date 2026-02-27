@@ -1,0 +1,8 @@
+# Minimal v2 ESL rubric for blocked_signal tests (Issue #289 M1).
+# blocked_signals: funding_raised (core signal) → suppress / esl_reason_code blocked_signal.
+recommendation_boundaries:
+  - [0.0, "Observe Only"]
+  - [0.7, "Standard Outreach"]
+blocked_signals:
+  - funding_raised
+prohibited_combinations: []

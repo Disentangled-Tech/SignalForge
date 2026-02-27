@@ -1,0 +1,14 @@
+# Minimal v1 taxonomy for test_pack_loader (Issue #289 M1). Uses core signal_ids.
+signal_ids:
+  - funding_raised
+  - cto_role_posted
+
+dimensions:
+  M:
+    - funding_raised
+  G:
+    - cto_role_posted
+
+labels:
+  funding_raised: "Funding raised"
+  cto_role_posted: "CTO role posted"

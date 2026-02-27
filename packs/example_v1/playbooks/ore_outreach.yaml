@@ -1,0 +1,4 @@
+# Minimal playbook for example_v1 (Issue #289 M1).
+pattern_frames: {}
+value_assets: []
+ctas: []

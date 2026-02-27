@@ -8,10 +8,17 @@ Verifies that data is correctly scoped by pack_id:
 from __future__ import annotations
 
 from datetime import date
+
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, OutreachRecommendation, ReadinessSnapshot, SignalPack
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    OutreachRecommendation,
+    ReadinessSnapshot,
+    SignalPack,
+)
 from app.services.briefing import get_emerging_companies
 
 _ORE_DRAFT = {
@@ -28,35 +35,11 @@ def fractional_cto_pack(db: Session) -> SignalPack:
     return pack
 
 
-@pytest.fixture
-def bookkeeping_pack(db: Session) -> SignalPack:
-    """Get or create a second pack for isolation tests."""
-    pack = db.query(SignalPack).filter(
-        SignalPack.pack_id == "bookkeeping_v0",
-        SignalPack.version == "1",
-    ).first()
-    if pack is not None:
-        return pack
-    import uuid
-    pack = SignalPack(
-        id=uuid.uuid4(),
-        pack_id="bookkeeping_v0",
-        version="1",
-        industry="bookkeeping",
-        description="Bookkeeping signal pack",
-        is_active=True,
-    )
-    db.add(pack)
-    db.commit()
-    db.refresh(pack)
-    return pack
-
-
 @pytest.mark.integration
 def test_pack_isolation_readiness_snapshots(
     db: Session,
     fractional_cto_pack: SignalPack,
-    bookkeeping_pack: SignalPack,
+    second_pack: SignalPack,
 ) -> None:
     """Query ReadinessSnapshot by pack_id returns only that pack's data."""
     company = Company(name="IsolationCo", website_url="https://iso.example.com")
@@ -84,7 +67,7 @@ def test_pack_isolation_readiness_snapshots(
         pressure=30,
         leadership_gap=20,
         composite=35,
-        pack_id=bookkeeping_pack.id,
+        pack_id=second_pack.id,
     )
     db.add_all([rs_cto, rs_book])
     db.commit()
@@ -103,7 +86,7 @@ def test_pack_isolation_readiness_snapshots(
         .filter(
             ReadinessSnapshot.company_id == company.id,
             ReadinessSnapshot.as_of == as_of,
-            ReadinessSnapshot.pack_id == bookkeeping_pack.id,
+            ReadinessSnapshot.pack_id == second_pack.id,
         )
         .all()
     )
@@ -118,7 +101,7 @@ def test_pack_isolation_readiness_snapshots(
 def test_pack_isolation_engagement_snapshots(
     db: Session,
     fractional_cto_pack: SignalPack,
-    bookkeeping_pack: SignalPack,
+    second_pack: SignalPack,
 ) -> None:
     """Query EngagementSnapshot by pack_id returns only that pack's data."""
     company = Company(name="ESL IsolationCo", website_url="https://esl-iso.example.com")
@@ -142,7 +125,7 @@ def test_pack_isolation_engagement_snapshots(
         esl_score=0.8,
         engagement_type="Observe Only",
         cadence_blocked=True,
-        pack_id=bookkeeping_pack.id,
+        pack_id=second_pack.id,
     )
     db.add_all([es_cto, es_book])
     db.commit()
@@ -161,7 +144,7 @@ def test_pack_isolation_engagement_snapshots(
         .filter(
             EngagementSnapshot.company_id == company.id,
             EngagementSnapshot.as_of == as_of,
-            EngagementSnapshot.pack_id == bookkeeping_pack.id,
+            EngagementSnapshot.pack_id == second_pack.id,
         )
         .all()
     )
@@ -176,12 +159,11 @@ def test_pack_isolation_engagement_snapshots(
 def test_get_emerging_companies_respects_pack_when_filtered(
     db: Session,
     fractional_cto_pack: SignalPack,
-    bookkeeping_pack: SignalPack,
+    second_pack: SignalPack,
 ) -> None:
     """get_emerging_companies returns only pack-scoped data; excludes other packs."""
     companies = [
-        Company(name=f"PackCo {i}", website_url=f"https://pack{i}.example.com")
-        for i in range(3)
+        Company(name=f"PackCo {i}", website_url=f"https://pack{i}.example.com") for i in range(3)
     ]
     db.add_all(companies)
     db.commit()
@@ -213,19 +195,27 @@ def test_get_emerging_companies_respects_pack_when_filtered(
     db.commit()
 
     our_company_ids = {c.id for c in companies}
-    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30, pack_id=fractional_cto_pack.id)
+    result = get_emerging_companies(
+        db, as_of, limit=10, outreach_score_threshold=30, pack_id=fractional_cto_pack.id
+    )
 
     assert len(result) >= 3, "Must include our 3 companies"
-    for rs, es, company in result:
+    for rs, es, _company in result:
         assert rs.pack_id == fractional_cto_pack.id
         assert es.pack_id == fractional_cto_pack.id
     result_company_ids = {c.id for _, _, c in result}
-    assert our_company_ids <= result_company_ids, "Our 3 companies must appear in pack-scoped results"
+    assert our_company_ids <= result_company_ids, (
+        "Our 3 companies must appear in pack-scoped results"
+    )
 
-    result_book = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30, pack_id=bookkeeping_pack.id)
-    for rs, es, _ in result_book:
-        assert rs.pack_id == bookkeeping_pack.id
-    assert our_company_ids.isdisjoint({c.id for _, _, c in result_book}), "Our fractional_cto companies must not appear when querying bookkeeping pack"
+    result_book = get_emerging_companies(
+        db, as_of, limit=10, outreach_score_threshold=30, pack_id=second_pack.id
+    )
+    for rs, _es, _ in result_book:
+        assert rs.pack_id == second_pack.id
+    assert our_company_ids.isdisjoint({c.id for _, _, c in result_book}), (
+        "Our fractional_cto companies must not appear when querying second pack"
+    )
 
 
 @pytest.mark.integration
@@ -281,7 +271,7 @@ def test_outreach_recommendation_stores_pack_id_and_playbook_id(
 def test_cross_pack_no_contamination(
     db: Session,
     fractional_cto_pack: SignalPack,
-    bookkeeping_pack: SignalPack,
+    second_pack: SignalPack,
 ) -> None:
     """Querying by pack A does not return pack B's data."""
     company = Company(name="CrossPackCo", website_url="https://cross.example.com")
@@ -309,7 +299,7 @@ def test_cross_pack_no_contamination(
         pressure=10,
         leadership_gap=5,
         composite=16,
-        pack_id=bookkeeping_pack.id,
+        pack_id=second_pack.id,
     )
     db.add_all([rs_cto, rs_book])
     db.commit()
@@ -328,7 +318,7 @@ def test_cross_pack_no_contamination(
         .filter(
             ReadinessSnapshot.company_id == company.id,
             ReadinessSnapshot.as_of == as_of,
-            ReadinessSnapshot.pack_id == bookkeeping_pack.id,
+            ReadinessSnapshot.pack_id == second_pack.id,
         )
         .all()
     )

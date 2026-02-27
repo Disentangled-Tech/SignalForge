@@ -1,0 +1,15 @@
+# Minimal scoring for example_v1 (Issue #289 M1).
+base_scores:
+  momentum:
+    funding_raised: 20
+  leadership_gap:
+    cto_role_posted: 70
+composite_weights:
+  M: 0.5
+  G: 0.5
+caps:
+  dimension_max: 100
+decay: {}
+suppressors: {}
+disqualifier_signals: {}
+minimum_threshold: 0

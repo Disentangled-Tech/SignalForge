@@ -1,0 +1,11 @@
+# Minimal scoring for example_esl_blocked (Issue #289 M1). Uses core signal_ids.
+base_scores:
+  momentum:
+    funding_raised: 35
+  leadership_gap:
+    cto_role_posted: 70
+composite_weights:
+  M: 0.5
+  G: 0.5
+caps:
+  dimension_max: 100
