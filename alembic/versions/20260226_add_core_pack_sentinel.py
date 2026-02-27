@@ -20,7 +20,8 @@ down_revision: str | None = "20260231_lead_feed_band"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-CORE_PACK_UUID = "c0r3p4ck-0000-4000-8000-000000000001"
+# Valid UUID (hex 0-9a-f only); mnemonic "core" pack sentinel
+CORE_PACK_UUID = "c0de0000-0000-4000-8000-000000000001"
 
 
 def upgrade() -> None:

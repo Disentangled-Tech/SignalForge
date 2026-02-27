@@ -1,7 +1,7 @@
 """Update config_checksum for fractional_cto_v1 after Pack v2 migration (Issue #288 M1).
 
 Revision ID: 20260227_fractional_cto_v2_checksum
-Revises: 20260226_core_pack_sentinel
+Revises: widen_alembic_ver
 Create Date: 2026-02-27
 
 fractional_cto_v1 is migrated to Pack v2 (schema_version "2"): analysis_weights.yaml,
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260227_fractional_cto_v2_checksum"
-down_revision: str | None = "20260226_core_pack_sentinel"
+down_revision: str | None = "widen_alembic_ver"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
