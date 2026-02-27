@@ -54,6 +54,13 @@ A reference for acronyms and abbreviations used throughout the project.
 | **COO** | Chief Operating Officer | Founder role for personalization. |
 | **DM** | Direct Message | Outreach channel (e.g., LinkedIn DM vs email). |
 
+## Concepts (Pack and runtime)
+
+| Term | Description |
+|------|--------------|
+| **Active pack** | The pack assigned to a workspace (`Workspace.active_pack_id`). At runtime, resolving the active pack loads **analysis config only** (manifest, scoring, ESL, playbooks, prompt_bundles, optional labels). Derivers and full taxonomy are not loaded; derivation and ingestion scope are pack-invariant. See [pack_v2_contract.md](pack_v2_contract.md#runtime-pack-selection-issue-290) and [ADR-003](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md). |
+| **Pack selection** | Choosing which pack a workspace uses for scoring, briefing, and ORE. Pack selection at runtime **reloads analysis config only** (weights, ESL, playbooks, prompts). It does not reload or apply derivers or taxonomy; derived signals and ingestion scope are unchanged (Issue #290). |
+
 ## ADR Quick Reference
 
 | ADR | Title |

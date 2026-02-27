@@ -210,6 +210,8 @@ If an LLM invents a type not in core taxonomy, it must be rejected.
 
 5. Pack Switching Guarantee
 
+Pack selection at runtime reloads analysis config only (scoring, ESL, playbooks, prompts). It does not reload or apply derivers or taxonomy; derived signals and ingestion scope are unchanged (Issue #290).
+
 Switching packs must:
 	•	Change scoring output
 	•	Change ranking
@@ -220,6 +222,7 @@ Switching packs must not:
 	•	Change derived Core Signals
 	•	Change entity facts
 	•	Change verification outcomes
+	•	Change ingestion scope
 
 If switching packs alters factual layers, the system is misconfigured.
 
