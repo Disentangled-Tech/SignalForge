@@ -112,6 +112,19 @@ Two pipelines feed the fractional CTO use case; they use different data models a
 - **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via **core derivers only** (pack-independent), computes TRS + ESL using workspace pack analysis config, writes pack-scoped snapshots. Workspace-scoped when multi-tenant (Issue #290).
 - **Briefing**: Uses both. `select_top_companies` (legacy) and `get_emerging_companies` (pack) can surface companies. Pack path reads from `lead_feed` when populated, else join of ReadinessSnapshot + EngagementSnapshot.
 
+## LLM Discovery Scout (Evidence-Only; separate flow)
+
+The **LLM Discovery Scout** is a **separate flow** outside the ingest → derive → score pipeline. It is **not** a stage in `STAGE_REGISTRY` and is **not** part of `run_daily_aggregation`.
+
+| Aspect   | Description |
+| -------- | ----------- |
+| **Entry** | `POST /internal/run_scout` (or `/internal/run_discovery_scout`) when implemented — requires `X-Internal-Token`. |
+| **Data model** | Query Planner → allowed sources only → fetch (page limit) → LLM → Evidence Bundles only. |
+| **Output** | `scout_runs` + `scout_evidence_bundles`; no writes to `companies`, `signal_events`, or `signal_instances`. |
+| **Purpose** | Candidate discovery and evidence collection; optional pack_id is for query emphasis hints only, not derivation or storage. |
+
+See [discovery_scout.md](discovery_scout.md) for inputs, output schema, allowlist/denylist config, and what Scout does not do.
+
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 
 When `lead_feed` has rows for workspace/pack/as_of, the briefing page and weekly review

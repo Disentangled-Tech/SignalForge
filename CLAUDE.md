@@ -165,9 +165,10 @@ Observe Only → Soft Value Share → Low-Pressure Intro → Standard Outreach �
 app/
 ├── api/            # Route handlers (one file per endpoint group)
 ├── models/         # SQLAlchemy ORM (one model per file)
-├── schemas/        # Pydantic schemas (CompanyRead, CompanyCreate, etc.)
+├── schemas/        # Pydantic schemas (CompanyRead, CompanyCreate, scout EvidenceBundle, etc.)
 ├── services/       # Business logic (readiness/, esl/, ore/, ingestion/, etc.)
 ├── ingestion/      # Data adapters (crunchbase, producthunt, github, etc.)
+├── scout/          # LLM Discovery Scout — source allowlist/denylist, evidence-only (no ingest/event writes)
 ├── core_derivers/  # Core signal derivation engine + YAML config
 ├── core_taxonomy/  # Canonical signal_id taxonomy
 ├── packs/          # Pack loader and schema validation
@@ -233,7 +234,8 @@ docs/               # Comprehensive documentation
 |------|---------|
 | `README.md` | Project overview and quick start |
 | `docs/GLOSSARY.md` | Acronyms (TRS, ESL, ORE, SM, BE, CM, AM, etc.) |
-| `docs/pipeline.md` | Pipeline stages with API endpoints |
+| `docs/pipeline.md` | Pipeline stages with API endpoints; Scout as separate flow |
+| `docs/discovery_scout.md` | LLM Discovery Scout (Evidence-Only): inputs, output schema, no entity writes |
 | `docs/deriver-engine.md` | Deriver types, validation, evidence tracking |
 | `docs/v2PRD.md` | v2 product requirements |
 | `docs/signal-models.md` | Database schema and relationships |
