@@ -21,7 +21,21 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+_MARKER_TABLE = "_alembic_20260227_scout_tables_created"
+
+
 def upgrade() -> None:
+    conn = op.get_bind()
+    # Idempotent for merge: 20260228_scout_runs (other branch) may have already created these.
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'scout_runs'"
+        )
+    )
+    if result.scalar() is not None:
+        return  # Tables already exist from 20260228_scout_runs branch
+
     op.create_table(
         "scout_runs",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -77,10 +91,26 @@ def upgrade() -> None:
         ["scout_run_id"],
         unique=False,
     )
+    # Record that we created these tables so downgrade only drops when we created.
+    op.create_table(
+        _MARKER_TABLE,
+        sa.Column("id", sa.Integer(), primary_key=True),
+    )
+    conn.execute(sa.text(f"INSERT INTO {_MARKER_TABLE} (id) VALUES (1)"))
 
 
 def downgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.tables "
+            f"WHERE table_schema = 'public' AND table_name = '{_MARKER_TABLE}'"
+        )
+    )
+    if result.scalar() is None:
+        return  # Tables were created by other branch (20260228_scout_runs)
     op.drop_index("ix_scout_evidence_bundles_scout_run_id", table_name="scout_evidence_bundles")
     op.drop_table("scout_evidence_bundles")
     op.drop_index("ix_scout_runs_run_id", table_name="scout_runs")
     op.drop_table("scout_runs")
+    op.drop_table(_MARKER_TABLE)

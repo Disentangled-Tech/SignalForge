@@ -29,6 +29,7 @@ from app.schemas.settings import (
     SettingsRead,
     SettingsUpdate,
 )
+from app.schemas.evidence import EvidenceBundleRecord
 from app.schemas.scout import (
     EvidenceBundle,
     EvidenceItem,
@@ -53,6 +54,8 @@ __all__ = [
     # Ranked companies
     "RankedCompanyTop",
     "RankedCompaniesResponse",
+    # Evidence store
+    "EvidenceBundleRecord",
     # Scout
     "EvidenceBundle",
     "EvidenceItem",
