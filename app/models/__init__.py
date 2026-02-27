@@ -14,6 +14,8 @@ from app.models.operator_profile import OperatorProfile
 from app.models.outreach_history import OutreachHistory
 from app.models.outreach_recommendation import OutreachRecommendation
 from app.models.readiness_snapshot import ReadinessSnapshot
+from app.models.scout_evidence_bundle import ScoutEvidenceBundle
+from app.models.scout_run import ScoutRun
 from app.models.signal_event import SignalEvent
 from app.models.signal_instance import SignalInstance
 from app.models.signal_pack import SignalPack
@@ -38,6 +40,8 @@ __all__ = [
     "LeadFeed",
     "OperatorProfile",
     "ReadinessSnapshot",
+    "ScoutEvidenceBundle",
+    "ScoutRun",
     "SignalEvent",
     "SignalInstance",
     "SignalPack",

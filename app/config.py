@@ -41,6 +41,7 @@ class Settings:
     llm_model_reasoning: str = "gpt-4o"
     llm_model_json: str = "gpt-4o-mini"
     llm_model_outreach: str = "gpt-4o-mini"
+    llm_model_scout: str = "gpt-4o"  # discovery scout evidence extraction (issue #275)
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
@@ -76,6 +77,10 @@ class Settings:
     smtp_from: str = ""
     briefing_email_to: str = ""
 
+    # Scout (LLM Discovery) — source allowlist/denylist; empty allowlist = all allowed
+    scout_source_allowlist: list[str] = ()  # e.g. ["example.com", "news.ycombinator.com"]
+    scout_source_denylist: list[str] = ()  # denylist takes precedence; e.g. ["blocked.com"]
+
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", self.app_name)
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
@@ -90,14 +95,10 @@ class Settings:
         )
         raw_url = os.getenv("DATABASE_URL", default_url)
         # Ensure psycopg3 driver if URL uses generic postgresql://
-        if raw_url.startswith("postgresql://") and not raw_url.startswith(
-            "postgresql+psycopg"
-        ):
+        if raw_url.startswith("postgresql://") and not raw_url.startswith("postgresql+psycopg"):
             raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
         self.database_url = raw_url
-        self.db_connect_timeout = int(
-            os.getenv("DB_CONNECT_TIMEOUT", str(self.db_connect_timeout))
-        )
+        self.db_connect_timeout = int(os.getenv("DB_CONNECT_TIMEOUT", str(self.db_connect_timeout)))
 
         self.secret_key = os.getenv("SECRET_KEY", "")
         self.internal_job_token = os.getenv("INTERNAL_JOB_TOKEN", "")
@@ -110,11 +111,12 @@ class Settings:
         self.llm_model_reasoning = (
             os.getenv("LLM_MODEL_REASONING") or legacy_model or self.llm_model_reasoning
         )
-        self.llm_model_json = (
-            os.getenv("LLM_MODEL_JSON") or legacy_model or self.llm_model_json
-        )
+        self.llm_model_json = os.getenv("LLM_MODEL_JSON") or legacy_model or self.llm_model_json
         self.llm_model_outreach = (
             os.getenv("LLM_MODEL_OUTREACH") or legacy_model or self.llm_model_outreach
+        )
+        self.llm_model_scout = (
+            os.getenv("LLM_MODEL_SCOUT") or legacy_model or self.llm_model_scout
         )
         self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
         self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))
@@ -142,12 +144,8 @@ class Settings:
         )
 
         self.briefing_time = os.getenv("BRIEFING_TIME", self.briefing_time)
-        self.briefing_email_enabled = os.getenv(
-            "BRIEFING_EMAIL_ENABLED", "false"
-        ).lower() == "true"
-        self.briefing_frequency = os.getenv(
-            "BRIEFING_FREQUENCY", self.briefing_frequency
-        ).lower()
+        self.briefing_email_enabled = os.getenv("BRIEFING_EMAIL_ENABLED", "false").lower() == "true"
+        self.briefing_frequency = os.getenv("BRIEFING_FREQUENCY", self.briefing_frequency).lower()
         self.briefing_day_of_week = int(
             os.getenv("BRIEFING_DAY_OF_WEEK", str(self.briefing_day_of_week))
         )
@@ -158,3 +156,9 @@ class Settings:
         self.smtp_password = os.getenv("SMTP_PASSWORD", "")
         self.smtp_from = os.getenv("SMTP_FROM", "")
         self.briefing_email_to = os.getenv("BRIEFING_EMAIL_TO", "")
+
+        # Scout: comma-separated domains; empty = no restriction (allowlist) or none blocked (denylist)
+        _allow = os.getenv("SCOUT_SOURCE_ALLOWLIST", "").strip()
+        self.scout_source_allowlist = [s.strip().lower() for s in _allow.split(",") if s.strip()]
+        _deny = os.getenv("SCOUT_SOURCE_DENYLIST", "").strip()
+        self.scout_source_denylist = [s.strip().lower() for s in _deny.split(",") if s.strip()]

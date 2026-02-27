@@ -52,6 +52,11 @@ ignore = ["E501", "B008"]  # B008: Depends/Query in defaults is FastAPI standard
 [tool.ruff.lint.per-file-ignores]
 # load_dotenv() must run before other imports
 "app/config.py" = ["E402", "UP045"]
+# Forward refs for ORM relationship (circular import)
+"app/models/scout_run.py" = ["F821", "UP037"]
+"app/models/scout_evidence_bundle.py" = ["F821", "UP037"]
+# str, Enum pattern used elsewhere (e.g. CompanySource)
+"app/llm/router.py" = ["UP042"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
