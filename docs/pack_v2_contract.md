@@ -41,6 +41,9 @@ Core owns:
 | Pack               | schema_version | Notes                                                                 |
 |--------------------|----------------|-----------------------------------------------------------------------|
 | fractional_cto_v1  | "2"            | Production pack (Issue #288 M1); v2 layout: analysis_weights, esl_rubric, prompt_bundles. |
+| fractional_cmo_v1   | "2"            | Fractional CMO pack (Issue #288 M2); v2 layout; same core signals, CMO weights/prompts.   |
+| fractional_coo_v1   | "2"            | Fractional COO pack (Issue #288 M3); v2 layout; same core signals, COO weights/prompts.   |
+| fractional_cfo_v1   | "2"            | Fractional CFO pack (Issue #288 M4); v2 layout; same core signals, CFO weights/prompts.   |
 | bookkeeping_v1     | "1"            | Legacy; requires taxonomy and derivers.                               |
 | example_v2         | "2"            | Minimal v2 example (no taxonomy/derivers on disk); used by tests.     |
 

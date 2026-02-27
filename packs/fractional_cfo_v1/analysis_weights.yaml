@@ -1,0 +1,90 @@
+# Readiness scoring config for fractional_cfo_v1 (Issue #288 M4)
+# Same core signal_ids; CFO-specific weights (revenue/funding/regulatory emphasis).
+
+base_scores:
+  momentum:
+    funding_raised: 35
+    job_posted_engineering: 10
+    job_posted_infra: 10
+    headcount_growth: 20
+    launch_major: 15
+  complexity:
+    api_launched: 20
+    ai_feature_launched: 20
+    enterprise_feature: 25
+    compliance_mentioned: 25
+    job_posted_infra: 10
+    repo_activity: 10
+  pressure:
+    enterprise_customer: 25
+    regulatory_deadline: 30
+    founder_urgency_language: 15
+    revenue_milestone: 25
+    funding_raised: 25
+  leadership_gap:
+    cto_role_posted: 45
+    fractional_request: 50
+    advisor_request: 50
+    no_cto_detected: 30
+
+quiet_signal:
+  lookback_days: 365
+  amplified_base:
+    job_posted_infra: { M: 15, C: 15 }
+    compliance_mentioned: { C: 28 }
+    api_launched: { C: 30 }
+
+caps:
+  jobs_momentum: 30
+  jobs_complexity: 20
+  founder_urgency: 30
+  dimension_max: 100
+
+composite_weights:
+  M: 0.28
+  C: 0.27
+  P: 0.30
+  G: 0.15
+
+decay:
+  momentum:
+    "0-30": 1.0
+    "31-60": 0.7
+    "61-90": 0.4
+    "91+": 0.0
+  pressure:
+    "0-30": 1.0
+    "31-60": 0.85
+    "61-120": 0.6
+    "121+": 0.2
+  complexity:
+    "0-90": 1.0
+    "91-180": 0.8
+    "181-365": 0.6
+    "366+": 0.4
+
+suppressors:
+  cto_hired_60_days: 70
+  cto_hired_180_days: 50
+
+minimum_threshold: 0
+disqualifier_signals: {}
+
+recommendation_bands:
+  ignore_max: 34
+  watch_max: 69
+  high_priority_min: 70
+
+pain_signal_weights:
+  hiring_engineers: 10
+  switching_from_agency: 10
+  adding_enterprise_features: 15
+  compliance_security_pressure: 30
+  product_delivery_issues: 15
+  architecture_scaling_risk: 10
+  founder_overload: 15
+
+stage_bonuses:
+  scaling_team: 20
+  enterprise_transition: 35
+  struggling_execution: 25

@@ -1,0 +1,16 @@
+# ORE outreach template for fractional_cmo_v1 (Issue #288 M2)
+pattern_frames:
+  momentum: "When a team's growth accelerates, marketing that worked at an earlier stage often needs a refresh."
+  complexity: "When products add channels or segments, positioning and messaging usually need a clear strategy."
+  pressure: "When timelines tighten, a focused go-to-market plan can reduce decision load."
+  leadership_gap: "When there isn't a dedicated marketing owner yet, teams often benefit from a short-term growth and positioning guide."
+
+value_assets:
+  - "Go-to-Market Checklist"
+  - "30-minute positioning and channel map"
+  - "5 questions to clarify ICP and messaging"
+
+ctas:
+  - "Want me to send that checklist?"
+  - "Open to a 15-min compare-notes call?"
+  - "If helpful, I can share a one-page approach—want it?"

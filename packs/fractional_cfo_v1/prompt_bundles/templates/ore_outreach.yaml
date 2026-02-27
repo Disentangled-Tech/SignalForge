@@ -1,0 +1,16 @@
+# ORE outreach template for fractional_cfo_v1 (Issue #288 M4)
+pattern_frames:
+  momentum: "When funding or growth picks up, financial and reporting processes often need to catch up."
+  complexity: "When revenue streams or compliance requirements grow, a clear finance and metrics model helps."
+  pressure: "When board or regulatory timelines tighten, a focused finance and planning pass can reduce risk."
+  leadership_gap: "When there isn't a dedicated finance owner yet, teams often benefit from a short-term metrics and planning guide."
+
+value_assets:
+  - "Finance Readiness Checklist"
+  - "30-minute metrics and runway map"
+  - "5 questions to clarify unit economics"
+
+ctas:
+  - "Want me to send that checklist?"
+  - "Open to a 15-min compare-notes call?"
+  - "If helpful, I can share a one-page approach—want it?"
