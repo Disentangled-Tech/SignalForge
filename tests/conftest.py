@@ -148,9 +148,58 @@ def core_pack_id(db):
 
 @pytest.fixture
 def bookkeeping_pack_id(db):
-    """UUID of bookkeeping_v1 pack (Issue #175, Phase 3). Use for ESL gate tests."""
+    """UUID of bookkeeping_v1 pack (Issue #175, Phase 3). Deprecated: use esl_blocked_pack_id or second_pack_id (Issue #289 M1)."""
     from app.models import SignalPack
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "bookkeeping_v1").first()
     if pack is None:
         pytest.skip("bookkeeping_v1 pack not found (run migration 20260224_bookkeeping_pack)")
     return pack.id
+
+
+def _get_or_create_signal_pack(db, pack_id: str, version: str = "1", description: str | None = None):
+    """Get or create a SignalPack row; used by second_pack and esl_blocked_pack fixtures (Issue #289 M1)."""
+    import uuid
+
+    from app.models import SignalPack
+    pack = db.query(SignalPack).filter(
+        SignalPack.pack_id == pack_id,
+        SignalPack.version == version,
+    ).first()
+    if pack is not None:
+        return pack
+    pack = SignalPack(
+        id=uuid.uuid4(),
+        pack_id=pack_id,
+        version=version,
+        industry=None,
+        description=description or f"{pack_id} test pack",
+        is_active=True,
+    )
+    db.add(pack)
+    db.commit()
+    db.refresh(pack)
+    return pack
+
+
+@pytest.fixture
+def second_pack(db):
+    """SignalPack row for example_v2 (get or create). Use for pack isolation tests (Issue #289 M1)."""
+    return _get_or_create_signal_pack(db, "example_v2", version="1", description="Example V2 pack")
+
+
+@pytest.fixture
+def second_pack_id(second_pack):
+    """UUID of example_v2 pack. Use for lead_feed and pack-scoped tests (Issue #289 M1)."""
+    return second_pack.id
+
+
+@pytest.fixture
+def esl_blocked_pack(db):
+    """SignalPack row for example_esl_blocked (get or create). Use for ESL blocked_signal tests (Issue #289 M1)."""
+    return _get_or_create_signal_pack(db, "example_esl_blocked", version="1", description="ESL blocked_signal test pack")
+
+
+@pytest.fixture
+def esl_blocked_pack_id(esl_blocked_pack):
+    """UUID of example_esl_blocked pack. Use for ESL gate tests (Issue #289 M1)."""
+    return esl_blocked_pack.id

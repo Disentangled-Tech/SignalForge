@@ -808,9 +808,9 @@ class TestRunDeriver:
         db.commit()
         db.refresh(company)
 
-        # Create second pack in DB (required for signal_events FK)
+        # Create second pack in DB (required for signal_events FK) (Issue #289 M1: neutral name)
         pack_b_row = SignalPack(
-            pack_id="bookkeeping_test",
+            pack_id="other_pack_test",
             version="1",
             is_active=True,
         )

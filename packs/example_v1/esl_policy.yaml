@@ -1,0 +1,6 @@
+# Minimal ESL policy for example_v1 (Issue #289 M1).
+recommendation_boundaries:
+  - [0.0, "Observe Only"]
+  - [0.7, "Standard Outreach"]
+blocked_signals: []
+prohibited_combinations: []

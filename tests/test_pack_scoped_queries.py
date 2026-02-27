@@ -31,39 +31,15 @@ def fractional_cto_pack(db: Session) -> SignalPack:
     return pack
 
 
-@pytest.fixture
-def bookkeeping_pack(db: Session) -> SignalPack:
-    """Second pack for isolation tests."""
-    pack = db.query(SignalPack).filter(
-        SignalPack.pack_id == "bookkeeping_v0",
-        SignalPack.version == "1",
-    ).first()
-    if pack is not None:
-        return pack
-    import uuid
-    pack = SignalPack(
-        id=uuid.uuid4(),
-        pack_id="bookkeeping_v0",
-        version="1",
-        industry="bookkeeping",
-        description="Bookkeeping signal pack",
-        is_active=True,
-    )
-    db.add(pack)
-    db.commit()
-    db.refresh(pack)
-    return pack
-
-
 @pytest.mark.integration
 def test_get_emerging_companies_excludes_other_pack(
     db: Session,
     fractional_cto_pack: SignalPack,
-    bookkeeping_pack: SignalPack,
+    second_pack: SignalPack,
 ) -> None:
-    """get_emerging_companies(pack_id=A) returns only pack A data; pack B excluded."""
+    """get_emerging_companies(pack_id=A) returns only pack A data; pack B excluded (Issue #289 M1)."""
     c_cto = Company(name="CTO Co", website_url="https://cto.example.com")
-    c_book = Company(name="Book Co", website_url="https://book.example.com")
+    c_book = Company(name="Second Pack Co", website_url="https://second.example.com")
     db.add_all([c_cto, c_book])
     db.commit()
     db.refresh(c_cto)
@@ -97,7 +73,7 @@ def test_get_emerging_companies_excludes_other_pack(
         pressure=50,
         leadership_gap=40,
         composite=65,
-        pack_id=bookkeeping_pack.id,
+        pack_id=second_pack.id,
     )
     es_book = EngagementSnapshot(
         company_id=c_book.id,
@@ -105,13 +81,13 @@ def test_get_emerging_companies_excludes_other_pack(
         esl_score=0.8,
         engagement_type="Low-Pressure Intro",
         cadence_blocked=False,
-        pack_id=bookkeeping_pack.id,
+        pack_id=second_pack.id,
     )
     db.add_all([rs_cto, es_cto, rs_book, es_book])
     db.commit()
 
     result_cto = get_emerging_companies(db, as_of, limit=10, pack_id=fractional_cto_pack.id)
-    result_book = get_emerging_companies(db, as_of, limit=10, pack_id=bookkeeping_pack.id)
+    result_book = get_emerging_companies(db, as_of, limit=10, pack_id=second_pack.id)
 
     cto_company_ids = {c.id for _, _, c in result_cto}
     book_company_ids = {c.id for _, _, c in result_book}

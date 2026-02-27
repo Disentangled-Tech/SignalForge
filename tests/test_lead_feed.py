@@ -562,7 +562,7 @@ class TestBuildLeadFeedFromSnapshots:
         db: Session,
         lead_feed_company: Company,
         fractional_cto_pack_id: UUID,
-        bookkeeping_pack_id: UUID,
+        second_pack_id: UUID,
     ) -> None:
         """run_update_lead_feed with workspace_id/pack_id only writes to that workspace+pack.
 
@@ -631,22 +631,22 @@ class TestBuildLeadFeedFromSnapshots:
         assert len(rows_default_ws) == 0, "No rows in default workspace (we used other_ws)"
         assert len(rows_other_ws) == 1, "Exactly one row in other workspace for our pack"
 
-        # Run for different pack (bookkeeping) - no snapshots for it, so 0 rows
+        # Run for different pack (example_v2) - no snapshots for it, so 0 rows
         run_update_lead_feed(
             db,
             workspace_id=str(other_workspace_id),
-            pack_id=bookkeeping_pack_id,
+            pack_id=second_pack_id,
             as_of=as_of,
         )
-        rows_bookkeeping = (
+        rows_second_pack = (
             db.query(LeadFeed)
             .filter(
                 LeadFeed.workspace_id == other_workspace_id,
-                LeadFeed.pack_id == bookkeeping_pack_id,
+                LeadFeed.pack_id == second_pack_id,
             )
             .all()
         )
-        assert len(rows_bookkeeping) == 0, "Bookkeeping pack has no snapshots for this company"
+        assert len(rows_second_pack) == 0, "Second pack has no snapshots for this company"
 
     @pytest.mark.integration
     def test_score_incrementally_updates_lead_feed(

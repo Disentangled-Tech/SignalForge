@@ -198,7 +198,7 @@ class TestRunScanCompanyFull:
 
         workspace_pack_uuid = uuid4()
         mock_pack = MagicMock()
-        mock_pack.manifest = {"id": "bookkeeping_v1", "version": "1"}
+        mock_pack.manifest = {"id": "fractional_cto_v1", "version": "1"}
         mock_scan.return_value = 0
         mock_analyze.return_value = MagicMock()
 

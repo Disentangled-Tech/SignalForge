@@ -329,10 +329,10 @@ class TestPackV2OptionalTaxonomyDerivers:
         assert isinstance(pack.derivers, dict)
 
     def test_v1_pack_still_requires_taxonomy_and_derivers(self) -> None:
-        """V1 pack (e.g. bookkeeping_v1) requires taxonomy.yaml and derivers.yaml."""
+        """V1 pack (e.g. example_v1) requires taxonomy.yaml and derivers.yaml (Issue #289 M1)."""
         from app.packs.loader import load_pack
 
-        pack = load_pack("bookkeeping_v1", "1")
+        pack = load_pack("example_v1", "1")
         assert pack.manifest.get("schema_version") == "1"
         assert pack.taxonomy and pack.taxonomy.get("signal_ids")
         assert pack.derivers and (pack.derivers.get("derivers") or {})
