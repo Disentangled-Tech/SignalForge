@@ -5,10 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.scout import (
     EvidenceBundle,
     EvidenceItem,
+    RunScoutRequest,
     ScoutRunInput,
     ScoutRunMetadata,
     ScoutRunResult,
@@ -177,6 +179,46 @@ def test_evidence_bundle_forbid_extra_fields() -> None:
             company_website="https://acme.example.com",
             signal_id="cto_role_posted",  # not allowed
             evidence=[],
+        )
+
+
+# ── RunScoutRequest (POST /internal/run_scout body) ──────────────────────────
+
+
+def test_run_scout_request_requires_icp_definition() -> None:
+    """RunScoutRequest requires non-empty icp_definition."""
+    RunScoutRequest(icp_definition="Seed-stage B2B", page_fetch_limit=10)
+    with pytest.raises(ValidationError):
+        RunScoutRequest(icp_definition="", page_fetch_limit=10)
+    with pytest.raises(ValidationError):
+        RunScoutRequest(icp_definition="   ", page_fetch_limit=10)
+
+
+def test_run_scout_request_page_fetch_limit_bounds() -> None:
+    """RunScoutRequest accepts page_fetch_limit 0 and 100; rejects < 0 or > 100."""
+    RunScoutRequest(icp_definition="B2B", page_fetch_limit=0)
+    RunScoutRequest(icp_definition="B2B", page_fetch_limit=100)
+    RunScoutRequest(icp_definition="B2B")  # default 10
+    with pytest.raises(ValidationError):
+        RunScoutRequest(icp_definition="B2B", page_fetch_limit=-1)
+    with pytest.raises(ValidationError):
+        RunScoutRequest(icp_definition="B2B", page_fetch_limit=101)
+
+
+def test_run_scout_request_optional_fields() -> None:
+    """RunScoutRequest allows exclusion_rules and pack_id to be None; default page_fetch_limit 10."""
+    req = RunScoutRequest(icp_definition="Fintech")
+    assert req.exclusion_rules is None
+    assert req.pack_id is None
+    assert req.page_fetch_limit == 10
+
+
+def test_run_scout_request_forbid_extra() -> None:
+    """RunScoutRequest forbids extra fields."""
+    with pytest.raises(ValidationError):
+        RunScoutRequest(
+            icp_definition="B2B",
+            extra_field="not allowed",
         )
 
 

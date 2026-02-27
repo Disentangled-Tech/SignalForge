@@ -9,6 +9,12 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 | **score** | `POST /internal/run_score` | Compute TRS + ESL using workspace pack **analysis config only** (weights, ESL); company eligibility for scoring is not narrowed by pack (Issue #290) | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
+**Separate from the pipeline:** The **LLM Discovery Scout** (`POST /internal/run_scout`) is an evidence-only flow: it produces Evidence Bundles and writes only to `scout_runs` and `scout_evidence_bundles`. It is not a stage, not workspace- or pack-scoped for storage, and does not write to companies or signal_events. See [discovery_scout.md](discovery_scout.md).
+
+## Pack selection
+
+Changing a workspace's **active pack** only reloads **analysis config** (scoring, ESL, playbooks, prompts). It does not re-run derivation or change ingestion scope; the set of companies eligible for scoring is pack-invariant when the core pack is installed. For definitions and the full contract, see [GLOSSARY](GLOSSARY.md) (**Active pack**, **Pack selection**) and [ADR-003](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) (No Automatic Reprocessing on Pack Switch).
+
 ## API Behavior
 
 ### POST /internal/run_score
@@ -111,6 +117,20 @@ Two pipelines feed the fractional CTO use case; they use different data models a
 - **Scan**: For companies with `website_url`. Discovers pages, extracts text, stores `SignalRecord`. Runs LLM analysis (stage, pain signals) and deterministic scoring. Updates `company.cto_need_score` and `company.current_stage`. Pack is resolved via `get_default_pack(db)` and passed to `analyze_company` / `score_company`.
 - **Ingest/Derive/Score**: For event-driven signals (e.g. funding, job posts). Normalizes events into `SignalEvent`, derives `SignalInstance` via **core derivers only** (pack-independent), computes TRS + ESL using workspace pack analysis config, writes pack-scoped snapshots. Workspace-scoped when multi-tenant (Issue #290).
 - **Briefing**: Uses both. `select_top_companies` (legacy) and `get_emerging_companies` (pack) can surface companies. Pack path reads from `lead_feed` when populated, else join of ReadinessSnapshot + EngagementSnapshot.
+- **Discovery Scout**: Separate flow (not in the table above). LLM discovery produces Evidence Bundles only; no signals, no entity writes. See [discovery_scout.md](discovery_scout.md).
+
+## LLM Discovery Scout (Evidence-Only; separate flow)
+
+The **LLM Discovery Scout** is a **separate flow** outside the ingest → derive → score pipeline. It is **not** a stage in `STAGE_REGISTRY` and is **not** part of `run_daily_aggregation`.
+
+| Aspect   | Description |
+| -------- | ----------- |
+| **Entry** | `POST /internal/run_scout` (or `/internal/run_discovery_scout`) when implemented — requires `X-Internal-Token`. |
+| **Data model** | Query Planner → allowed sources only → fetch (page limit) → LLM → Evidence Bundles only. |
+| **Output** | `scout_runs` + `scout_evidence_bundles`; no writes to `companies`, `signal_events`, or `signal_instances`. |
+| **Purpose** | Candidate discovery and evidence collection; optional pack_id is for query emphasis hints only, not derivation or storage. |
+
+See [discovery_scout.md](discovery_scout.md) for inputs, output schema, allowlist/denylist config, and what Scout does not do.
 
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 

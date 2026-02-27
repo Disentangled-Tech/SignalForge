@@ -152,9 +152,12 @@ Automatic reprocessing introduces:
 
 Decision
 
-Switching active pack will:
+Switching active pack **reloads analysis config only** (scoring, ESL, playbooks, prompts). It does not reload derivers or taxonomy; derivation and ingestion scope are unchanged. At runtime, the resolved pack is used for interpretation (weights, ESL, outreach) only.
+
+Concretely, switching active pack will:
 	•	Apply only to new observations going forward
 	•	Not reprocess historical data automatically
+	•	Not change which companies are eligible for scoring (company set is pack-invariant when core pack exists). When the core pack is not installed (legacy), company eligibility may still follow pack-scoped events for backward compatibility.
 
 Optional manual reprocessing may be introduced later with limits.
 
@@ -166,6 +169,7 @@ Positive
 	•	Predictable performance
 	•	Avoids runaway compute
 	•	Clear semantic behavior
+	•	Company set for scoring is pack-invariant when core pack exists
 
 Negative
 	•	Historical data may not align perfectly with new pack logic

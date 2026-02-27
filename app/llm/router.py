@@ -25,6 +25,7 @@ class ModelRole(str, Enum):
     REASONING = "reasoning"  # analyze_model: stage, pain, explanation
     JSON = "json"  # cheap_model: briefing entry JSON
     OUTREACH = "outreach"  # conversational_model: outreach draft
+    SCOUT = "scout"  # discovery scout: evidence bundle extraction (issue #275)
 
 
 # Module-level cache: "provider_name:role" -> instance
@@ -71,6 +72,7 @@ def get_llm_provider(
             ModelRole.REASONING: settings.llm_model_reasoning,
             ModelRole.JSON: settings.llm_model_json,
             ModelRole.OUTREACH: settings.llm_model_outreach,
+            ModelRole.SCOUT: settings.llm_model_scout,
         }[role]
 
         provider = OpenAIProvider(

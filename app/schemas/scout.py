@@ -66,6 +66,17 @@ class ScoutRunInput(BaseModel):
     pack_id: str | None = Field(None, max_length=64)
 
 
+class RunScoutRequest(BaseModel):
+    """Request body for POST /internal/run_scout."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    icp_definition: str = Field(..., min_length=1, max_length=4000)
+    exclusion_rules: str | None = Field(None, max_length=2000)
+    pack_id: str | None = Field(None, max_length=64)
+    page_fetch_limit: int = Field(10, ge=0, le=100)
+
+
 # ── Scout run result (response) ─────────────────────────────────────────────
 
 
