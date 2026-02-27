@@ -9,6 +9,10 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 | **score** | `POST /internal/run_score` | Compute TRS + ESL using workspace pack **analysis config only** (weights, ESL); company eligibility for scoring is not narrowed by pack (Issue #290) | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
+## Pack selection
+
+Changing a workspace's **active pack** only reloads **analysis config** (scoring, ESL, playbooks, prompts). It does not re-run derivation or change ingestion scope; the set of companies eligible for scoring is pack-invariant when the core pack is installed. For definitions and the full contract, see [GLOSSARY](GLOSSARY.md) (**Active pack**, **Pack selection**) and [ADR-003](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) (No Automatic Reprocessing on Pack Switch).
+
 ## API Behavior
 
 ### POST /internal/run_score
