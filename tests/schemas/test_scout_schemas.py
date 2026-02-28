@@ -206,10 +206,11 @@ def test_run_scout_request_page_fetch_limit_bounds() -> None:
 
 
 def test_run_scout_request_optional_fields() -> None:
-    """RunScoutRequest allows exclusion_rules and pack_id to be None; default page_fetch_limit 10."""
+    """RunScoutRequest allows exclusion_rules, pack_id, workspace_id to be None; default page_fetch_limit 10."""
     req = RunScoutRequest(icp_definition="Fintech")
     assert req.exclusion_rules is None
     assert req.pack_id is None
+    assert req.workspace_id is None
     assert req.page_fetch_limit == 10
 
 

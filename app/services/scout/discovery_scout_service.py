@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.evidence.store import store_evidence_bundle
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
@@ -61,6 +62,7 @@ async def run(
     denylist: list[str] | None = None,
     fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
     llm_provider: LLMProvider | None = None,
+    workspace_id: uuid.UUID | None = None,
 ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
     """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
 
@@ -140,6 +142,7 @@ async def run(
     }
     scout_run = ScoutRun(
         run_id=uuid.UUID(run_id),
+        workspace_id=workspace_id,
         finished_at=datetime.now(UTC),
         model_version=model_version,
         tokens_used=None,
@@ -165,6 +168,21 @@ async def run(
             raw_llm_output=vb.model_dump(mode="json"),
         )
         db.add(row)
+    db.flush()
+
+    # Persist to Evidence Store (M6): immutable bundles with core versioning; same transaction.
+    run_context = {"run_id": run_id, **config_snapshot}
+    raw_model_output = {"raw_response": raw_response, "parsed_bundles": bundle_dicts}
+    store_evidence_bundle(
+        db,
+        run_id=run_id,
+        scout_version=model_version,
+        bundles=validated,
+        run_context=run_context,
+        raw_model_output=raw_model_output,
+        structured_payloads=None,
+        pack_id=None,
+    )
     db.commit()
 
     metadata = ScoutRunMetadata(
@@ -192,6 +210,7 @@ class DiscoveryScoutService:
         denylist: list[str] | None = None,
         fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
         llm_provider: LLMProvider | None = None,
+        workspace_id: uuid.UUID | None = None,
     ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
         """Run discovery scout. See module-level run() for full doc."""
         return await run(
@@ -199,10 +218,11 @@ class DiscoveryScoutService:
             icp_definition,
             exclusion_rules=exclusion_rules,
             pack_id=pack_id,
-            page_fetch_limit=page_fetch_limit,
-            seed_urls=seed_urls,
-            allowlist=allowlist,
-            denylist=denylist,
-            fetch_page=fetch_page,
-            llm_provider=llm_provider,
-        )
+        page_fetch_limit=page_fetch_limit,
+        seed_urls=seed_urls,
+        allowlist=allowlist,
+        denylist=denylist,
+        fetch_page=fetch_page,
+        llm_provider=llm_provider,
+        workspace_id=workspace_id,
+    )
