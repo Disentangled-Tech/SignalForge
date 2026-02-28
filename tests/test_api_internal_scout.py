@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
-
 from tests.test_internal import VALID_TOKEN
 
 
@@ -124,6 +123,39 @@ def test_run_scout_creates_scout_runs_row_no_companies_or_events(
 
     assert db.query(Company).count() == companies_before
     assert db.query(SignalEvent).count() == events_before
+
+
+@patch("app.services.scout.discovery_scout_service.get_llm_provider")
+def test_run_scout_also_persists_to_evidence_store(
+    mock_get_llm: MagicMock,
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """M6: run_scout persists to Evidence Store; list_bundles_by_run returns stored bundles."""
+    from app.evidence.repository import list_bundles_by_run
+
+    mock_llm = MagicMock()
+    mock_llm.complete.return_value = _valid_llm_response()
+    mock_llm.model = "gpt-4o"
+    mock_get_llm.return_value = mock_llm
+
+    response = client_with_db.post(
+        "/internal/run_scout",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 5},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    run_id = data["run_id"]
+    assert run_id
+    assert data["bundles_count"] == 1
+
+    bundles = list_bundles_by_run(db, run_id)
+    assert len(bundles) == 1
+    assert bundles[0].run_context is not None
+    assert bundles[0].run_context.get("run_id") == run_id
+    assert bundles[0].scout_version == "gpt-4o"
 
 
 def test_run_scout_missing_body_returns_422(client: TestClient) -> None:

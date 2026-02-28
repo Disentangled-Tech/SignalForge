@@ -4,8 +4,23 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.scout import EvidenceBundle, ScoutRunMetadata
+
+
+class StoreEvidenceRequest(BaseModel):
+    """Request body for POST /internal/evidence/store (ScoutRunResult + run_context)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(..., min_length=1, max_length=64)
+    bundles: list[EvidenceBundle] = Field(default_factory=list)
+    metadata: ScoutRunMetadata
+    run_context: dict[str, Any] | None = Field(None)
+    raw_model_output: dict[str, Any] | None = Field(None)
 
 
 class EvidenceBundleRecord(BaseModel):

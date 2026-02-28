@@ -8,15 +8,17 @@ from __future__ import annotations
 
 import logging
 import secrets
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import validate_uuid_param_or_422
-from app.schemas.scout import RunScoutRequest
 from app.config import get_settings
 from app.db.session import get_db
+from app.schemas.evidence import StoreEvidenceRequest
+from app.schemas.scout import RunScoutRequest
 
 logger = logging.getLogger(__name__)
 
@@ -399,9 +401,7 @@ async def run_daily_aggregation_endpoint(
             pack_id=pack_uuid,
             idempotency_key=x_idempotency_key,
         )
-        inserted = result.get("ingest_result", {}).get(
-            "inserted", result.get("inserted", 0)
-        )
+        inserted = result.get("ingest_result", {}).get("inserted", result.get("inserted", 0))
         companies_scored = result.get("score_result", {}).get(
             "companies_scored", result.get("companies_scored", 0)
         )
@@ -429,7 +429,8 @@ async def run_scout_endpoint(
     """Trigger LLM Discovery Scout (Evidence-Only). Returns run_id, bundles_count, status.
 
     Body: icp_definition, optional exclusion_rules, optional pack_id, optional page_fetch_limit.
-    Does not write to companies or signal_events; output is stored in scout_runs and scout_evidence_bundles.
+    Does not write to companies or signal_events; output is stored in scout_runs, scout_evidence_bundles,
+    and the Evidence Store (evidence_bundles, evidence_sources, etc.).
     """
     from app.services.scout.discovery_scout_service import run as run_scout
 
@@ -440,6 +441,7 @@ async def run_scout_endpoint(
             exclusion_rules=body.exclusion_rules,
             pack_id=body.pack_id,
             page_fetch_limit=body.page_fetch_limit,
+            workspace_id=body.workspace_id,
         )
         return {
             "run_id": run_id,
@@ -450,6 +452,70 @@ async def run_scout_endpoint(
     except Exception as exc:
         logger.exception("Internal run_scout failed")
         return {"status": "failed", "run_id": "", "bundles_count": 0, "error": str(exc)}
+
+
+@router.post("/evidence/store")
+async def store_evidence_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    body: StoreEvidenceRequest = ...,
+):
+    """Persist Scout-run result to Evidence Store (testing / external Scout runner).
+
+    Body: run_id, bundles, metadata (ScoutRunMetadata), optional run_context, optional raw_model_output.
+    Requires X-Internal-Token. Returns stored_count and bundle_ids.
+    """
+    from app.evidence.store import store_evidence_bundle
+
+    try:
+        run_context = body.run_context if body.run_context is not None else {"run_id": body.run_id}
+        records = store_evidence_bundle(
+            db,
+            run_id=body.run_id,
+            scout_version=body.metadata.model_version,
+            bundles=body.bundles,
+            run_context=run_context,
+            raw_model_output=body.raw_model_output,
+            structured_payloads=None,
+            pack_id=None,
+        )
+        db.commit()
+        return {
+            "status": "completed",
+            "stored_count": len(records),
+            "bundle_ids": [str(r.id) for r in records],
+            "error": None,
+        }
+    except Exception as exc:
+        logger.exception("Internal evidence store failed")
+        db.rollback()
+        return {
+            "status": "failed",
+            "stored_count": 0,
+            "bundle_ids": [],
+            "error": str(exc),
+        }
+
+
+@router.get("/evidence/bundles")
+async def list_evidence_bundles_for_workspace(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    run_id: str = Query(..., min_length=1, max_length=64),
+    workspace_id: uuid.UUID = Query(...),
+):
+    """List evidence bundles for a run_id, only if the run belongs to workspace_id.
+
+    Returns [] when run does not exist or belongs to another workspace (no cross-tenant leak).
+    Requires X-Internal-Token.
+    """
+    from app.evidence.repository import list_bundles_by_run_for_workspace
+
+    bundles = list_bundles_by_run_for_workspace(db, run_id, workspace_id)
+    return {
+        "bundles": [b.model_dump(mode="json") for b in bundles],
+        "count": len(bundles),
+    }
 
 
 @router.post("/run_bias_audit")

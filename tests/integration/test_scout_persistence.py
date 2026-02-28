@@ -50,7 +50,7 @@ def test_scout_run_and_bundle_persist_and_read_back(db: Session) -> None:
         }
     ]
     bundle = ScoutEvidenceBundle(
-        scout_run_id=run.id,
+        scout_run_id=run.run_id,
         candidate_company_name="Test Co",
         company_website="https://testco.example.com",
         why_now_hypothesis="Recent funding and hiring.",
@@ -72,7 +72,7 @@ def test_scout_run_and_bundle_persist_and_read_back(db: Session) -> None:
 
     read_bundles = (
         db.query(ScoutEvidenceBundle)
-        .filter(ScoutEvidenceBundle.scout_run_id == read_run.id)
+        .filter(ScoutEvidenceBundle.scout_run_id == read_run.run_id)
         .all()
     )
     assert len(read_bundles) == 1
@@ -103,7 +103,7 @@ def test_scout_persistence_does_not_write_companies_or_signal_events(
     db.add(run)
     db.flush()
     bundle = ScoutEvidenceBundle(
-        scout_run_id=run.id,
+        scout_run_id=run.run_id,
         candidate_company_name="Scout-Only Candidate Inc",
         company_website="https://scout-only.example.com",
         why_now_hypothesis="",
@@ -138,9 +138,7 @@ def test_scout_run_workspace_id_persist_and_filter(db: Session) -> None:
     db.commit()
 
     read_run = (
-        db.query(ScoutRun)
-        .filter(ScoutRun.workspace_id == ws.id, ScoutRun.run_id == run_id)
-        .one()
+        db.query(ScoutRun).filter(ScoutRun.workspace_id == ws.id, ScoutRun.run_id == run_id).one()
     )
     assert read_run.workspace_id == ws.id
     # Unscoped query would see it; scoped by workspace_id must be enforced in API

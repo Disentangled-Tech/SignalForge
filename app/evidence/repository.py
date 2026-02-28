@@ -20,6 +20,7 @@ from app.models.evidence_bundle import EvidenceBundle
 from app.models.evidence_bundle_source import EvidenceBundleSource
 from app.models.evidence_claim import EvidenceClaim
 from app.models.evidence_source import EvidenceSource
+from app.models.scout_run import ScoutRun
 from app.schemas.evidence import (
     EvidenceBundleRead,
     EvidenceClaimRead,
@@ -51,6 +52,31 @@ def list_bundles_by_run(db: Session, run_id: str) -> list[EvidenceBundleRead]:
         .all()
     )
     return [_row_to_bundle_read(r) for r in rows]
+
+
+def list_bundles_by_run_for_workspace(
+    db: Session, run_id: str, workspace_id: uuid.UUID
+) -> list[EvidenceBundleRead]:
+    """Return evidence bundles for run_id only if the run belongs to workspace_id.
+
+    Checks scout_runs for (run_id, workspace_id) before calling list_bundles_by_run.
+    Returns [] if the run does not exist or belongs to another workspace (no leak).
+    """
+    try:
+        run_uuid = uuid.UUID(run_id)
+    except (ValueError, TypeError):
+        return []
+    run_row = (
+        db.query(ScoutRun)
+        .filter(
+            ScoutRun.run_id == run_uuid,
+            ScoutRun.workspace_id == workspace_id,
+        )
+        .first()
+    )
+    if run_row is None:
+        return []
+    return list_bundles_by_run(db, run_id)
 
 
 def list_sources_for_bundle(db: Session, bundle_id: uuid.UUID) -> list[EvidenceSourceRead]:

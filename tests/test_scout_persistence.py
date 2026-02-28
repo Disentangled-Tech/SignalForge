@@ -39,11 +39,19 @@ def test_insert_scout_run_and_bundle_read_back(
     db.flush()
 
     bundle_row = ScoutEvidenceBundle(
-        scout_run_id=run_row.id,
+        scout_run_id=run_row.run_id,
         candidate_company_name="TestCo",
         company_website="https://test.example.com",
         why_now_hypothesis="Testing.",
-        evidence=[{"url": "https://test.example.com", "quoted_snippet": "Test.", "timestamp_seen": "2026-02-27T12:00:00Z", "source_type": "test", "confidence_score": 0.8}],
+        evidence=[
+            {
+                "url": "https://test.example.com",
+                "quoted_snippet": "Test.",
+                "timestamp_seen": "2026-02-27T12:00:00Z",
+                "source_type": "test",
+                "confidence_score": 0.8,
+            }
+        ],
         missing_information=[],
         raw_llm_output=None,
     )
@@ -56,9 +64,11 @@ def test_insert_scout_run_and_bundle_read_back(
     assert run_read.model_version == "test-model"
     assert run_read.status == "completed"
 
-    bundles_read = db.query(ScoutEvidenceBundle).filter(
-        ScoutEvidenceBundle.scout_run_id == run_read.id
-    ).all()
+    bundles_read = (
+        db.query(ScoutEvidenceBundle)
+        .filter(ScoutEvidenceBundle.scout_run_id == run_read.run_id)
+        .all()
+    )
     assert len(bundles_read) == 1
     assert bundles_read[0].candidate_company_name == "TestCo"
     assert len(bundles_read[0].evidence) == 1

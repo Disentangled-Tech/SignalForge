@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.evidence import (
     get_bundle,
     list_bundles_by_run,
+    list_bundles_by_run_for_workspace,
     list_claims_for_bundle,
     list_sources_for_bundle,
     store_evidence_bundle,
@@ -108,6 +109,53 @@ def test_list_bundles_by_run_returns_empty_for_unknown_run_id(db: Session) -> No
     """list_bundles_by_run returns [] when run_id has no bundles."""
     listed = list_bundles_by_run(db, "nonexistent-run-999")
     assert listed == []
+
+
+def test_list_bundles_by_run_for_workspace_returns_bundles_only_when_run_in_workspace(
+    db: Session,
+) -> None:
+    """list_bundles_by_run_for_workspace returns bundles only if run belongs to workspace; else []."""
+    import uuid
+
+    from app.models import ScoutRun, Workspace
+
+    ws = Workspace(name="Repo WS")
+    db.add(ws)
+    db.flush()
+    run_id = "cccccccc-0000-4000-8000-000000000003"
+    db.add(
+        ScoutRun(
+            run_id=uuid.UUID(run_id),
+            workspace_id=ws.id,
+            model_version="test",
+            page_fetch_count=0,
+            status="completed",
+        )
+    )
+    db.flush()
+
+    bundle = EvidenceBundle(
+        candidate_company_name="WS Co",
+        company_website="https://ws.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://u.com", "s")],
+    )
+    store_evidence_bundle(
+        db,
+        run_id=run_id,
+        scout_version="v1",
+        bundles=[bundle],
+        run_context={"run_id": run_id},
+        raw_model_output=None,
+    )
+
+    in_ws = list_bundles_by_run_for_workspace(db, run_id, ws.id)
+    assert len(in_ws) == 1
+    assert in_ws[0].run_context == {"run_id": run_id}
+
+    other_ws_id = uuid.uuid4()
+    not_in_ws = list_bundles_by_run_for_workspace(db, run_id, other_ws_id)
+    assert not_in_ws == []
 
 
 def test_list_sources_for_bundle_returns_linked_sources(db: Session) -> None:

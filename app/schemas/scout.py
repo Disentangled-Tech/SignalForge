@@ -5,6 +5,7 @@ Per plan: Evidence-Only Mode; strict validation; JSON schema export for LLM outp
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -75,6 +76,10 @@ class RunScoutRequest(BaseModel):
     exclusion_rules: str | None = Field(None, max_length=2000)
     pack_id: str | None = Field(None, max_length=64)
     page_fetch_limit: int = Field(10, ge=0, le=100)
+    workspace_id: uuid.UUID | None = Field(
+        None,
+        description="Workspace to scope this run; stored on scout_runs for tenant boundary.",
+    )
 
 
 # ── Scout run result (response) ─────────────────────────────────────────────
