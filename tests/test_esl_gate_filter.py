@@ -55,36 +55,21 @@ class TestApplyToneConstraint:
     """Tests for apply_tone_constraint."""
 
     def test_returns_unchanged_when_no_constraint(self) -> None:
-        assert (
-            apply_tone_constraint("Standard Outreach", None)
-            == "Standard Outreach"
-        )
+        assert apply_tone_constraint("Standard Outreach", None) == "Standard Outreach"
 
     def test_caps_higher_to_constraint(self) -> None:
-        assert (
-            apply_tone_constraint("Standard Outreach", "Soft Value Share")
-            == "Soft Value Share"
-        )
+        assert apply_tone_constraint("Standard Outreach", "Soft Value Share") == "Soft Value Share"
         assert (
             apply_tone_constraint("Direct Strategic Outreach", "Low-Pressure Intro")
             == "Low-Pressure Intro"
         )
 
     def test_unchanged_when_already_lower(self) -> None:
-        assert (
-            apply_tone_constraint("Observe Only", "Soft Value Share")
-            == "Observe Only"
-        )
-        assert (
-            apply_tone_constraint("Soft Value Share", "Standard Outreach")
-            == "Soft Value Share"
-        )
+        assert apply_tone_constraint("Observe Only", "Soft Value Share") == "Observe Only"
+        assert apply_tone_constraint("Soft Value Share", "Standard Outreach") == "Soft Value Share"
 
     def test_same_level_unchanged(self) -> None:
-        assert (
-            apply_tone_constraint("Soft Value Share", "Soft Value Share")
-            == "Soft Value Share"
-        )
+        assert apply_tone_constraint("Soft Value Share", "Soft Value Share") == "Soft Value Share"
 
 
 class TestGetEffectiveEngagementType:
@@ -100,10 +85,7 @@ class TestGetEffectiveEngagementType:
         )
 
     def test_unchanged_when_missing_decision(self) -> None:
-        assert (
-            get_effective_engagement_type("Standard Outreach", {})
-            == "Standard Outreach"
-        )
+        assert get_effective_engagement_type("Standard Outreach", {}) == "Standard Outreach"
 
     def test_capped_when_allow_with_constraints(self) -> None:
         assert (

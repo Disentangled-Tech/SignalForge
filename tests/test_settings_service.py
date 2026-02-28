@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 from app.models.app_settings import AppSettings
 from app.models.operator_profile import OperatorProfile
@@ -12,7 +12,6 @@ from app.services.settings_service import (
     update_app_settings,
     update_operator_profile,
 )
-
 
 # ── get_app_settings ─────────────────────────────────────────────────
 
@@ -161,4 +160,3 @@ class TestUpdateOperatorProfile:
         db.add.assert_not_called()
         db.commit.assert_called_once()
         db.refresh.assert_called_once()
-

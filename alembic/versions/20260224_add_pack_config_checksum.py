@@ -14,6 +14,7 @@ REQUIREMENT (Option B - strict correctness):
   ValidationError), the migration will fail and the upgrade will roll back.
   Deployment artifacts (Docker, CI, etc.) MUST include packs/fractional_cto_v1/.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

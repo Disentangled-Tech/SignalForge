@@ -82,16 +82,11 @@ def test_get_emerging_companies_returns_top_by_outreach_score(db: Session) -> No
         _add_engagement_snapshot(db, c.id, as_of, esl_score=esl)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=5, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=5, outreach_score_threshold=30)
 
     assert len(result) == 5
     # OutreachScores: 35,64,54,60,58 -> sorted desc: 64,60,58,54,35
-    outreach_scores = [
-        round(rs.composite * es.esl_score)
-        for rs, es, _ in result
-    ]
+    outreach_scores = [round(rs.composite * es.esl_score) for rs, es, _ in result]
     assert outreach_scores == [64, 60, 58, 54, 35]
 
 
@@ -127,14 +122,9 @@ def test_outreach_score_formula_matches_ranking(db: Session) -> None:
         _add_engagement_snapshot(db, c.id, as_of, esl_score=esl)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=5, outreach_score_threshold=20
-    )
+    result = get_emerging_companies(db, as_of, limit=5, outreach_score_threshold=20)
 
-    actual_scores = [
-        compute_outreach_score(rs.composite, es.esl_score)
-        for rs, es, _ in result
-    ]
+    actual_scores = [compute_outreach_score(rs.composite, es.esl_score) for rs, es, _ in result]
     # 90*0.9=81, 80*0.75=60, 50*0.5=25
     assert actual_scores == [81, 60, 25]
     assert actual_scores == sorted(actual_scores, reverse=True)
@@ -154,8 +144,13 @@ def test_get_emerging_companies_respects_outreach_threshold(db: Session) -> None
     as_of = date(2099, 1, 2)
     for c, composite, esl in [(c1, 80, 0.5), (c2, 50, 0.5)]:
         rs = ReadinessSnapshot(
-            company_id=c.id, as_of=as_of,
-            momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=composite,
+            company_id=c.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
+            composite=composite,
             pack_id=pack_id,
         )
         db.add(rs)
@@ -163,9 +158,7 @@ def test_get_emerging_companies_respects_outreach_threshold(db: Session) -> None
     db.commit()
 
     # c1: 80*0.5=40 >= 30; c2: 50*0.5=25 < 30
-    result = get_emerging_companies(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 1
     assert result[0][0].composite == 80
@@ -189,17 +182,20 @@ def test_get_emerging_companies_excludes_without_engagement_snapshot(
     as_of = date(2099, 1, 15)
     for c in [c1, c2]:
         rs = ReadinessSnapshot(
-            company_id=c.id, as_of=as_of,
-            momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=70,
+            company_id=c.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
+            composite=70,
             pack_id=pack_id,
         )
         db.add(rs)
     _add_engagement_snapshot(db, c1.id, as_of)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30)
 
     # "With ES" has EngagementSnapshot and qualifies; "No ES" has no ES so excluded by join
     with_es = [r for r in result if r[2].name == "With ES"]
@@ -220,26 +216,27 @@ def test_get_emerging_companies_respects_date(db: Session) -> None:
     as_of_target = date(2099, 1, 4)
     as_of_other = date(2099, 1, 3)
     rs = ReadinessSnapshot(
-        company_id=company.id, as_of=as_of_other,
-        momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=70,
+        company_id=company.id,
+        as_of=as_of_other,
+        momentum=70,
+        complexity=60,
+        pressure=55,
+        leadership_gap=40,
+        composite=70,
         pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(db, company.id, as_of_other)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of_target, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of_target, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 0
 
 
 def test_get_emerging_companies_empty_when_no_snapshots(db: Session) -> None:
     """Returns empty list when no snapshots exist for date."""
-    result = get_emerging_companies(
-        db, date(2099, 1, 5), limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, date(2099, 1, 5), limit=10, outreach_score_threshold=30)
     assert result == []
 
 
@@ -254,17 +251,20 @@ def test_get_emerging_companies_returns_fewer_than_limit(db: Session) -> None:
     pack_id = pack.id if pack else None
     as_of = date(2099, 1, 6)
     rs = ReadinessSnapshot(
-        company_id=c1.id, as_of=as_of,
-        momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=65,
+        company_id=c1.id,
+        as_of=as_of,
+        momentum=70,
+        complexity=60,
+        pressure=55,
+        leadership_gap=40,
+        composite=65,
         pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(db, c1.id, as_of)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 1
     assert result[0][2].name == "Only Co"
@@ -275,8 +275,7 @@ def test_get_emerging_companies_weekly_review_limit_caps_results(
 ) -> None:
     """Weekly review limit caps number of companies returned."""
     companies = [
-        Company(name=f"Co {i}", website_url=f"https://co{i}.example.com")
-        for i in range(5)
+        Company(name=f"Co {i}", website_url=f"https://co{i}.example.com") for i in range(5)
     ]
     db.add_all(companies)
     db.commit()
@@ -288,8 +287,12 @@ def test_get_emerging_companies_weekly_review_limit_caps_results(
     as_of = date(2099, 1, 7)
     for i, c in enumerate(companies):
         rs = ReadinessSnapshot(
-            company_id=c.id, as_of=as_of,
-            momentum=70, complexity=60, pressure=55, leadership_gap=40,
+            company_id=c.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=60,
+            pressure=55,
+            leadership_gap=40,
             composite=70 + i,
             pack_id=pack_id,
         )
@@ -297,9 +300,7 @@ def test_get_emerging_companies_weekly_review_limit_caps_results(
         _add_engagement_snapshot(db, c.id, as_of)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=3, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=3, outreach_score_threshold=30)
 
     assert len(result) == 3
 
@@ -317,22 +318,27 @@ def test_get_emerging_companies_cadence_blocked_included_with_observe_only(
     pack_id = pack.id if pack else None
     as_of = date(2099, 1, 8)
     rs = ReadinessSnapshot(
-        company_id=company.id, as_of=as_of,
-        momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=80,
+        company_id=company.id,
+        as_of=as_of,
+        momentum=70,
+        complexity=60,
+        pressure=55,
+        leadership_gap=40,
+        composite=80,
         pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(
-        db, company.id, as_of,
+        db,
+        company.id,
+        as_of,
         esl_score=0.5,
         engagement_type="Observe Only",
         cadence_blocked=True,
     )
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 1
     rs, es, co = result[0]
@@ -377,9 +383,7 @@ def test_get_emerging_companies_excludes_suppressed_entities(db: Session) -> Non
     db.add(es2)
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 1
     assert result[0][2].name == "Allowed Co"
@@ -402,22 +406,27 @@ def test_get_emerging_companies_cadence_blocked_included_when_outreach_score_zer
     pack_id = pack.id if pack else None
     as_of = date(2099, 1, 9)
     rs = ReadinessSnapshot(
-        company_id=company.id, as_of=as_of,
-        momentum=70, complexity=60, pressure=55, leadership_gap=40, composite=80,
+        company_id=company.id,
+        as_of=as_of,
+        momentum=70,
+        complexity=60,
+        pressure=55,
+        leadership_gap=40,
+        composite=80,
         pack_id=pack_id,
     )
     db.add(rs)
     _add_engagement_snapshot(
-        db, company.id, as_of,
+        db,
+        company.id,
+        as_of,
         esl_score=0.0,  # CM=0 → ESL=0 → outreach_score=0
         engagement_type="Observe Only",
         cadence_blocked=True,
     )
     db.commit()
 
-    result = get_emerging_companies(
-        db, as_of, limit=10, outreach_score_threshold=30
-    )
+    result = get_emerging_companies(db, as_of, limit=10, outreach_score_threshold=30)
 
     assert len(result) == 1
     rs, es, co = result[0]

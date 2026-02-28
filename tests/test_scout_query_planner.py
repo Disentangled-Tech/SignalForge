@@ -64,9 +64,9 @@ def test_plan_query_shapes_contain_icp_and_signal_related_phrases() -> None:
     assert any(icp_lower in q.lower() for q in queries)
     # At least one query should reflect rubric (e.g. funding, CTO, headcount)
     rubric_phrases = ["funding", "cto", "headcount", "role", "growth"]
-    assert any(
-        any(p in q.lower() for p in rubric_phrases) for q in queries
-    ), f"Expected some rubric-derived phrasing in {queries}"
+    assert any(any(p in q.lower() for p in rubric_phrases) for q in queries), (
+        f"Expected some rubric-derived phrasing in {queries}"
+    )
 
 
 def test_plan_with_pack_id_no_emphasis_unchanged_structure() -> None:
@@ -87,12 +87,14 @@ def test_plan_with_pack_id_no_emphasis_unchanged_structure() -> None:
 def test_optional_pack_id_adds_emphasis_not_structure(tmp_path: Path) -> None:
     """When pack has scout_emphasis, queries include those keywords; structure remains list[str]."""
     (tmp_path / "pack.json").write_text(
-        json.dumps({
-            "id": "test_scout_pack",
-            "version": "1",
-            "name": "Test",
-            "scout_emphasis": ["fractional CTO", "technical leadership"],
-        }),
+        json.dumps(
+            {
+                "id": "test_scout_pack",
+                "version": "1",
+                "name": "Test",
+                "scout_emphasis": ["fractional CTO", "technical leadership"],
+            }
+        ),
         encoding="utf-8",
     )
     planner = QueryPlanner()

@@ -7,17 +7,18 @@ Create Date: 2026-02-18
 Persist OutreachScore = round(TRS × ESL) for query/audit.
 Uses Python round() for backfill to match compute_outreach_score() (banker's rounding).
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from sqlalchemy import text
 
 from alembic import op
-from sqlalchemy import text
-import sqlalchemy as sa
-
 
 revision: str = "20260218_outreach_score"
-down_revision: Union[str, None] = "20260218_aliases"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "20260218_aliases"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

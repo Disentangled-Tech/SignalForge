@@ -14,9 +14,9 @@ from app.models import Company, ReadinessSnapshot, Watchlist
 @pytest.fixture
 def api_client(db: Session):
     """TestClient with real DB and mocked auth."""
-    from app.main import app
-    from app.db.session import get_db
     from app.api.deps import require_auth
+    from app.db.session import get_db
+    from app.main import app
 
     def override_get_db():
         yield db
@@ -29,8 +29,6 @@ def api_client(db: Session):
     client = TestClient(app)
     yield client
     app.dependency_overrides.clear()
-
-
 
 
 class TestWatchlistAdd:
@@ -73,9 +71,7 @@ class TestWatchlistAdd:
         assert r2.status_code == 409
         assert "already on the watchlist" in r2.json()["detail"]
 
-    def test_add_to_watchlist_company_not_found_404(
-        self, api_client: TestClient
-    ) -> None:
+    def test_add_to_watchlist_company_not_found_404(self, api_client: TestClient) -> None:
         """POST non-existent company_id returns 404."""
         response = api_client.post(
             "/api/watchlist",
@@ -88,9 +84,7 @@ class TestWatchlistAdd:
 class TestWatchlistRemove:
     """Tests for DELETE /api/watchlist/{company_id}."""
 
-    def test_remove_from_watchlist_success(
-        self, db: Session, api_client: TestClient
-    ) -> None:
+    def test_remove_from_watchlist_success(self, db: Session, api_client: TestClient) -> None:
         """DELETE existing entry returns 204 and sets is_active=False."""
         company = Company(name="RemoveCo", website_url="https://remove.example.com")
         db.add(company)
@@ -106,9 +100,7 @@ class TestWatchlistRemove:
         db.refresh(entry)
         assert entry.is_active is False
 
-    def test_remove_from_watchlist_not_found_404(
-        self, db: Session, api_client: TestClient
-    ) -> None:
+    def test_remove_from_watchlist_not_found_404(self, db: Session, api_client: TestClient) -> None:
         """DELETE company not on watchlist returns 404."""
         company = Company(name="NotWatchedCo", website_url="https://nw.example.com")
         db.add(company)
@@ -126,9 +118,7 @@ class TestWatchlistList:
     def test_list_watchlist_empty(self, db: Session, api_client: TestClient) -> None:
         """GET when empty returns 200 with items=[]."""
         # Isolate: deactivate all watchlist entries so list is empty
-        db.query(Watchlist).filter(Watchlist.is_active == True).update(
-            {"is_active": False}
-        )
+        db.query(Watchlist).filter(Watchlist.is_active == True).update({"is_active": False})
         db.commit()
 
         response = api_client.get("/api/watchlist")
@@ -178,9 +168,7 @@ class TestWatchlistList:
         assert response.status_code == 200
         data = response.json()
         # Find our DeltaCo in the list (db may have other entries from other tests)
-        our_item = next(
-            (i for i in data["items"] if i["company_id"] == company.id), None
-        )
+        our_item = next((i for i in data["items"] if i["company_id"] == company.id), None)
         assert our_item is not None
         assert our_item["company_name"] == "DeltaCo"
         assert our_item["latest_composite"] == 72
@@ -192,8 +180,8 @@ class TestWatchlistAuth:
 
     def test_watchlist_endpoints_require_auth(self, db: Session) -> None:
         """POST, DELETE, GET without auth return 401."""
-        from app.main import app
         from app.db.session import get_db
+        from app.main import app
 
         def override_get_db():
             yield db

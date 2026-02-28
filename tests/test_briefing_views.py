@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,7 +29,6 @@ from app.models.company import Company  # noqa: E402
 from app.models.job_run import JobRun  # noqa: E402
 from app.models.user import User  # noqa: E402
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -43,14 +42,22 @@ def _make_user() -> MagicMock:
 
 def _make_company(id: int = 1, **overrides) -> MagicMock:
     """Create a mock Company."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = dict(
-        id=id, name="Acme Corp", website_url="https://acme.example.com",
-        founder_name="Jane Doe", founder_linkedin_url=None,
-        company_linkedin_url=None, source="manual",
-        target_profile_match=False, current_stage="mvp_building",
-        notes=None, cto_need_score=85, created_at=now,
-        updated_at=now, last_scan_at=None,
+        id=id,
+        name="Acme Corp",
+        website_url="https://acme.example.com",
+        founder_name="Jane Doe",
+        founder_linkedin_url=None,
+        company_linkedin_url=None,
+        source="manual",
+        target_profile_match=False,
+        current_stage="mvp_building",
+        notes=None,
+        cto_need_score=85,
+        created_at=now,
+        updated_at=now,
+        last_scan_at=None,
     )
     defaults.update(overrides)
     mock = MagicMock(spec=Company)
@@ -62,11 +69,15 @@ def _make_company(id: int = 1, **overrides) -> MagicMock:
 def _make_analysis(id: int = 1, **overrides) -> MagicMock:
     """Create a mock AnalysisRecord."""
     defaults = dict(
-        id=id, company_id=1, source_type="full_analysis",
-        stage="mvp_building", stage_confidence=80,
-        pain_signals_json={}, evidence_bullets=[],
+        id=id,
+        company_id=1,
+        source_type="full_analysis",
+        stage="mvp_building",
+        stage_confidence=80,
+        pain_signals_json={},
+        evidence_bullets=[],
         explanation="Test explanation",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     mock = MagicMock(spec=AnalysisRecord)
@@ -80,15 +91,18 @@ def _make_briefing_item(id: int = 1, **overrides) -> MagicMock:
     company = overrides.pop("company", _make_company())
     analysis = overrides.pop("analysis", _make_analysis())
     defaults = dict(
-        id=id, company_id=company.id, analysis_id=analysis.id,
+        id=id,
+        company_id=company.id,
+        analysis_id=analysis.id,
         why_now="Recent funding round",
         risk_summary="Early stage, may not convert",
         suggested_angle="Technical advisor for scaling",
         outreach_subject="Congrats on the raise",
         outreach_message="Hi Jane, I noticed your company just raised.",
         briefing_date=date.today(),
-        created_at=datetime.now(timezone.utc),
-        company=company, analysis=analysis,
+        created_at=datetime.now(UTC),
+        company=company,
+        analysis=analysis,
     )
     defaults.update(overrides)
     mock = MagicMock(spec=BriefingItem)
@@ -148,9 +162,7 @@ class TestBriefingPage:
     """Tests for GET /briefing."""
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_briefing_renders_with_items(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_briefing_renders_with_items(self, mock_get_data, mock_db, mock_user):
         """Briefing page renders when items exist."""
         item = _make_briefing_item()
         mock_get_data.return_value = {
@@ -172,9 +184,7 @@ class TestBriefingPage:
         assert "Copy Outreach" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_main_card_shows_esl_when_available(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_main_card_shows_esl_when_available(self, mock_get_data, mock_db, mock_user):
         """Main briefing card shows ESL badges when EngagementSnapshot exists (Issue #110)."""
         co = _make_company(id=1)
         item = _make_briefing_item(company=co)
@@ -251,9 +261,7 @@ class TestBriefingPage:
         assert "Settings" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_briefing_multiple_items_ordered(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_briefing_multiple_items_ordered(self, mock_get_data, mock_db, mock_user):
         """Briefing page renders multiple items."""
         co1 = _make_company(id=1, name="Alpha Co", cto_need_score=90)
         co2 = _make_company(id=2, name="Beta Co", cto_need_score=60)
@@ -279,9 +287,7 @@ class TestBriefingByDate:
     """Tests for GET /briefing/{date_str}."""
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_date_specific_briefing(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_date_specific_briefing(self, mock_get_data, mock_db, mock_user):
         """Briefing page renders for a specific date."""
         target = date(2026, 1, 15)
         item = _make_briefing_item(briefing_date=target)
@@ -349,7 +355,9 @@ class TestBriefingGenerate:
 
         assert resp.status_code == 303
         assert "error=" in resp.headers.get("location", "")
-        assert "Partial" in resp.headers.get("location", "") or "failures" in resp.headers.get("location", "")
+        assert "Partial" in resp.headers.get("location", "") or "failures" in resp.headers.get(
+            "location", ""
+        )
 
     def test_generate_import_error_redirects_with_error(self, mock_db, mock_user):
         """When service not available, redirects with error."""
@@ -358,6 +366,7 @@ class TestBriefingGenerate:
 
         # Ensure the import fails by removing the module
         import sys
+
         saved = sys.modules.pop("app.services.briefing", None)
         try:
             with patch.dict("sys.modules", {"app.services.briefing": None}):
@@ -375,9 +384,7 @@ class TestBriefingDisplayScores:
     """Tests for CTO Score display (Issue #24: same logic as company detail)."""
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_briefing_uses_display_scores_when_available(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_briefing_uses_display_scores_when_available(self, mock_get_data, mock_db, mock_user):
         """Briefing page shows recomputed score from get_display_scores_for_companies."""
         co = _make_company(id=1, cto_need_score=70)  # stored score
         item = _make_briefing_item(company=co)
@@ -422,9 +429,7 @@ class TestBriefingSort:
     """Tests for sort/filter param (Issue #24)."""
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_sort_param_score_orders_by_cto_score(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_sort_param_score_orders_by_cto_score(self, mock_get_data, mock_db, mock_user):
         """sort=score uses cto_need_score desc (default)."""
         item = _make_briefing_item()
         mock_get_data.return_value = {
@@ -458,9 +463,7 @@ class TestBriefingSort:
         assert resp.status_code == 200
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_sort_param_outreach_score_returns_200(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_sort_param_outreach_score_returns_200(self, mock_get_data, mock_db, mock_user):
         """sort=outreach_score renders without error (Issue #103)."""
         item = _make_briefing_item()
         mock_get_data.return_value = {
@@ -478,13 +481,14 @@ class TestBriefingSort:
         assert "outreach_score" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_duplicate_companies_deduplicated_in_display(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_duplicate_companies_deduplicated_in_display(self, mock_get_data, mock_db, mock_user):
         """When same company has multiple BriefingItems, display shows only one."""
         co = _make_company(id=1, name="Acme Corp")
         item1 = _make_briefing_item(
-            id=1, company=co, risk_summary="First risk", created_at=datetime(2026, 2, 17, 8, 0, tzinfo=timezone.utc)
+            id=1,
+            company=co,
+            risk_summary="First risk",
+            created_at=datetime(2026, 2, 17, 8, 0, tzinfo=UTC),
         )
         # get_briefing_data deduplicates; we simulate it returning one item
         mock_get_data.return_value = {
@@ -502,9 +506,7 @@ class TestBriefingSort:
         assert resp.text.count("Acme Corp") == 1
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_sort_ui_present_when_items_exist(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_sort_ui_present_when_items_exist(self, mock_get_data, mock_db, mock_user):
         """Sort dropdown/links visible when briefing has items."""
         item = _make_briefing_item()
         mock_get_data.return_value = {
@@ -526,9 +528,7 @@ class TestEmergingCompaniesSection:
     """Tests for Emerging Companies to Watch section (Issue #93)."""
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_briefing_page_includes_emerging_section(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_briefing_page_includes_emerging_section(self, mock_get_data, mock_db, mock_user):
         """When emerging companies exist, section shows OutreachScore and ESL (Issue #102)."""
         co = MagicMock()
         co.id = 1
@@ -548,17 +548,19 @@ class TestEmergingCompaniesSection:
         eng_snap.explain = {}
         mock_get_data.return_value = {
             "items": [],
-            "emerging_companies": [{
-                "company": co,
-                "snapshot": snap,
-                "engagement_snapshot": eng_snap,
-                "outreach_score": 72,
-                "esl_score": 1.0,
-                "engagement_type": "Standard Outreach",
-                "cadence_blocked": False,
-                "stability_cap_triggered": False,
-                "top_signals": ["New funding"],
-            }],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 72,
+                    "esl_score": 1.0,
+                    "engagement_type": "Standard Outreach",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": False,
+                    "top_signals": ["New funding"],
+                }
+            ],
             "display_scores": {},
             "esl_by_company": {},
         }
@@ -575,9 +577,7 @@ class TestEmergingCompaniesSection:
         assert "New funding" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_briefing_page_emerging_empty_state(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_briefing_page_emerging_empty_state(self, mock_get_data, mock_db, mock_user):
         """When no snapshots, emerging section shows empty message."""
         mock_get_data.return_value = {
             "items": [],
@@ -595,9 +595,7 @@ class TestEmergingCompaniesSection:
         assert "No emerging companies for this date" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_emerging_section_shows_esl_and_cooldown(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_emerging_section_shows_esl_and_cooldown(self, mock_get_data, mock_db, mock_user):
         """Emerging section displays ESL score, recommendation category, cooldown badge."""
         co = MagicMock()
         co.id = 2
@@ -617,17 +615,19 @@ class TestEmergingCompaniesSection:
         eng_snap.explain = {}
         mock_get_data.return_value = {
             "items": [],
-            "emerging_companies": [{
-                "company": co,
-                "snapshot": snap,
-                "engagement_snapshot": eng_snap,
-                "outreach_score": 30,
-                "esl_score": 0.5,
-                "engagement_type": "Observe Only",
-                "cadence_blocked": True,
-                "stability_cap_triggered": False,
-                "top_signals": [],
-            }],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 30,
+                    "esl_score": 0.5,
+                    "engagement_type": "Observe Only",
+                    "cadence_blocked": True,
+                    "stability_cap_triggered": False,
+                    "top_signals": [],
+                }
+            ],
             "display_scores": {},
             "esl_by_company": {},
         }
@@ -664,18 +664,20 @@ class TestEmergingCompaniesSection:
         eng_snap.explain = {}
         mock_get_data.return_value = {
             "items": [],
-            "emerging_companies": [{
-                "company": co,
-                "snapshot": snap,
-                "engagement_snapshot": eng_snap,
-                "outreach_score": 80,
-                "esl_score": 1.0,
-                "engagement_type": "Standard Outreach",
-                "cadence_blocked": False,
-                "stability_cap_triggered": False,
-                "top_signals": [],
-                "recommendation_band": "HIGH_PRIORITY",
-            }],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 80,
+                    "esl_score": 1.0,
+                    "engagement_type": "Standard Outreach",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": False,
+                    "top_signals": [],
+                    "recommendation_band": "HIGH_PRIORITY",
+                }
+            ],
             "display_scores": {},
             "esl_by_company": {},
         }
@@ -689,9 +691,7 @@ class TestEmergingCompaniesSection:
         assert "BandCo" in resp.text
 
     @patch("app.api.briefing_views.get_briefing_data")
-    def test_emerging_section_shows_stability_cap_badge(
-        self, mock_get_data, mock_db, mock_user
-    ):
+    def test_emerging_section_shows_stability_cap_badge(self, mock_get_data, mock_db, mock_user):
         """When stability_cap_triggered in explain, show Stability cap badge (Issue #111)."""
         co = MagicMock()
         co.id = 3
@@ -711,17 +711,19 @@ class TestEmergingCompaniesSection:
         eng_snap.explain = {"stability_cap_triggered": True}
         mock_get_data.return_value = {
             "items": [],
-            "emerging_companies": [{
-                "company": co,
-                "snapshot": snap,
-                "engagement_snapshot": eng_snap,
-                "outreach_score": 37,
-                "esl_score": 0.5,
-                "engagement_type": "Soft Value Share",
-                "cadence_blocked": False,
-                "stability_cap_triggered": True,
-                "top_signals": [],
-            }],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 37,
+                    "esl_score": 0.5,
+                    "engagement_type": "Soft Value Share",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": True,
+                    "top_signals": [],
+                }
+            ],
             "display_scores": {},
             "esl_by_company": {},
         }

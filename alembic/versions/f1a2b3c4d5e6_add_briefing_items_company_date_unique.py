@@ -7,16 +7,16 @@ Create Date: 2026-02-17
 Prevents duplicate companies on the Daily Briefing. Cleans up existing
 duplicates (keeps most recent by created_at) before adding the constraint.
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
 revision: str = "f1a2b3c4d5e6"
-down_revision: Union[str, None] = "e77e9209fe33"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "e77e9209fe33"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

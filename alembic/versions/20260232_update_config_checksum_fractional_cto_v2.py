@@ -37,8 +37,7 @@ def upgrade() -> None:
     )
     if result.rowcount == 0:
         raise RuntimeError(
-            "signal_packs row for fractional_cto_v1 v1 not found; "
-            "run earlier migrations first"
+            "signal_packs row for fractional_cto_v1 v1 not found; run earlier migrations first"
         )
 
 

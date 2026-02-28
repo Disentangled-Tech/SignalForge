@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,9 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.models.company import Company
 from app.schemas.company import (
-    BulkImportResponse,
     CompanyCreate,
-    CompanyRead,
     CompanySource,
     CompanyUpdate,
 )
@@ -27,18 +25,28 @@ from app.services.company import (
     update_company,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_company(**overrides) -> MagicMock:
     """Create a mock Company model instance with sensible defaults."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = dict(
-        id=1, name="Acme Corp", domain=None, website_url="https://acme.example.com",
-        founder_name="Jane Doe", founder_linkedin_url=None,
-        company_linkedin_url=None, source="manual",
-        target_profile_match=False, current_stage=None, notes=None,
-        cto_need_score=None, created_at=now, updated_at=now, last_scan_at=None,
+        id=1,
+        name="Acme Corp",
+        domain=None,
+        website_url="https://acme.example.com",
+        founder_name="Jane Doe",
+        founder_linkedin_url=None,
+        company_linkedin_url=None,
+        source="manual",
+        target_profile_match=False,
+        current_stage=None,
+        notes=None,
+        cto_need_score=None,
+        created_at=now,
+        updated_at=now,
+        last_scan_at=None,
     )
     defaults.update(overrides)
     mock = MagicMock(spec=Company)
@@ -113,7 +121,7 @@ class TestServiceCRUD:
 
     def test_create_company(self) -> None:
         db = self._mock_db()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         def fake_refresh(obj):
             # Simulate DB setting defaults after commit
@@ -199,9 +207,9 @@ class TestCompanyAPI:
     @pytest.fixture
     def api_client(self) -> TestClient:
         """TestClient with mocked DB and auth dependencies."""
-        from app.main import app
-        from app.db.session import get_db
         from app.api.deps import require_auth
+        from app.db.session import get_db
+        from app.main import app
 
         self._mock_db = MagicMock()
 
@@ -218,9 +226,7 @@ class TestCompanyAPI:
         app.dependency_overrides.clear()
 
     @patch("app.api.companies.resolve_or_create_company")
-    def test_create_company_api(
-        self, mock_resolve: MagicMock, api_client: TestClient
-    ) -> None:
+    def test_create_company_api(self, mock_resolve: MagicMock, api_client: TestClient) -> None:
         company = _make_company(name="API Co")
         mock_resolve.return_value = (company, True)
 
@@ -312,7 +318,6 @@ class TestCompanyAPI:
         assert response.status_code == 404
 
 
-
 # ── Bulk import service tests ────────────────────────────────────────
 
 
@@ -397,9 +402,9 @@ class TestBulkImportAPI:
     @pytest.fixture
     def api_client(self) -> TestClient:
         """TestClient with mocked DB and auth dependencies."""
-        from app.main import app
-        from app.db.session import get_db
         from app.api.deps import require_auth
+        from app.db.session import get_db
+        from app.main import app
 
         self._mock_db = MagicMock()
 
@@ -426,9 +431,7 @@ class TestBulkImportAPI:
         app.dependency_overrides.clear()
 
     @patch("app.services.company.resolve_or_create_company")
-    def test_json_import_happy_path(
-        self, mock_resolve: MagicMock, api_client: TestClient
-    ) -> None:
+    def test_json_import_happy_path(self, mock_resolve: MagicMock, api_client: TestClient) -> None:
         mock_resolve.side_effect = [
             (_make_company(name="Alpha Inc"), True),
             (_make_company(name="Beta Corp"), True),
@@ -451,9 +454,7 @@ class TestBulkImportAPI:
         assert len(data["rows"]) == 2
 
     @patch("app.services.company.resolve_or_create_company")
-    def test_csv_import_happy_path(
-        self, mock_resolve: MagicMock, api_client: TestClient
-    ) -> None:
+    def test_csv_import_happy_path(self, mock_resolve: MagicMock, api_client: TestClient) -> None:
         mock_resolve.side_effect = [
             (_make_company(name="Alpha Inc"), True),
             (_make_company(name="Beta Corp"), True),

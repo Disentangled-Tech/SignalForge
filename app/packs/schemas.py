@@ -29,12 +29,14 @@ _SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 # Allowed source_fields for pattern derivers (SignalEvent string attributes only).
 # Excludes raw (JSONB) and non-string fields (ADR-008 defense in depth).
 # Includes: title, summary, url, source.
-ALLOWED_PATTERN_SOURCE_FIELDS: frozenset[str] = frozenset({
-    "title",
-    "summary",
-    "url",
-    "source",
-})
+ALLOWED_PATTERN_SOURCE_FIELDS: frozenset[str] = frozenset(
+    {
+        "title",
+        "summary",
+        "url",
+        "source",
+    }
+)
 
 
 class ValidationError(Exception):
@@ -386,9 +388,7 @@ def _validate_version_semver(manifest: dict[str, Any]) -> None:
         return
     version_str = str(version).strip()
     if not _SEMVER_PATTERN.match(version_str):
-        raise ValidationError(
-            f"manifest version must be semver format (x.y.z), got '{version}'"
-        )
+        raise ValidationError(f"manifest version must be semver format (x.y.z), got '{version}'")
 
 
 def _validate_explainability(taxonomy: dict[str, Any], signal_ids: set[str]) -> None:
@@ -437,9 +437,7 @@ def _validate_playbooks(
             if refs is None:
                 continue
             if not isinstance(refs, list):
-                raise ValidationError(
-                    f"playbook '{name}' {key} must be a list"
-                )
+                raise ValidationError(f"playbook '{name}' {key} must be a list")
             for ref in refs:
                 if ref not in valid_recommendation_types:
                     raise ValidationError(

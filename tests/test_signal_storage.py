@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from app.models.company import Company
 from app.models.signal_record import SignalRecord
 from app.services.signal_storage import _compute_hash, store_signal
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -127,7 +124,7 @@ class TestStoreSignal:
         assert company.last_scan_at is None
 
         db = _make_query_mock(existing_record=None, company=company)
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         store_signal(
             db,
@@ -137,7 +134,7 @@ class TestStoreSignal:
             content_text="Some text",
         )
 
-        after = datetime.now(timezone.utc)
+        after = datetime.now(UTC)
         assert company.last_scan_at is not None
         assert before <= company.last_scan_at <= after
 
@@ -192,4 +189,3 @@ class TestStoreSignal:
         added = db.add.call_args[0][0]
         assert isinstance(added, SignalRecord)
         assert added.raw_html is None
-

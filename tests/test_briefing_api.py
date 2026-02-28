@@ -6,7 +6,6 @@ import os
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -151,18 +150,20 @@ def test_briefing_json_includes_recommendation_band(mock_get_data):
     snap.leadership_gap = 55
     mock_get_data.return_value = {
         "items": [],
-        "emerging_companies": [{
-            "company": co,
-            "snapshot": snap,
-            "engagement_snapshot": MagicMock(esl_score=1.0, cadence_blocked=False),
-            "outreach_score": 75,
-            "esl_score": 1.0,
-            "engagement_type": "Standard Outreach",
-            "cadence_blocked": False,
-            "stability_cap_triggered": False,
-            "top_signals": [],
-            "recommendation_band": "HIGH_PRIORITY",
-        }],
+        "emerging_companies": [
+            {
+                "company": co,
+                "snapshot": snap,
+                "engagement_snapshot": MagicMock(esl_score=1.0, cadence_blocked=False),
+                "outreach_score": 75,
+                "esl_score": 1.0,
+                "engagement_type": "Standard Outreach",
+                "cadence_blocked": False,
+                "stability_cap_triggered": False,
+                "top_signals": [],
+                "recommendation_band": "HIGH_PRIORITY",
+            }
+        ],
         "display_scores": {},
         "esl_by_company": {},
     }

@@ -34,8 +34,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        sa.text(
-            "DELETE FROM signal_packs WHERE pack_id = 'core' AND version = '1'"
-        )
-    )
+    op.execute(sa.text("DELETE FROM signal_packs WHERE pack_id = 'core' AND version = '1'"))

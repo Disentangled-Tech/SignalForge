@@ -6,6 +6,7 @@ Create Date: 2026-02-24
 
 Enables upsert by natural key for deriver engine idempotency.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

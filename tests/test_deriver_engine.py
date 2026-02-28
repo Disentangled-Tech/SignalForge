@@ -346,11 +346,7 @@ class TestRunDeriver:
         assert result["status"] == "completed"
         assert result["instances_upserted"] == 2
 
-        instances = (
-            db.query(SignalInstance)
-            .filter(SignalInstance.entity_id == company.id)
-            .all()
-        )
+        instances = db.query(SignalInstance).filter(SignalInstance.entity_id == company.id).all()
         assert len(instances) == 2
         for inst in instances:
             assert inst.pack_id == fractional_cto_pack_id, (

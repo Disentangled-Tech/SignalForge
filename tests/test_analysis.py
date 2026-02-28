@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,8 +12,8 @@ from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
 from app.models.signal_record import SignalRecord
 from app.services.analysis import (
-    ALLOWED_STAGES,
     _DEFAULT_STAGE,
+    ALLOWED_STAGES,
     _parse_json_safe,
     analyze_company,
 )
@@ -334,9 +334,9 @@ class TestAnalyzeCompanyEdgeCases:
         # First call returns invalid JSON, retry returns valid
         mock_llm.complete.side_effect = [
             "not valid json at all",  # stage first attempt
-            _VALID_STAGE_RESPONSE,    # stage retry
-            _VALID_PAIN_RESPONSE,     # pain first attempt (succeeds)
-            _EXPLANATION_TEXT,         # explanation
+            _VALID_STAGE_RESPONSE,  # stage retry
+            _VALID_PAIN_RESPONSE,  # pain first attempt (succeeds)
+            _EXPLANATION_TEXT,  # explanation
         ]
 
         db = _make_mock_db(
@@ -360,10 +360,10 @@ class TestAnalyzeCompanyEdgeCases:
 
         # Both stage attempts fail, pain succeeds
         mock_llm.complete.side_effect = [
-            "bad json 1",             # stage first attempt
-            "bad json 2",             # stage retry
-            _VALID_PAIN_RESPONSE,     # pain
-            _EXPLANATION_TEXT,         # explanation
+            "bad json 1",  # stage first attempt
+            "bad json 2",  # stage retry
+            _VALID_PAIN_RESPONSE,  # pain
+            _EXPLANATION_TEXT,  # explanation
         ]
 
         db = _make_mock_db(
@@ -386,10 +386,10 @@ class TestAnalyzeCompanyEdgeCases:
         mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
         mock_llm.complete.side_effect = [
-            _VALID_STAGE_RESPONSE,    # stage succeeds
-            "not json",               # pain first attempt
-            "still not json",         # pain retry
-            _EXPLANATION_TEXT,         # explanation
+            _VALID_STAGE_RESPONSE,  # stage succeeds
+            "not json",  # pain first attempt
+            "still not json",  # pain retry
+            _EXPLANATION_TEXT,  # explanation
         ]
 
         db = _make_mock_db(
@@ -522,13 +522,15 @@ class TestExplanationGeneratorIssue18:
         mock_get_llm.return_value = mock_llm
         mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
-        pain_no_risks = json.dumps({
-            "signals": {"hiring_engineers": {"value": True, "why": "3 roles"}},
-            "top_risks": [],
-            "most_likely_next_problem": "",
-            "uncertainties": [],
-            "recommended_conversation_angle": "",
-        })
+        pain_no_risks = json.dumps(
+            {
+                "signals": {"hiring_engineers": {"value": True, "why": "3 roles"}},
+                "top_risks": [],
+                "most_likely_next_problem": "",
+                "uncertainties": [],
+                "recommended_conversation_angle": "",
+            }
+        )
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             pain_no_risks,
@@ -576,9 +578,7 @@ class TestStageClassificationIssue16:
     @pytest.mark.parametrize("stage", sorted(ALLOWED_STAGES))
     @patch("app.services.analysis.get_llm_provider")
     @patch("app.services.analysis.resolve_prompt_content")
-    def test_each_allowed_stage_stored_in_analysis_record(
-        self, mock_render, mock_get_llm, stage
-    ):
+    def test_each_allowed_stage_stored_in_analysis_record(self, mock_render, mock_get_llm, stage):
         """LLM returning each allowed stage results in correct stage in AnalysisRecord."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -685,12 +685,14 @@ class TestStageClassificationIssue16:
 
 
 # Issue #17 canonical signals: hiring engineers, compliance, scaling issues, delivery problems
-ISSUE_17_SIGNAL_KEYS = frozenset({
-    "hiring_engineers",           # hiring engineers
-    "compliance_security_pressure",  # compliance
-    "architecture_scaling_risk",  # scaling issues
-    "product_delivery_issues",     # delivery problems
-})
+ISSUE_17_SIGNAL_KEYS = frozenset(
+    {
+        "hiring_engineers",  # hiring engineers
+        "compliance_security_pressure",  # compliance
+        "architecture_scaling_risk",  # scaling issues
+        "product_delivery_issues",  # delivery problems
+    }
+)
 
 
 class TestPainSignalDetectionIssue17:
@@ -698,26 +700,26 @@ class TestPainSignalDetectionIssue17:
 
     @patch("app.services.analysis.get_llm_provider")
     @patch("app.services.analysis.resolve_prompt_content")
-    def test_four_issue_17_signals_stored_in_pain_signals_json(
-        self, mock_render, mock_get_llm
-    ):
+    def test_four_issue_17_signals_stored_in_pain_signals_json(self, mock_render, mock_get_llm):
         """LLM returning four Issue #17 signals results in structured JSON in pain_signals_json."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
-        pain_response = json.dumps({
-            "signals": {
-                "hiring_engineers": {"value": True, "why": "3 open SWE roles"},
-                "compliance_security_pressure": {"value": True, "why": "SOC2 mentioned"},
-                "architecture_scaling_risk": {"value": True, "why": "Performance bottlenecks"},
-                "product_delivery_issues": {"value": False, "why": "No evidence"},
-            },
-            "top_risks": ["hiring", "compliance"],
-            "most_likely_next_problem": "Scaling the team",
-            "uncertainties": [],
-            "recommended_conversation_angle": "Compliance readiness",
-        })
+        pain_response = json.dumps(
+            {
+                "signals": {
+                    "hiring_engineers": {"value": True, "why": "3 open SWE roles"},
+                    "compliance_security_pressure": {"value": True, "why": "SOC2 mentioned"},
+                    "architecture_scaling_risk": {"value": True, "why": "Performance bottlenecks"},
+                    "product_delivery_issues": {"value": False, "why": "No evidence"},
+                },
+                "top_risks": ["hiring", "compliance"],
+                "most_likely_next_problem": "Scaling the team",
+                "uncertainties": [],
+                "recommended_conversation_angle": "Compliance readiness",
+            }
+        )
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             pain_response,
@@ -759,18 +761,20 @@ class TestPainSignalDetectionIssue17:
         mock_get_llm.return_value = mock_llm
         mock_render.side_effect = lambda name, pack, **kw: f"prompt:{name}"
 
-        pain_response = json.dumps({
-            "signals": {
-                "hiring_engineers": {"value": False, "why": ""},
-                "compliance_security_pressure": {"value": False, "why": ""},
-                "architecture_scaling_risk": {"value": True, "why": "Rewrites mentioned"},
-                "product_delivery_issues": {"value": True, "why": "Missed timelines"},
-            },
-            "top_risks": ["delivery", "scaling"],
-            "most_likely_next_problem": "Delivery problems",
-            "uncertainties": ["Team size unknown"],
-            "recommended_conversation_angle": "Delivery process",
-        })
+        pain_response = json.dumps(
+            {
+                "signals": {
+                    "hiring_engineers": {"value": False, "why": ""},
+                    "compliance_security_pressure": {"value": False, "why": ""},
+                    "architecture_scaling_risk": {"value": True, "why": "Rewrites mentioned"},
+                    "product_delivery_issues": {"value": True, "why": "Missed timelines"},
+                },
+                "top_risks": ["delivery", "scaling"],
+                "most_likely_next_problem": "Delivery problems",
+                "uncertainties": ["Team size unknown"],
+                "recommended_conversation_angle": "Delivery process",
+            }
+        )
         mock_llm.complete.side_effect = [
             _VALID_STAGE_RESPONSE,
             pain_response,
@@ -801,11 +805,14 @@ class TestPainSignalDetectionIssue17:
 class TestAllowedStages:
     def test_contains_all_six_stages(self):
         expected = {
-            "idea", "mvp_building", "early_customers",
-            "scaling_team", "enterprise_transition", "struggling_execution",
+            "idea",
+            "mvp_building",
+            "early_customers",
+            "scaling_team",
+            "enterprise_transition",
+            "struggling_execution",
         }
         assert ALLOWED_STAGES == expected
 
     def test_default_stage_is_in_allowed(self):
         assert _DEFAULT_STAGE in ALLOWED_STAGES
-

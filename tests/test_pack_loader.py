@@ -313,7 +313,10 @@ class TestPackV2OptionalTaxonomyDerivers:
 
         pack = load_pack("example_v2", "1")
         assert pack.scoring.get("base_scores", {}).get("momentum", {}).get("funding_raised") == 35
-        assert pack.scoring.get("base_scores", {}).get("leadership_gap", {}).get("cto_role_posted") == 70
+        assert (
+            pack.scoring.get("base_scores", {}).get("leadership_gap", {}).get("cto_role_posted")
+            == 70
+        )
 
     def test_fractional_cto_v1_is_v2_optional_taxonomy_derivers(self) -> None:
         """fractional_cto_v1 is Pack v2: schema_version '2', taxonomy/derivers optional."""

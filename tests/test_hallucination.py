@@ -6,8 +6,6 @@ import json
 import logging
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
@@ -26,8 +24,11 @@ PROFILE_CONTENT = "# Fractional CTO\n15 years experience in scaling engineering 
 
 def _make_company(**overrides):
     defaults = dict(
-        id=1, name="Acme Corp", website_url="https://acme.example.com",
-        founder_name="Jane Doe", notes="Early stage startup",
+        id=1,
+        name="Acme Corp",
+        website_url="https://acme.example.com",
+        founder_name="Jane Doe",
+        notes="Early stage startup",
     )
     defaults.update(overrides)
     c = MagicMock(spec=Company)
@@ -38,9 +39,17 @@ def _make_company(**overrides):
 
 def _make_analysis(**overrides):
     defaults = dict(
-        id=10, company_id=1, stage="scaling_team", stage_confidence=80,
-        pain_signals_json={"top_risks": ["hiring"], "most_likely_next_problem": "Scaling", "recommended_conversation_angle": "Hiring"},
-        evidence_bullets=["Hiring engineers"], explanation="Needs help",
+        id=10,
+        company_id=1,
+        stage="scaling_team",
+        stage_confidence=80,
+        pain_signals_json={
+            "top_risks": ["hiring"],
+            "most_likely_next_problem": "Scaling",
+            "recommended_conversation_angle": "Hiring",
+        },
+        evidence_bullets=["Hiring engineers"],
+        explanation="Needs help",
     )
     defaults.update(overrides)
     a = MagicMock(spec=AnalysisRecord)
@@ -113,11 +122,13 @@ class TestOutreachHallucinationGuardrail:
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
-        mock_llm.complete.return_value = json.dumps({
-            "subject": "Hello",
-            "message": "Hi Jane",
-            "operator_claims_used": ["15 years experience"],
-        })
+        mock_llm.complete.return_value = json.dumps(
+            {
+                "subject": "Hello",
+                "message": "Hi Jane",
+                "operator_claims_used": ["15 years experience"],
+            }
+        )
 
         db = _make_mock_db()
         result = generate_outreach(db, _make_company(), _make_analysis())
@@ -135,14 +146,20 @@ class TestOutreachHallucinationGuardrail:
         mock_render.return_value = "prompt"
 
         # First call returns hallucinated claim; retry returns valid claim
-        first_response = json.dumps({
-            "subject": "Hello", "message": "Hi Jane",
-            "operator_claims_used": ["built 50 startups"],
-        })
-        retry_response = json.dumps({
-            "subject": "Hello v2", "message": "Hi Jane v2",
-            "operator_claims_used": ["15 years experience"],
-        })
+        first_response = json.dumps(
+            {
+                "subject": "Hello",
+                "message": "Hi Jane",
+                "operator_claims_used": ["built 50 startups"],
+            }
+        )
+        retry_response = json.dumps(
+            {
+                "subject": "Hello v2",
+                "message": "Hi Jane v2",
+                "operator_claims_used": ["15 years experience"],
+            }
+        )
         mock_llm.complete.side_effect = [first_response, retry_response]
 
         db = _make_mock_db()
@@ -153,23 +170,29 @@ class TestOutreachHallucinationGuardrail:
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.resolve_prompt_content")
-    def test_retry_still_hallucinated_returns_safe_fallback(self, mock_render, mock_get_llm, caplog):
+    def test_retry_still_hallucinated_returns_safe_fallback(
+        self, mock_render, mock_get_llm, caplog
+    ):
         """When retry also has hallucinated claims, return safe fallback (no hallucinated content)."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
 
         # Both calls return hallucinated claims; first message contains fabricated text
-        bad_response = json.dumps({
-            "subject": "Hello",
-            "message": "Hi Jane, I've built 50 startups and can help you scale.",
-            "operator_claims_used": ["built 50 startups", "15 years experience"],
-        })
-        still_bad_response = json.dumps({
-            "subject": "Hello v2",
-            "message": "Hi Jane v2, invented AI expertise here.",
-            "operator_claims_used": ["invented AI"],
-        })
+        bad_response = json.dumps(
+            {
+                "subject": "Hello",
+                "message": "Hi Jane, I've built 50 startups and can help you scale.",
+                "operator_claims_used": ["built 50 startups", "15 years experience"],
+            }
+        )
+        still_bad_response = json.dumps(
+            {
+                "subject": "Hello v2",
+                "message": "Hi Jane v2, invented AI expertise here.",
+                "operator_claims_used": ["invented AI"],
+            }
+        )
         mock_llm.complete.side_effect = [bad_response, still_bad_response]
 
         db = _make_mock_db()
@@ -193,10 +216,13 @@ class TestOutreachHallucinationGuardrail:
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
-        mock_llm.complete.return_value = json.dumps({
-            "subject": "Hello", "message": "Hi Jane",
-            "operator_claims_used": [],
-        })
+        mock_llm.complete.return_value = json.dumps(
+            {
+                "subject": "Hello",
+                "message": "Hi Jane",
+                "operator_claims_used": [],
+            }
+        )
 
         db = _make_mock_db()
         result = generate_outreach(db, _make_company(), _make_analysis())
@@ -212,14 +238,20 @@ class TestOutreachHallucinationGuardrail:
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
 
-        first_response = json.dumps({
-            "subject": "Hello", "message": "Hi Jane",
-            "operator_claims_used": ["fake claim"],
-        })
-        retry_response = json.dumps({
-            "subject": "Hello v2", "message": "Hi Jane v2",
-            "operator_claims_used": [],
-        })
+        first_response = json.dumps(
+            {
+                "subject": "Hello",
+                "message": "Hi Jane",
+                "operator_claims_used": ["fake claim"],
+            }
+        )
+        retry_response = json.dumps(
+            {
+                "subject": "Hello v2",
+                "message": "Hi Jane v2",
+                "operator_claims_used": [],
+            }
+        )
         mock_llm.complete.side_effect = [first_response, retry_response]
 
         db = _make_mock_db()
@@ -234,7 +266,9 @@ class TestOutreachHallucinationGuardrail:
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.resolve_prompt_content")
-    def test_word_count_shorten_includes_actual_message_not_regenerate(self, mock_render, mock_get_llm):
+    def test_word_count_shorten_includes_actual_message_not_regenerate(
+        self, mock_render, mock_get_llm
+    ):
         """Word-count shorten prompt includes the message so LLM shortens it, not regenerates.
 
         Regeneration could reintroduce hallucinated claims from the earlier retry.
@@ -248,21 +282,27 @@ class TestOutreachHallucinationGuardrail:
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
         mock_llm.complete.side_effect = [
-            json.dumps({
-                "subject": "Hello",
-                "message": "Bad message with fake claim " + " ".join(["x"] * 150),
-                "operator_claims_used": ["built 50 startups"],
-            }),
-            json.dumps({
-                "subject": "Hello v2",
-                "message": corrected_long_message,
-                "operator_claims_used": ["15 years experience"],
-            }),
-            json.dumps({
-                "subject": "Hello v2",
-                "message": "Hi Jane, I noticed you are scaling. With 15 years experience.",
-                "operator_claims_used": ["15 years experience"],
-            }),
+            json.dumps(
+                {
+                    "subject": "Hello",
+                    "message": "Bad message with fake claim " + " ".join(["x"] * 150),
+                    "operator_claims_used": ["built 50 startups"],
+                }
+            ),
+            json.dumps(
+                {
+                    "subject": "Hello v2",
+                    "message": corrected_long_message,
+                    "operator_claims_used": ["15 years experience"],
+                }
+            ),
+            json.dumps(
+                {
+                    "subject": "Hello v2",
+                    "message": "Hi Jane, I noticed you are scaling. With 15 years experience.",
+                    "operator_claims_used": ["15 years experience"],
+                }
+            ),
         ]
 
         db = _make_mock_db()
@@ -289,11 +329,13 @@ class TestEmptyProfileHandling:
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
-        mock_llm.complete.return_value = json.dumps({
-            "subject": "Hello",
-            "message": "Hi Jane, I've 15 years experience.",
-            "operator_claims_used": ["15 years experience"],
-        })
+        mock_llm.complete.return_value = json.dumps(
+            {
+                "subject": "Hello",
+                "message": "Hi Jane, I've 15 years experience.",
+                "operator_claims_used": ["15 years experience"],
+            }
+        )
 
         db = _make_mock_db(profile_content="")  # Empty profile
         company = _make_company(name="Acme Corp", founder_name="Jane Doe")
@@ -312,11 +354,13 @@ class TestEmptyProfileHandling:
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
-        mock_llm.complete.return_value = json.dumps({
-            "subject": "Quick question",
-            "message": "Hi Jane, I noticed you're hiring. Would you be open to a chat?",
-            "operator_claims_used": [],
-        })
+        mock_llm.complete.return_value = json.dumps(
+            {
+                "subject": "Quick question",
+                "message": "Hi Jane, I noticed you're hiring. Would you be open to a chat?",
+                "operator_claims_used": [],
+            }
+        )
 
         db = _make_mock_db(profile_content="")
         company = _make_company(name="Acme Corp", founder_name="Jane Doe")
@@ -345,9 +389,12 @@ class TestMessageHasSuspiciousClaims:
         assert _message_has_suspicious_claims("I've noticed you're hiring") is False
 
     def test_allows_company_context_only(self):
-        assert _message_has_suspicious_claims(
-            "Hi Jane, I noticed your hiring. Would you be open to a chat?"
-        ) is False
+        assert (
+            _message_has_suspicious_claims(
+                "Hi Jane, I noticed your hiring. Would you be open to a chat?"
+            )
+            is False
+        )
 
 
 class TestSuspiciousClaimsInMessageGuardrail:
@@ -361,16 +408,20 @@ class TestSuspiciousClaimsInMessageGuardrail:
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
         mock_llm.complete.side_effect = [
-            json.dumps({
-                "subject": "Hello",
-                "message": "Hi Jane, I have 15 years of experience and can help.",
-                "operator_claims_used": [],
-            }),
-            json.dumps({
-                "subject": "Quick question",
-                "message": "Hi Jane, I noticed you're hiring. Would you be open to a chat?",
-                "operator_claims_used": [],
-            }),
+            json.dumps(
+                {
+                    "subject": "Hello",
+                    "message": "Hi Jane, I have 15 years of experience and can help.",
+                    "operator_claims_used": [],
+                }
+            ),
+            json.dumps(
+                {
+                    "subject": "Quick question",
+                    "message": "Hi Jane, I noticed you're hiring. Would you be open to a chat?",
+                    "operator_claims_used": [],
+                }
+            ),
         ]
 
         db = _make_mock_db()
@@ -391,16 +442,20 @@ class TestSuspiciousClaimsInMessageGuardrail:
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
         mock_llm.complete.side_effect = [
-            json.dumps({
-                "subject": "Hello",
-                "message": "Hi Jane, I have 15 years of experience.",
-                "operator_claims_used": [],
-            }),
-            json.dumps({
-                "subject": "Hello v2",
-                "message": "Hi Jane, I've helped 50 startups scale.",
-                "operator_claims_used": [],
-            }),
+            json.dumps(
+                {
+                    "subject": "Hello",
+                    "message": "Hi Jane, I have 15 years of experience.",
+                    "operator_claims_used": [],
+                }
+            ),
+            json.dumps(
+                {
+                    "subject": "Hello v2",
+                    "message": "Hi Jane, I've helped 50 startups scale.",
+                    "operator_claims_used": [],
+                }
+            ),
         ]
 
         db = _make_mock_db()
@@ -426,16 +481,20 @@ class TestSuspiciousClaimsInMessageGuardrail:
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
         mock_llm.complete.side_effect = [
-            json.dumps({
-                "subject": "Hello",
-                "message": "Hi Jane, I have 15 years of experience.",
-                "operator_claims_used": [],
-            }),
-            json.dumps({
-                "subject": "Quick question",
-                "message": "Hi Jane, I noticed your hiring. Would you chat?",
-                "operator_claims_used": ["built SaaS products"],
-            }),
+            json.dumps(
+                {
+                    "subject": "Hello",
+                    "message": "Hi Jane, I have 15 years of experience.",
+                    "operator_claims_used": [],
+                }
+            ),
+            json.dumps(
+                {
+                    "subject": "Quick question",
+                    "message": "Hi Jane, I noticed your hiring. Would you chat?",
+                    "operator_claims_used": ["built SaaS products"],
+                }
+            ),
         ]
 
         db = _make_mock_db(profile_content="I have built SaaS products for startups.")
@@ -456,16 +515,20 @@ class TestSuspiciousClaimsInMessageGuardrail:
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
         mock_llm.complete.side_effect = [
-            json.dumps({
-                "subject": "Hello",
-                "message": "Hi Jane, I have 15 years of experience.",
-                "operator_claims_used": [],
-            }),
-            json.dumps({
-                "subject": "Hello v2",
-                "message": "Hi Jane, I noticed your hiring. Would you chat?",
-                "operator_claims_used": ["built 50 startups"],
-            }),
+            json.dumps(
+                {
+                    "subject": "Hello",
+                    "message": "Hi Jane, I have 15 years of experience.",
+                    "operator_claims_used": [],
+                }
+            ),
+            json.dumps(
+                {
+                    "subject": "Hello v2",
+                    "message": "Hi Jane, I noticed your hiring. Would you chat?",
+                    "operator_claims_used": ["built 50 startups"],
+                }
+            ),
         ]
 
         db = _make_mock_db(profile_content="I help startups scale.")
@@ -476,4 +539,3 @@ class TestSuspiciousClaimsInMessageGuardrail:
         assert "15 years" not in result["message"]
         assert "50 startups" not in result["message"]
         assert "Acme Corp" in result["subject"] or "your company" in result["subject"]
-

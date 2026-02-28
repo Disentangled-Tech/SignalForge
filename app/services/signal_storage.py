@@ -13,9 +13,7 @@ from app.models.signal_record import SignalRecord
 
 logger = logging.getLogger(__name__)
 
-VALID_SOURCE_TYPES = frozenset(
-    {"homepage", "blog", "jobs", "careers", "news", "about", "manual"}
-)
+VALID_SOURCE_TYPES = frozenset({"homepage", "blog", "jobs", "careers", "news", "about", "manual"})
 
 
 def _compute_hash(content_text: str) -> str:
@@ -101,4 +99,3 @@ def store_signal(
     db.commit()
     db.refresh(record)
     return record
-

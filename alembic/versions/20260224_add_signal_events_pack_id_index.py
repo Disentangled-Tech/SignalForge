@@ -6,9 +6,8 @@ Create Date: 2026-02-24
 
 Enables efficient pack-scoped queries in deriver engine.
 """
-from collections.abc import Sequence
 
-import sqlalchemy as sa
+from collections.abc import Sequence
 
 from alembic import op
 

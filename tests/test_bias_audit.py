@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -40,9 +39,7 @@ def _create_company(
     return c
 
 
-def _create_engagement_snapshot(
-    db: Session, company_id: int, as_of: date
-) -> EngagementSnapshot:
+def _create_engagement_snapshot(db: Session, company_id: int, as_of: date) -> EngagementSnapshot:
     db.add(
         ReadinessSnapshot(
             company_id=company_id,
@@ -74,7 +71,7 @@ def _create_signal_event(
     event_time: datetime | None = None,
 ) -> SignalEvent:
     if event_time is None:
-        event_time = datetime.now(timezone.utc) - timedelta(days=1)
+        event_time = datetime.now(UTC) - timedelta(days=1)
     ev = SignalEvent(
         company_id=company_id,
         source="test",
@@ -115,7 +112,6 @@ class TestGetSurfacedCompanyIds:
         assert c1.id not in ids
 
 
-
 class TestComputeFundingConcentration:
     def test_empty_companies_returns_zero(self, db: Session) -> None:
         result = compute_funding_concentration(db, [], date(2026, 2, 28))
@@ -127,9 +123,7 @@ class TestComputeFundingConcentration:
         c2 = _create_company(db, "Co2")
         _create_signal_event(db, c1.id, "funding_raised")
 
-        result = compute_funding_concentration(
-            db, [c1.id, c2.id], date(2026, 2, 28)
-        )
+        result = compute_funding_concentration(db, [c1.id, c2.id], date(2026, 2, 28))
         assert result["with_funding"] == 1
         assert result["pct"] == 50.0
 
@@ -139,7 +133,7 @@ class TestComputeFundingConcentration:
             db,
             c1.id,
             "funding_raised",
-            datetime(2024, 1, 1, tzinfo=timezone.utc),
+            datetime(2024, 1, 1, tzinfo=UTC),
         )
 
         result = compute_funding_concentration(db, [c1.id], date(2026, 2, 28))
@@ -234,9 +228,7 @@ class TestRunBiasAudit:
 
 class TestInternalRunBiasAudit:
     @patch("app.services.bias_audit.run_bias_audit")
-    def test_valid_token_calls_run_bias_audit(
-        self, mock_audit, client: TestClient
-    ) -> None:
+    def test_valid_token_calls_run_bias_audit(self, mock_audit, client: TestClient) -> None:
         """POST /internal/run_bias_audit with valid token triggers audit."""
         mock_audit.return_value = {
             "status": "completed",

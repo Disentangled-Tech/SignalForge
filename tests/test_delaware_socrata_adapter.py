@@ -177,9 +177,7 @@ class TestDelawareSocrataAdapterMocked:
 
         assert events == []
 
-    def test_delaware_socrata_adapter_supports_restname_field(
-        self, mock_httpx: MagicMock
-    ) -> None:
+    def test_delaware_socrata_adapter_supports_restname_field(self, mock_httpx: MagicMock) -> None:
         """Datasets with restname (e.g. restaurant inspections) map company_name."""
         adapter = DelawareSocrataAdapter()
         mock_response = MagicMock()

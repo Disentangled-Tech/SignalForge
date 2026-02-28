@@ -38,12 +38,8 @@ _TEST_DOMAINS = ("testa.example.com", "testb.example.com", "testc.example.com")
 @pytest.fixture(autouse=True)
 def _cleanup_test_adapter_data(db: Session) -> None:
     """Remove test adapter data before each test (handles pre-existing data from prior runs)."""
-    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(
-        synchronize_session="fetch"
-    )
-    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(
-        synchronize_session="fetch"
-    )
+    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(synchronize_session="fetch")
+    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(synchronize_session="fetch")
     db.commit()
 
 
@@ -58,29 +54,21 @@ class TestRunIngestDaily:
 
         assert result["status"] == "completed"
         job = (
-            db.query(JobRun)
-            .filter(JobRun.job_type == "ingest")
-            .order_by(JobRun.id.desc())
-            .first()
+            db.query(JobRun).filter(JobRun.job_type == "ingest").order_by(JobRun.id.desc()).first()
         )
         assert job is not None
         assert job.status == "completed"
         assert job.finished_at is not None
         assert result["job_run_id"] == job.id
 
-    def test_run_ingest_daily_sets_pack_id_and_workspace_id_for_audit(
-        self, db: Session
-    ) -> None:
+    def test_run_ingest_daily_sets_pack_id_and_workspace_id_for_audit(self, db: Session) -> None:
         """When called without workspace_id/pack_id, JobRun gets defaults for audit."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
         run_ingest_daily(db)
 
         job = (
-            db.query(JobRun)
-            .filter(JobRun.job_type == "ingest")
-            .order_by(JobRun.id.desc())
-            .first()
+            db.query(JobRun).filter(JobRun.job_type == "ingest").order_by(JobRun.id.desc()).first()
         )
         assert job is not None
         assert job.workspace_id == UUID(DEFAULT_WORKSPACE_ID)
@@ -93,10 +81,7 @@ class TestRunIngestDaily:
         # First run
         run_ingest_daily(db)
         last_job = (
-            db.query(JobRun)
-            .filter(JobRun.job_type == "ingest")
-            .order_by(JobRun.id.desc())
-            .first()
+            db.query(JobRun).filter(JobRun.job_type == "ingest").order_by(JobRun.id.desc()).first()
         )
         last_finished = last_job.finished_at
 
@@ -107,6 +92,7 @@ class TestRunIngestDaily:
             nonlocal captured_since
             captured_since = since
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch(
@@ -119,16 +105,12 @@ class TestRunIngestDaily:
         # since should be close to last job's finished_at (within 1 second)
         assert abs((captured_since - last_finished).total_seconds()) < 1
 
-    def test_run_ingest_daily_fallback_since_when_no_previous(
-        self, db: Session
-    ) -> None:
+    def test_run_ingest_daily_fallback_since_when_no_previous(self, db: Session) -> None:
         """When no previous ingest, since = now - 24h (within tolerance)."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
         # Clear ingest JobRuns so we hit the fallback path (now - 24h)
-        db.query(JobRun).filter(JobRun.job_type == "ingest").delete(
-            synchronize_session="fetch"
-        )
+        db.query(JobRun).filter(JobRun.job_type == "ingest").delete(synchronize_session="fetch")
         db.commit()
 
         captured_since = None
@@ -137,6 +119,7 @@ class TestRunIngestDaily:
             nonlocal captured_since
             captured_since = since
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch(
@@ -166,9 +149,7 @@ class TestRunIngestDaily:
         assert len(events) == 3
         assert all(e.company_id is not None for e in events)
 
-    def test_run_ingest_daily_no_duplicates_on_second_run(
-        self, db: Session
-    ) -> None:
+    def test_run_ingest_daily_no_duplicates_on_second_run(self, db: Session) -> None:
         """Second run skips duplicates (inserted=0, skipped_duplicate>0)."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
@@ -179,9 +160,7 @@ class TestRunIngestDaily:
         assert second["inserted"] == 0
         assert second["skipped_duplicate"] == 3
 
-    def test_run_ingest_daily_adapter_error_logged_non_fatal(
-        self, db: Session
-    ) -> None:
+    def test_run_ingest_daily_adapter_error_logged_non_fatal(self, db: Session) -> None:
         """If one adapter raises, others still run; errors in result."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
@@ -196,9 +175,7 @@ class TestRunIngestDaily:
         assert result["errors_count"] > 0
         assert "Adapter fetch failed" in (result.get("error") or "")
 
-    def test_run_ingest_daily_sets_error_message_on_failure(
-        self, db: Session
-    ) -> None:
+    def test_run_ingest_daily_sets_error_message_on_failure(self, db: Session) -> None:
         """JobRun.error_message populated when errors occur."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
@@ -209,10 +186,7 @@ class TestRunIngestDaily:
             run_ingest_daily(db)
 
         job = (
-            db.query(JobRun)
-            .filter(JobRun.job_type == "ingest")
-            .order_by(JobRun.id.desc())
-            .first()
+            db.query(JobRun).filter(JobRun.job_type == "ingest").order_by(JobRun.id.desc()).first()
         )
         assert job is not None
         assert job.error_message is not None
@@ -578,6 +552,7 @@ class TestGetAdaptersCrunchbaseWiring:
         def capture_adapters(inner_db, adapter, since, pack_id=None):
             captured_adapters.append(adapter)
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch.dict(
@@ -628,6 +603,7 @@ class TestGetAdaptersCrunchbaseWiring:
         def capture_adapters(inner_db, adapter, since, pack_id=None):
             captured_adapters.append(adapter)
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch.dict(
@@ -649,9 +625,7 @@ class TestGetAdaptersCrunchbaseWiring:
         assert isinstance(captured_adapters[0], ProductHuntAdapter)
 
     @patch("app.ingestion.adapters.newsapi_adapter.httpx")
-    def test_run_ingest_daily_uses_newsapi_when_configured(
-        self, mock_httpx, db: Session
-    ) -> None:
+    def test_run_ingest_daily_uses_newsapi_when_configured(self, mock_httpx, db: Session) -> None:
         """With NewsAPI env set, run_ingest_daily invokes NewsAPIAdapter."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
@@ -673,6 +647,7 @@ class TestGetAdaptersCrunchbaseWiring:
         def capture_adapters(inner_db, adapter, since, pack_id=None):
             captured_adapters.append(adapter)
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch.dict(
@@ -719,6 +694,7 @@ class TestGetAdaptersCrunchbaseWiring:
         def capture_adapters(inner_db, adapter, since, pack_id=None):
             captured_adapters.append(adapter)
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch.dict(
@@ -740,9 +716,7 @@ class TestGetAdaptersCrunchbaseWiring:
         assert isinstance(captured_adapters[0], DelawareSocrataAdapter)
 
     @patch("app.ingestion.adapters.github_adapter.httpx")
-    def test_run_ingest_daily_uses_github_when_configured(
-        self, mock_httpx, db: Session
-    ) -> None:
+    def test_run_ingest_daily_uses_github_when_configured(self, mock_httpx, db: Session) -> None:
         """With GitHub env set, run_ingest_daily invokes GitHubAdapter."""
         from app.services.ingestion.ingest_daily import run_ingest_daily
 
@@ -760,6 +734,7 @@ class TestGetAdaptersCrunchbaseWiring:
         def capture_adapters(inner_db, adapter, since, pack_id=None):
             captured_adapters.append(adapter)
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch.dict(
@@ -781,9 +756,7 @@ class TestGetAdaptersCrunchbaseWiring:
         assert len(captured_adapters) == 1
         assert isinstance(captured_adapters[0], GitHubAdapter)
 
-    def test_run_ingest_daily_test_adapter_takes_precedence(
-        self, db: Session
-    ) -> None:
+    def test_run_ingest_daily_test_adapter_takes_precedence(self, db: Session) -> None:
         """When INGEST_USE_TEST_ADAPTER=1, only TestAdapter returned (Issue #134)."""
         from app.services.ingestion.ingest_daily import _get_adapters
 
@@ -815,7 +788,15 @@ class TestGetAdaptersCrunchbaseWiring:
         mock_response.status_code = 200
         mock_response.json.side_effect = [
             {"properties": {"entities": []}},
-            {"data": {"posts": {"edges": [], "nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}}},
+            {
+                "data": {
+                    "posts": {
+                        "edges": [],
+                        "nodes": [],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    }
+                }
+            },
         ]
         mock_client = MagicMock()
         mock_client.post.return_value = mock_response
@@ -829,6 +810,7 @@ class TestGetAdaptersCrunchbaseWiring:
         def capture_adapters(inner_db, adapter, since, pack_id=None):
             captured_adapters.append(adapter)
             from app.ingestion.ingest import run_ingest
+
             return run_ingest(inner_db, adapter, since, pack_id=pack_id)
 
         with patch.dict(

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, call, patch
+from datetime import UTC, date, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,10 +12,7 @@ from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
 from app.models.job_run import JobRun
-from app.models.signal_record import SignalRecord
 from app.services.briefing import (
-    _ACTIVITY_WINDOW_DAYS,
-    _DEDUP_WINDOW_DAYS,
     generate_briefing,
     select_top_companies,
 )
@@ -37,6 +34,7 @@ def _default_resolved() -> ResolvedSettings:
         smtp_from="",
     )
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -57,7 +55,7 @@ _VALID_OUTREACH_RESULT = {
 
 
 def _make_company(**overrides):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = dict(
         id=1,
         name="Acme Corp",
@@ -88,7 +86,7 @@ def _make_analysis(**overrides):
         },
         evidence_bullets=["Hiring 3 engineers"],
         explanation="Needs help",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     a = MagicMock(spec=AnalysisRecord)
@@ -108,9 +106,7 @@ class TestSelectTopCompanies:
         companies = [_make_company(id=1), _make_company(id=2)]
         db = MagicMock()
         # Chain: db.query().filter().filter().filter().order_by().limit().all()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
         chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
             companies
         )
@@ -119,35 +115,21 @@ class TestSelectTopCompanies:
         assert len(result) == 2
         # db.query is called multiple times (subqueries + main query).
         # Verify Company was queried by checking any call used Company.
-        assert any(
-            c.args[0] is Company
-            for c in db.query.call_args_list
-            if c.args
-        )
+        assert any(c.args[0] is Company for c in db.query.call_args_list if c.args)
 
     def test_respects_limit(self):
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
-        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
-            []
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
+        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
         select_top_companies(db, limit=3)
         # Verify .limit(3) was called
-        chain.filter.return_value.order_by.return_value.limit.assert_called_once_with(
-            3
-        )
+        chain.filter.return_value.order_by.return_value.limit.assert_called_once_with(3)
 
     def test_returns_empty_when_no_companies(self):
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
-        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
-            []
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
+        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
         result = select_top_companies(db)
         assert result == []
@@ -160,9 +142,7 @@ class TestSelectTopCompanies:
         """
         c_with = _make_company(id=1, name="With Analysis", cto_need_score=80)
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
         chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
             c_with
         ]
@@ -175,9 +155,7 @@ class TestSelectTopCompanies:
         """Returns up to limit; fewer when fewer qualify."""
         companies = [_make_company(id=i, cto_need_score=70 - i) for i in range(3)]
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
         chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
             companies
         )
@@ -198,12 +176,8 @@ class TestSelectTopCompanies:
         so companies with BriefingItem in last 7 days are excluded.
         """
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
-        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
-            []
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
+        chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
         result = select_top_companies(db, limit=5)
         assert result == []
@@ -215,13 +189,11 @@ class TestSelectTopCompanies:
         recent signal. Companies outside the window are excluded.
         """
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
         chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
             _make_company(
                 id=1,
-                last_scan_at=datetime.now(timezone.utc) - timedelta(days=5),
+                last_scan_at=datetime.now(UTC) - timedelta(days=5),
             )
         ]
 
@@ -236,9 +208,7 @@ class TestSelectTopCompanies:
             _make_company(id=3, cto_need_score=50),
         ]
         db = MagicMock()
-        chain = (
-            db.query.return_value.filter.return_value.filter.return_value
-        )
+        chain = db.query.return_value.filter.return_value.filter.return_value
         chain.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
             companies
         )
@@ -251,6 +221,7 @@ class TestSelectTopCompanies:
 # ---------------------------------------------------------------------------
 # generate_briefing
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateBriefing:
     @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
@@ -442,6 +413,7 @@ class TestGenerateBriefing:
             None,  # c1 existing
             RuntimeError("Analysis failed"),  # c1 analysis - but first() returns, doesn't raise
         ]
+
         # first() returns values; to raise we need side_effect to raise. So we need a callable.
         def first_raise(*args, **kwargs):
             raise RuntimeError("Analysis failed")
@@ -532,9 +504,7 @@ class TestGenerateBriefing:
         query_mock = db.query.return_value
         query_mock.filter.return_value = query_mock
         # First query (existing check) returns an existing item -> skip
-        query_mock.filter.return_value.filter.return_value.first.return_value = (
-            MagicMock()
-        )
+        query_mock.filter.return_value.filter.return_value.first.return_value = MagicMock()
 
         result = generate_briefing(db)
 
@@ -601,17 +571,22 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_generate_briefing_sets_workspace_id_and_pack_id_on_job_run(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved,
-        mock_get_default_pack_id, mock_get_pack_for_workspace, *_args
+        self,
+        mock_select,
+        mock_render,
+        mock_get_llm,
+        mock_outreach,
+        mock_resolved,
+        mock_get_default_pack_id,
+        mock_get_pack_for_workspace,
+        *_args,
     ):
         """Phase 3: JobRun gets workspace_id and pack_id for audit trail."""
         import uuid
 
         mock_resolved.return_value = _default_resolved()
         mock_get_pack_for_workspace.return_value = None
-        mock_get_default_pack_id.return_value = uuid.UUID(
-            "11111111-1111-1111-1111-111111111111"
-        )
+        mock_get_default_pack_id.return_value = uuid.UUID("11111111-1111-1111-1111-111111111111")
         company = _make_company()
         analysis = _make_analysis()
         mock_select.return_value = [company]
@@ -628,8 +603,10 @@ class TestGenerateBriefing:
         query_mock.first.side_effect = [None, analysis]
 
         added = []
+
         def capture_add(obj):
             added.append(obj)
+
         db.add.side_effect = capture_add
 
         generate_briefing(db)
@@ -683,7 +660,14 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_calls_send_briefing_email_when_enabled(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
+        self,
+        mock_select,
+        mock_render,
+        mock_get_llm,
+        mock_outreach,
+        mock_resolved,
+        mock_send,
+        *_args,
     ):
         """generate_briefing calls send_briefing_email when enabled (issue #29)."""
         mock_resolved.return_value = ResolvedSettings(
@@ -744,7 +728,14 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_email_includes_failure_summary_when_partial_failures(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
+        self,
+        mock_select,
+        mock_render,
+        mock_get_llm,
+        mock_outreach,
+        mock_resolved,
+        mock_send,
+        *_args,
     ):
         """When some companies fail, email includes failure_summary (issue #32)."""
         mock_resolved.return_value = ResolvedSettings(
@@ -819,7 +810,14 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_skips_email_when_disabled(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
+        self,
+        mock_select,
+        mock_render,
+        mock_get_llm,
+        mock_outreach,
+        mock_resolved,
+        mock_send,
+        *_args,
     ):
         """generate_briefing does not call send_briefing_email when disabled."""
         mock_resolved.return_value = _default_resolved()
@@ -853,7 +851,14 @@ class TestGenerateBriefing:
     @patch("app.services.briefing.resolve_prompt_content")
     @patch("app.services.briefing.select_top_companies")
     def test_email_exception_does_not_fail_job(
-        self, mock_select, mock_render, mock_get_llm, mock_outreach, mock_resolved, mock_send, *_args
+        self,
+        mock_select,
+        mock_render,
+        mock_get_llm,
+        mock_outreach,
+        mock_resolved,
+        mock_send,
+        *_args,
     ):
         """When send_briefing_email raises, job still completes (issue #29)."""
         mock_resolved.return_value = ResolvedSettings(
@@ -902,9 +907,7 @@ class TestGenerateBriefing:
 
     @patch("app.services.briefing.get_resolved_settings")
     @patch("app.services.briefing.select_top_companies")
-    def test_weekly_frequency_skips_when_wrong_day(
-        self, mock_select, mock_resolved
-    ):
+    def test_weekly_frequency_skips_when_wrong_day(self, mock_select, mock_resolved):
         """Weekly frequency skips generation when today is not configured day (issue #29)."""
         mock_resolved.return_value = ResolvedSettings(
             briefing_time="08:00",
@@ -929,4 +932,3 @@ class TestGenerateBriefing:
 
         assert result == []
         mock_select.assert_not_called()
-

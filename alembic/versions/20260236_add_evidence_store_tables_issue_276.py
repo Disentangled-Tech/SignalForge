@@ -7,6 +7,7 @@ Create Date: 2026-02-27
 Immutable evidence store: evidence_bundles, evidence_sources, evidence_bundle_sources,
 evidence_claims, evidence_quarantine. Additive only; no changes to existing tables.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

@@ -147,9 +147,7 @@ def get_briefing_data(
     if sort == _SORT_SCORE:
         base_query = base_query.order_by(Company.cto_need_score.desc().nulls_last())
     elif sort == _SORT_RECENT:
-        base_query = base_query.order_by(
-            Company.last_scan_at.desc().nulls_last()
-        )
+        base_query = base_query.order_by(Company.last_scan_at.desc().nulls_last())
     elif sort == _SORT_OUTREACH_SCORE:
         base_query = base_query.order_by(BriefingItem.id.asc())
     else:
@@ -179,7 +177,12 @@ def get_briefing_data(
         )
         pairs = (
             db.query(ReadinessSnapshot, EngagementSnapshot)
-            .join(EngagementSnapshot, (ReadinessSnapshot.company_id == EngagementSnapshot.company_id) & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of) & pack_match)
+            .join(
+                EngagementSnapshot,
+                (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
+                & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
+                & pack_match,
+            )
             .filter(
                 ReadinessSnapshot.company_id.in_(company_ids),
                 ReadinessSnapshot.as_of == briefing_date,
@@ -196,17 +199,13 @@ def get_briefing_data(
                 es.engagement_type, es.explain, es.esl_decision
             )
             esl_decision = es.esl_decision or (es.explain or {}).get("esl_decision")
-            sensitivity_level = es.sensitivity_level or (es.explain or {}).get(
-                "sensitivity_level"
-            )
+            sensitivity_level = es.sensitivity_level or (es.explain or {}).get("sensitivity_level")
             esl_by_company[rs.company_id] = {
                 "esl_score": es.esl_score,
                 "outreach_score": compute_outreach_score(rs.composite, es.esl_score),
                 "engagement_type": effective_type,
                 "cadence_blocked": es.cadence_blocked,
-                "stability_cap_triggered": (es.explain or {}).get(
-                    "stability_cap_triggered", False
-                ),
+                "stability_cap_triggered": (es.explain or {}).get("stability_cap_triggered", False),
                 "esl_decision": esl_decision,
                 "sensitivity_level": sensitivity_level,
             }
@@ -214,9 +213,7 @@ def get_briefing_data(
         items = [i for i in items if i.company_id not in suppressed_company_ids]
         if sort == _SORT_OUTREACH_SCORE:
             items.sort(
-                key=lambda i: esl_by_company.get(i.company_id, {}).get(
-                    "outreach_score", -1
-                ),
+                key=lambda i: esl_by_company.get(i.company_id, {}).get("outreach_score", -1),
                 reverse=True,
             )
 
@@ -241,20 +238,17 @@ def get_briefing_data(
     for readiness_snap, engagement_snap, company in emerging_triples:
         top_events = (readiness_snap.explain or {}).get("top_events") or []
         top_signals = [
-            event_type_to_label(ev.get("event_type", ""), pack=pack)
-            for ev in top_events[:3]
+            event_type_to_label(ev.get("event_type", ""), pack=pack) for ev in top_events[:3]
         ]
-        outreach_score = compute_outreach_score(
-            readiness_snap.composite, engagement_snap.esl_score
-        )
+        outreach_score = compute_outreach_score(readiness_snap.composite, engagement_snap.esl_score)
         effective_type = get_effective_engagement_type(
             engagement_snap.engagement_type,
             engagement_snap.explain,
             engagement_snap.esl_decision,
         )
-        esl_decision = engagement_snap.esl_decision or (
-            engagement_snap.explain or {}
-        ).get("esl_decision")
+        esl_decision = engagement_snap.esl_decision or (engagement_snap.explain or {}).get(
+            "esl_decision"
+        )
         sensitivity_level = engagement_snap.sensitivity_level or (
             engagement_snap.explain or {}
         ).get("sensitivity_level")
@@ -263,22 +257,24 @@ def get_briefing_data(
             band_val = readiness_snap.explain.get("recommendation_band")
             if band_val in ("IGNORE", "WATCH", "HIGH_PRIORITY"):
                 recommendation_band = band_val
-        emerging_companies.append({
-            "company": company,
-            "snapshot": readiness_snap,
-            "engagement_snapshot": engagement_snap,
-            "outreach_score": outreach_score,
-            "esl_score": engagement_snap.esl_score,
-            "engagement_type": effective_type,
-            "cadence_blocked": engagement_snap.cadence_blocked,
-            "stability_cap_triggered": (engagement_snap.explain or {}).get(
-                "stability_cap_triggered", False
-            ),
-            "esl_decision": esl_decision,
-            "sensitivity_level": sensitivity_level,
-            "top_signals": top_signals,
-            "recommendation_band": recommendation_band,
-        })
+        emerging_companies.append(
+            {
+                "company": company,
+                "snapshot": readiness_snap,
+                "engagement_snapshot": engagement_snap,
+                "outreach_score": outreach_score,
+                "esl_score": engagement_snap.esl_score,
+                "engagement_type": effective_type,
+                "cadence_blocked": engagement_snap.cadence_blocked,
+                "stability_cap_triggered": (engagement_snap.explain or {}).get(
+                    "stability_cap_triggered", False
+                ),
+                "esl_decision": esl_decision,
+                "sensitivity_level": sensitivity_level,
+                "top_signals": top_signals,
+                "recommendation_band": recommendation_band,
+            }
+        )
 
     return {
         "items": items,
@@ -315,7 +311,9 @@ def _render_briefing(
     next_date = (briefing_date + timedelta(days=1)).isoformat() if briefing_date < today else None
 
     # Base path for sort links (preserve date when viewing specific date)
-    briefing_path = "/briefing" if briefing_date == today else f"/briefing/{briefing_date.isoformat()}"
+    briefing_path = (
+        "/briefing" if briefing_date == today else f"/briefing/{briefing_date.isoformat()}"
+    )
 
     # Check for error flash from query params
     error = request.query_params.get("error")
@@ -327,12 +325,9 @@ def _render_briefing(
         .order_by(JobRun.started_at.desc())
         .first()
     )
-    job_has_failures = (
-        latest_briefing_job is not None
-        and (
-            latest_briefing_job.status == "failed"
-            or (latest_briefing_job.error_message or "").strip() != ""
-        )
+    job_has_failures = latest_briefing_job is not None and (
+        latest_briefing_job.status == "failed"
+        or (latest_briefing_job.error_message or "").strip() != ""
     )
 
     generate_action = "/briefing/generate"
@@ -360,4 +355,3 @@ def _render_briefing(
             "generate_action": generate_action,
         },
     )
-

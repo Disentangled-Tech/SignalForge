@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.schemas.company import CompanyRead
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
 def _make_company_read(**overrides) -> CompanyRead:
     """Create a CompanyRead for script output assertions."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = dict(
         id=1,
         company_name="Acme Corp",
@@ -54,9 +53,7 @@ class TestCreateCompanyScript:
         mock_session_local.return_value = mock_db
         mock_company = MagicMock()
         mock_resolve.return_value = (mock_company, True)
-        mock_model_to_read.return_value = _make_company_read(
-            id=42, company_name="Test Co"
-        )
+        mock_model_to_read.return_value = _make_company_read(id=42, company_name="Test Co")
 
         from app.scripts.create_company import main
 
@@ -75,9 +72,7 @@ class TestCreateCompanyScript:
 
     @patch("app.scripts.create_company.resolve_or_create_company")
     @patch("app.scripts.create_company.SessionLocal")
-    def test_exits_1_when_duplicate(
-        self, mock_session_local, mock_resolve, capsys
-    ) -> None:
+    def test_exits_1_when_duplicate(self, mock_session_local, mock_resolve, capsys) -> None:
         """Script exits 1 when company name already exists."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
@@ -131,9 +126,7 @@ class TestCreateCompanyScript:
         mock_session_local.return_value = mock_db
         mock_company = MagicMock()
         mock_resolve.return_value = (mock_company, True)
-        mock_model_to_read.return_value = _make_company_read(
-            id=1, company_name="Full Co"
-        )
+        mock_model_to_read.return_value = _make_company_read(id=1, company_name="Full Co")
 
         from app.scripts.create_company import main
 
@@ -141,10 +134,14 @@ class TestCreateCompanyScript:
         try:
             sys.argv = [
                 "create_company",
-                "--company-name", "Full Co",
-                "--website-url", "https://full.example.com",
-                "--founder-name", "Alice",
-                "--notes", "Test notes",
+                "--company-name",
+                "Full Co",
+                "--website-url",
+                "https://full.example.com",
+                "--founder-name",
+                "Alice",
+                "--notes",
+                "Test notes",
             ]
             main()
             mock_resolve.assert_called_once()

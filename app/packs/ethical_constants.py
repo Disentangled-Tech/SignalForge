@@ -12,27 +12,31 @@ from typing import Any
 # Keys that, if present and truthy in esl_policy, indicate pack attempts to
 # override core bans. ADR-006: protected attribute inference, bankruptcy/tax
 # lien exploitation, targeting vulnerability states, high-sensitivity distress.
-CORE_HARD_BAN_KEYS: frozenset[str] = frozenset({
-    "allow_protected_attribute_targeting",
-    "allow_protected_attribute_inference",
-    "allow_bankruptcy_exploitation",
-    "allow_tax_lien_exploitation",
-    "allow_vulnerability_targeting",
-    "allow_distress_surfacing",
-    "allow_high_sensitivity_distress",
-})
+CORE_HARD_BAN_KEYS: frozenset[str] = frozenset(
+    {
+        "allow_protected_attribute_targeting",
+        "allow_protected_attribute_inference",
+        "allow_bankruptcy_exploitation",
+        "allow_tax_lien_exploitation",
+        "allow_vulnerability_targeting",
+        "allow_distress_surfacing",
+        "allow_high_sensitivity_distress",
+    }
+)
 
 # Protected attribute categories that packs must never target (reference only).
-PROTECTED_ATTRIBUTE_CATEGORIES: frozenset[str] = frozenset({
-    "race",
-    "ethnicity",
-    "religion",
-    "gender",
-    "sexual_orientation",
-    "age",
-    "disability",
-    "national_origin",
-})
+PROTECTED_ATTRIBUTE_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "race",
+        "ethnicity",
+        "religion",
+        "gender",
+        "sexual_orientation",
+        "age",
+        "disability",
+        "national_origin",
+    }
+)
 
 
 def validate_esl_policy_against_core_bans(esl_policy: dict[str, Any]) -> None:

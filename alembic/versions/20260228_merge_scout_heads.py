@@ -6,6 +6,7 @@ Create Date: 2026-02-28
 
 No schema changes. Unifies migration graph so 'alembic upgrade head' succeeds.
 """
+
 from collections.abc import Sequence
 
 revision: str = "20260228_merge_heads"

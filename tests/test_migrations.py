@@ -167,9 +167,7 @@ def test_signal_instances_unique_migration_fails_with_duplicates(
     with engine.connect() as conn:
         # Get a valid pack_id and entity_id from existing data
         row = conn.execute(
-            text(
-                "SELECT id FROM signal_packs WHERE pack_id = 'fractional_cto_v1' LIMIT 1"
-            )
+            text("SELECT id FROM signal_packs WHERE pack_id = 'fractional_cto_v1' LIMIT 1")
         ).fetchone()
         if not row:
             _run_alembic_env("upgrade", "head")

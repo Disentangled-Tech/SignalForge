@@ -123,9 +123,9 @@ def get_resolved_settings(db: Session) -> ResolvedSettings:
     if db_freq:
         briefing_frequency = _parse_briefing_frequency(db_freq)
     else:
-        briefing_frequency = _parse_briefing_frequency(
-            getattr(env, "briefing_frequency", None)
-        ) or "daily"
+        briefing_frequency = (
+            _parse_briefing_frequency(getattr(env, "briefing_frequency", None)) or "daily"
+        )
 
     # briefing_day_of_week (0=Monday)
     db_day = app.get("briefing_day_of_week")
@@ -134,9 +134,7 @@ def get_resolved_settings(db: Session) -> ResolvedSettings:
     else:
         briefing_day_of_week = getattr(env, "briefing_day_of_week", 0)
         if not isinstance(briefing_day_of_week, int):
-            briefing_day_of_week = _parse_briefing_day_of_week(
-                str(briefing_day_of_week)
-            )
+            briefing_day_of_week = _parse_briefing_day_of_week(str(briefing_day_of_week))
 
     return ResolvedSettings(
         briefing_time=briefing_time,

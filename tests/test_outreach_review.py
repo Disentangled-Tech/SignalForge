@@ -279,13 +279,9 @@ class TestGetWeeklyReviewCompanies:
         assert len(result) == 1
         assert result[0]["company_id"] == c1.id
 
-    def test_applies_tone_constraint_for_allow_with_constraints(
-        self, db: Session
-    ) -> None:
+    def test_applies_tone_constraint_for_allow_with_constraints(self, db: Session) -> None:
         """effective_engagement_type is capped when allow_with_constraints (Issue #175)."""
-        company = Company(
-            name="Constraint Co", website_url="https://constraint.example.com"
-        )
+        company = Company(name="Constraint Co", website_url="https://constraint.example.com")
         db.add(company)
         db.commit()
         db.refresh(company)
@@ -342,13 +338,10 @@ class TestGetLatestSnapshotDate:
         assert latest >= _REVIEW_AS_OF
 
 
-
 class TestOutreachReviewAPI:
     """API endpoint tests."""
 
-    def test_review_returns_200_with_data(
-        self, db: Session, api_client: TestClient
-    ) -> None:
+    def test_review_returns_200_with_data(self, db: Session, api_client: TestClient) -> None:
         """GET /api/outreach/review returns 200 and expected structure."""
         company = Company(name="API Co", website_url="https://api.example.com")
         db.add(company)

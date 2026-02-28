@@ -95,17 +95,13 @@ def _resolve_workspace_id(request: Request) -> str | None:
     """
     if not get_settings().multi_workspace_enabled:
         return None
-    ws = request.query_params.get("workspace_id") or getattr(
-        request.state, "workspace_id", None
-    )
+    ws = request.query_params.get("workspace_id") or getattr(request.state, "workspace_id", None)
     if ws is not None:
         validate_uuid_param_or_422(ws, "workspace_id")
     return ws
 
 
-def _require_workspace_access(
-    db: Session, user: User, workspace_id: str | None
-) -> None:
+def _require_workspace_access(db: Session, user: User, workspace_id: str | None) -> None:
     """Raise 403 if user does not have access to workspace (Phase 3).
 
     Only enforced when multi_workspace_enabled and workspace_id is not None.
@@ -533,24 +529,24 @@ def company_detail(
         default_uuid = UUID(DEFAULT_WORKSPACE_ID)
         if ws_uuid == default_uuid:
             briefing_q = briefing_q.filter(
-                (BriefingItem.workspace_id == ws_uuid)
-                | (BriefingItem.workspace_id.is_(None))
+                (BriefingItem.workspace_id == ws_uuid) | (BriefingItem.workspace_id.is_(None))
             )
         else:
             briefing_q = briefing_q.filter(BriefingItem.workspace_id == ws_uuid)
     briefing = briefing_q.first()
 
     # Outreach history and draft for pre-fill (Phase 3: scope by workspace)
-    outreach_history = list_outreach_for_company(
-        db, company_id, workspace_id=workspace_id
-    )
-    draft_message = get_draft_for_company(
-        db, company_id, workspace_id=workspace_id
-    )
+    outreach_history = list_outreach_for_company(db, company_id, workspace_id=workspace_id)
+    draft_message = get_draft_for_company(db, company_id, workspace_id=workspace_id)
 
     # Repair: if analysis exists and stored score differs from recomputed, persist correct value.
     # Only run when using the default pack: cto_need_score caches default-pack score only.
-    if analysis is not None and pack_id is not None and default_pack_id is not None and pack_id == default_pack_id:
+    if (
+        analysis is not None
+        and pack_id is not None
+        and default_pack_id is not None
+        and pack_id == default_pack_id
+    ):
         from app.services.scoring import calculate_score, get_custom_weights, score_company
 
         custom_weights = get_custom_weights(db)
@@ -772,9 +768,7 @@ def company_outreach_delete(
         workspace_id = DEFAULT_WORKSPACE_ID
     _require_workspace_access(db, user, workspace_id)
 
-    deleted = delete_outreach_record(
-        db, company_id, outreach_id, workspace_id=workspace_id
-    )
+    deleted = delete_outreach_record(db, company_id, outreach_id, workspace_id=workspace_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Outreach record not found")
 
@@ -1017,9 +1011,7 @@ async def company_rescan(
         params = {"rescan": "running"}
         if workspace_id:
             params["workspace_id"] = workspace_id
-        return RedirectResponse(
-            url=_company_redirect_url(company_id, params), status_code=302
-        )
+        return RedirectResponse(url=_company_redirect_url(company_id, params), status_code=302)
 
     # Create JobRun and queue background task (pack_id, workspace_id for audit)
     job = JobRun(
@@ -1038,9 +1030,7 @@ async def company_rescan(
     params = {"rescan": "queued"}
     if workspace_id:
         params["workspace_id"] = workspace_id
-    return RedirectResponse(
-        url=_company_redirect_url(company_id, params), status_code=302
-    )
+    return RedirectResponse(url=_company_redirect_url(company_id, params), status_code=302)
 
 
 # ── Companies: delete ────────────────────────────────────────────────

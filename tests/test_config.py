@@ -4,7 +4,7 @@ Configuration tests.
 
 import pytest
 
-from app.config import get_settings, Settings
+from app.config import Settings, get_settings
 
 
 def test_get_settings_returns_settings() -> None:

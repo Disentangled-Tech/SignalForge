@@ -27,12 +27,8 @@ def get_scan_change_rate_30d(
     cutoff = datetime.now(UTC) - timedelta(days=30)
     rows = (
         db.query(
-            func.coalesce(func.sum(JobRun.companies_analysis_changed), 0).label(
-                "total_changed"
-            ),
-            func.coalesce(func.sum(JobRun.companies_processed), 0).label(
-                "total_processed"
-            ),
+            func.coalesce(func.sum(JobRun.companies_analysis_changed), 0).label("total_changed"),
+            func.coalesce(func.sum(JobRun.companies_processed), 0).label("total_processed"),
         )
         .filter(JobRun.job_type == "scan", JobRun.started_at >= cutoff)
         .first()

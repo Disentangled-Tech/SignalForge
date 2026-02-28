@@ -49,9 +49,7 @@ class TestRegexValidatorPatternLength:
 
         long_pattern = "a" * (MAX_PATTERN_LENGTH + 1)
         derivers = {
-            "derivers": {
-                "pattern": [{"pattern": long_pattern, "signal_id": "test_signal"}]
-            }
+            "derivers": {"pattern": [{"pattern": long_pattern, "signal_id": "test_signal"}]}
         }
         with pytest.raises(ValidationError, match="exceeds maximum|length|500"):
             validate_deriver_regex_safety(derivers)
@@ -64,11 +62,7 @@ class TestRegexValidatorPatternLength:
         )
 
         pattern = r"\bfunding\b" + "x" * (MAX_PATTERN_LENGTH - 12)  # 12 + 488 = 500
-        derivers = {
-            "derivers": {
-                "pattern": [{"pattern": pattern, "signal_id": "funding_raised"}]
-            }
-        }
+        derivers = {"derivers": {"pattern": [{"pattern": pattern, "signal_id": "funding_raised"}]}}
         validate_deriver_regex_safety(derivers)
 
 
@@ -87,9 +81,7 @@ class TestRegexValidatorDangerousPatterns:
             r"(\s+)+",
         ]
         for pat in dangerous:
-            derivers = {
-                "derivers": {"pattern": [{"pattern": pat, "signal_id": "x"}]}
-            }
+            derivers = {"derivers": {"pattern": [{"pattern": pat, "signal_id": "x"}]}}
             with pytest.raises(ValidationError, match="catastrophic|backtracking|unsafe"):
                 validate_deriver_regex_safety(derivers)
 
@@ -104,9 +96,7 @@ class TestRegexValidatorDangerousPatterns:
             r"[A-Z]{2,4}",  # ticker-like
         ]
         for pat in safe_patterns:
-            derivers = {
-                "derivers": {"pattern": [{"pattern": pat, "signal_id": "test"}]}
-            }
+            derivers = {"derivers": {"pattern": [{"pattern": pat, "signal_id": "test"}]}}
             validate_deriver_regex_safety(derivers)
 
 
@@ -118,9 +108,7 @@ class TestRegexValidatorStructure:
         from app.packs.regex_validator import validate_deriver_regex_safety
         from app.packs.schemas import ValidationError
 
-        derivers = {
-            "derivers": {"pattern": [{"regex": r"(.*)+", "signal_id": "x"}]}
-        }
+        derivers = {"derivers": {"pattern": [{"regex": r"(.*)+", "signal_id": "x"}]}}
         with pytest.raises(ValidationError):
             validate_deriver_regex_safety(derivers)
 
@@ -129,8 +117,6 @@ class TestRegexValidatorStructure:
         from app.packs.regex_validator import validate_deriver_regex_safety
         from app.packs.schemas import ValidationError
 
-        derivers = {
-            "derivers": {"pattern": [{"pattern": r"(unclosed", "signal_id": "x"}]}
-        }
+        derivers = {"derivers": {"pattern": [{"pattern": r"(unclosed", "signal_id": "x"}]}}
         with pytest.raises(ValidationError, match="invalid|syntax|regex"):
             validate_deriver_regex_safety(derivers)

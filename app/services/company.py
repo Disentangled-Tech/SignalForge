@@ -57,7 +57,9 @@ def _model_to_read(company: Company) -> CompanyRead:
         company_linkedin_url=company.company_linkedin_url,
         notes=company.notes,
         source=company.source,
-        target_profile_match=str(company.target_profile_match) if company.target_profile_match else None,
+        target_profile_match=str(company.target_profile_match)
+        if company.target_profile_match
+        else None,
         cto_need_score=company.cto_need_score,
         current_stage=company.current_stage,
         created_at=company.created_at,
@@ -67,6 +69,7 @@ def _model_to_read(company: Company) -> CompanyRead:
 
 
 # ── Sort helpers ─────────────────────────────────────────────────────
+
 
 def _order_clause(column, ascending: bool):
     """Return SQLAlchemy order clause for column (asc or desc)."""
@@ -124,10 +127,7 @@ def list_companies(
         if not page_ids:
             return [], total
         # Fetch companies in page order (preserve sort)
-        id_to_company = {
-            c.id: c
-            for c in db.query(Company).filter(Company.id.in_(page_ids)).all()
-        }
+        id_to_company = {c.id: c for c in db.query(Company).filter(Company.id.in_(page_ids)).all()}
         companies = [id_to_company[cid] for cid in page_ids if cid in id_to_company]
     else:
         column_map = {
@@ -161,9 +161,7 @@ def create_company(db: Session, data: CompanyCreate) -> CompanyRead:
     return _model_to_read(company)
 
 
-def update_company(
-    db: Session, company_id: int, data: CompanyUpdate
-) -> CompanyRead | None:
+def update_company(db: Session, company_id: int, data: CompanyUpdate) -> CompanyRead | None:
     """Update an existing company. Returns None if not found."""
     company = db.query(Company).filter(Company.id == company_id).first()
     if company is None:
@@ -188,13 +186,10 @@ def delete_company(db: Session, company_id: int) -> bool:
     return True
 
 
-
 # ── Bulk import ──────────────────────────────────────────────────────
 
 
-def bulk_import_companies(
-    db: Session, companies: list[CompanyCreate]
-) -> BulkImportResponse:
+def bulk_import_companies(db: Session, companies: list[CompanyCreate]) -> BulkImportResponse:
     """Import multiple companies, skipping duplicates.
 
     Returns a summary with per-row details.

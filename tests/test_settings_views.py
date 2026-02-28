@@ -66,9 +66,7 @@ def mock_user():
 
 
 class TestSettingsPage:
-    def test_settings_returns_200_with_recent_jobs(
-        self, mock_db, mock_user
-    ):
+    def test_settings_returns_200_with_recent_jobs(self, mock_db, mock_user):
         """GET /settings shows Recent Job Runs table when jobs exist (issue #27)."""
         job1 = _make_job_run(id=1, job_type="briefing", status="completed")
         job2 = _make_job_run(
@@ -103,9 +101,7 @@ class TestSettingsPage:
         assert "failed" in resp.text
         assert "Network timeout" in resp.text
 
-    def test_settings_shows_empty_state_when_no_jobs(
-        self, mock_db, mock_user
-    ):
+    def test_settings_shows_empty_state_when_no_jobs(self, mock_db, mock_user):
         """GET /settings shows empty state when no job runs exist."""
         settings_rows = [
             MagicMock(key="briefing_time", value="08:00"),
@@ -148,9 +144,7 @@ class TestSettingsPage:
         assert "Wednesday" in resp.text
         assert "Enable briefing email" in resp.text
 
-    def test_settings_shows_scan_change_rate_when_available(
-        self, mock_db, mock_user
-    ):
+    def test_settings_shows_scan_change_rate_when_available(self, mock_db, mock_user):
         """GET /settings shows Scan Change Rate card when metric available (issue #61)."""
         settings_rows = [
             MagicMock(key="briefing_time", value="08:00"),
@@ -160,9 +154,7 @@ class TestSettingsPage:
         base.all.return_value = settings_rows
         base.order_by.return_value.limit.return_value.all.return_value = []
 
-        with patch(
-            "app.api.settings_views.get_scan_change_rate_30d"
-        ) as mock_scan_metrics:
+        with patch("app.api.settings_views.get_scan_change_rate_30d") as mock_scan_metrics:
             mock_scan_metrics.return_value = (20.0, 10, 50)
 
             app = _create_test_app(mock_db, mock_user)
@@ -177,9 +169,7 @@ class TestSettingsPage:
         assert "50" in resp.text
         assert "tune cron frequency" in resp.text
 
-    def test_settings_shows_no_scan_data_when_empty(
-        self, mock_db, mock_user
-    ):
+    def test_settings_shows_no_scan_data_when_empty(self, mock_db, mock_user):
         """GET /settings shows improved empty-state with actionable guidance (issue #61, #162)."""
         settings_rows = [
             MagicMock(key="briefing_time", value="08:00"),
@@ -189,9 +179,7 @@ class TestSettingsPage:
         base.all.return_value = settings_rows
         base.order_by.return_value.limit.return_value.all.return_value = []
 
-        with patch(
-            "app.api.settings_views.get_scan_change_rate_30d"
-        ) as mock_scan_metrics:
+        with patch("app.api.settings_views.get_scan_change_rate_30d") as mock_scan_metrics:
             mock_scan_metrics.return_value = (None, 0, 0)
 
             app = _create_test_app(mock_db, mock_user)
@@ -221,9 +209,7 @@ class TestSettingsSave:
         base.order_by.return_value.limit.return_value.all.return_value = []
         base.filter.return_value.first.return_value = None
 
-        with patch(
-            "app.api.settings_views.update_app_settings"
-        ) as mock_update:
+        with patch("app.api.settings_views.update_app_settings") as mock_update:
             mock_update.return_value = {}
 
             app = _create_test_app(mock_db, mock_user)
@@ -256,9 +242,7 @@ class TestSettingsSave:
         base.all.return_value = settings_rows
         base.order_by.return_value.limit.return_value.all.return_value = []
 
-        with patch(
-            "app.api.settings_views.update_app_settings"
-        ) as mock_update:
+        with patch("app.api.settings_views.update_app_settings") as mock_update:
             app = _create_test_app(mock_db, mock_user)
             client = TestClient(app, follow_redirects=False)
 
@@ -315,9 +299,7 @@ class TestSettingsSave:
         base.order_by.return_value.limit.return_value.all.return_value = []
         base.filter.return_value.first.return_value = MagicMock(value="old@example.com")
 
-        with patch(
-            "app.api.settings_views.update_app_settings"
-        ) as mock_update:
+        with patch("app.api.settings_views.update_app_settings") as mock_update:
             mock_update.return_value = {}
 
             app = _create_test_app(mock_db, mock_user)
@@ -382,9 +364,7 @@ class TestSettingsRunIngest:
         assert resp.status_code == 303
         assert "success=Ingest+queued" in resp.headers.get("location", "")
 
-    def test_run_ingest_already_running_redirects_with_error(
-        self, mock_db, mock_user
-    ):
+    def test_run_ingest_already_running_redirects_with_error(self, mock_db, mock_user):
         """POST /settings/run-ingest when ingest running redirects with error."""
         base = mock_db.query.return_value
         base.filter.return_value.first.return_value = MagicMock()  # ingest running
@@ -413,9 +393,7 @@ class TestProfilePage:
 
     def test_profile_returns_200_with_content(self, mock_db, mock_user):
         """GET /settings/profile returns 200, shows textarea, pre-fills profile_content."""
-        with patch(
-            "app.api.settings_views.get_operator_profile"
-        ) as mock_get_profile:
+        with patch("app.api.settings_views.get_operator_profile") as mock_get_profile:
             mock_get_profile.return_value = "# My Profile\n15 years CTO experience"
 
             app = _create_test_app(mock_db, mock_user)
@@ -436,9 +414,7 @@ class TestProfileSave:
 
     def test_profile_save_updates_and_redirects(self, mock_db, mock_user):
         """POST with content calls update_operator_profile and redirects with success."""
-        with patch(
-            "app.api.settings_views.update_operator_profile"
-        ) as mock_update:
+        with patch("app.api.settings_views.update_operator_profile") as mock_update:
             app = _create_test_app(mock_db, mock_user)
             client = TestClient(app, follow_redirects=False)
 
@@ -453,9 +429,7 @@ class TestProfileSave:
 
     def test_profile_save_allows_empty(self, mock_db, mock_user):
         """POST with empty content is accepted (clears profile)."""
-        with patch(
-            "app.api.settings_views.update_operator_profile"
-        ) as mock_update:
+        with patch("app.api.settings_views.update_operator_profile") as mock_update:
             app = _create_test_app(mock_db, mock_user)
             client = TestClient(app, follow_redirects=False)
 
@@ -469,9 +443,7 @@ class TestProfileSave:
 
     def test_profile_save_rejects_content_too_long(self, mock_db, mock_user):
         """POST with content exceeding 50KB redirects with error."""
-        with patch(
-            "app.api.settings_views.update_operator_profile"
-        ) as mock_update:
+        with patch("app.api.settings_views.update_operator_profile") as mock_update:
             app = _create_test_app(mock_db, mock_user)
             client = TestClient(app, follow_redirects=False)
 
