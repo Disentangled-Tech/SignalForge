@@ -72,9 +72,11 @@ class TestEvaluateEslDecisionProhibitedCombinations:
 
     def test_prohibited_pair_suppresses(self) -> None:
         """Both signals in prohibited pair present → suppress."""
-        pack = _pack({
-            "prohibited_combinations": [["distress_mentioned", "bankruptcy_filed"]],
-        })
+        pack = _pack(
+            {
+                "prohibited_combinations": [["distress_mentioned", "bankruptcy_filed"]],
+            }
+        )
         result = evaluate_esl_decision(
             signal_ids={"distress_mentioned", "bankruptcy_filed"},
             pack=pack,
@@ -84,17 +86,21 @@ class TestEvaluateEslDecisionProhibitedCombinations:
 
     def test_prohibited_pair_order_agnostic(self) -> None:
         """Prohibited pair matches regardless of order in signal_ids."""
-        pack = _pack({
-            "prohibited_combinations": [["a", "b"]],
-        })
+        pack = _pack(
+            {
+                "prohibited_combinations": [["a", "b"]],
+            }
+        )
         result = evaluate_esl_decision(signal_ids={"b", "a"}, pack=pack)
         assert result.decision == "suppress"
 
     def test_only_one_of_pair_allows(self) -> None:
         """Only one signal of prohibited pair → allow."""
-        pack = _pack({
-            "prohibited_combinations": [["distress_mentioned", "bankruptcy_filed"]],
-        })
+        pack = _pack(
+            {
+                "prohibited_combinations": [["distress_mentioned", "bankruptcy_filed"]],
+            }
+        )
         result = evaluate_esl_decision(
             signal_ids={"distress_mentioned"},
             pack=pack,
@@ -107,16 +113,21 @@ class TestEvaluateEslDecisionDowngradeRules:
 
     def test_downgrade_rule_triggers_constraint(self) -> None:
         """Trigger signal present → allow_with_constraints, tone_constraint set."""
-        pack = _pack({
-            "recommendation_boundaries": [
-                [0.0, "Observe Only"],
-                [0.7, "Standard Outreach"],
-                [0.9, "Direct Strategic Outreach"],
-            ],
-            "downgrade_rules": [
-                {"trigger_signal": "high_sensitivity", "max_recommendation": "Soft Value Share"},
-            ],
-        })
+        pack = _pack(
+            {
+                "recommendation_boundaries": [
+                    [0.0, "Observe Only"],
+                    [0.7, "Standard Outreach"],
+                    [0.9, "Direct Strategic Outreach"],
+                ],
+                "downgrade_rules": [
+                    {
+                        "trigger_signal": "high_sensitivity",
+                        "max_recommendation": "Soft Value Share",
+                    },
+                ],
+            }
+        )
         result = evaluate_esl_decision(
             signal_ids={"funding_raised", "high_sensitivity"},
             pack=pack,
@@ -127,11 +138,16 @@ class TestEvaluateEslDecisionDowngradeRules:
 
     def test_no_trigger_signal_allows(self) -> None:
         """Trigger signal not present → allow."""
-        pack = _pack({
-            "downgrade_rules": [
-                {"trigger_signal": "high_sensitivity", "max_recommendation": "Soft Value Share"},
-            ],
-        })
+        pack = _pack(
+            {
+                "downgrade_rules": [
+                    {
+                        "trigger_signal": "high_sensitivity",
+                        "max_recommendation": "Soft Value Share",
+                    },
+                ],
+            }
+        )
         result = evaluate_esl_decision(
             signal_ids={"funding_raised"},
             pack=pack,
@@ -144,9 +160,11 @@ class TestEvaluateEslDecisionSensitivityMapping:
 
     def test_sensitivity_mapping_populated(self) -> None:
         """Signal in sensitivity_mapping → sensitivity_level set."""
-        pack = _pack({
-            "sensitivity_mapping": {"distress_mentioned": "high"},
-        })
+        pack = _pack(
+            {
+                "sensitivity_mapping": {"distress_mentioned": "high"},
+            }
+        )
         result = evaluate_esl_decision(
             signal_ids={"funding_raised", "distress_mentioned"},
             pack=pack,
@@ -166,10 +184,12 @@ class TestEvaluateEslDecisionFractionalCto:
 
     def test_fractional_cto_empty_policy_allows(self) -> None:
         """Empty blocked_signals and prohibited_combinations → allow."""
-        pack = _pack({
-            "blocked_signals": [],
-            "prohibited_combinations": [],
-        })
+        pack = _pack(
+            {
+                "blocked_signals": [],
+                "prohibited_combinations": [],
+            }
+        )
         result = evaluate_esl_decision(
             signal_ids={"funding_raised", "cto_role_posted", "job_posted_engineering"},
             pack=pack,
@@ -189,12 +209,14 @@ class TestEvaluateEslDecisionOrder:
 
     def test_blocked_takes_precedence_over_downgrade(self) -> None:
         """Blocked signal suppresses even if downgrade would apply."""
-        pack = _pack({
-            "blocked_signals": ["distress"],
-            "downgrade_rules": [
-                {"trigger_signal": "distress", "max_recommendation": "Soft Value Share"},
-            ],
-        })
+        pack = _pack(
+            {
+                "blocked_signals": ["distress"],
+                "downgrade_rules": [
+                    {"trigger_signal": "distress", "max_recommendation": "Soft Value Share"},
+                ],
+            }
+        )
         result = evaluate_esl_decision(signal_ids={"distress"}, pack=pack)
         assert result.decision == "suppress"
         assert result.reason_code == "blocked_signal"

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from app.models.job_run import JobRun
 from app.services.scan_metrics import get_scan_change_rate_30d
@@ -39,7 +37,7 @@ class TestGetScanChangeRate30d:
     def test_one_job_returns_correct_rate(self, db):
         """One scan job 10/50 → (20.0, 10, 50)."""
         self._clear_job_runs(db)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         job = _job("scan", now, companies_processed=50, companies_analysis_changed=10)
         db.add(job)
         db.commit()
@@ -52,13 +50,9 @@ class TestGetScanChangeRate30d:
     def test_multiple_jobs_aggregates(self, db):
         """Multiple scan jobs → correct aggregation."""
         self._clear_job_runs(db)
-        now = datetime.now(timezone.utc)
-        db.add(
-            _job("scan", now, companies_processed=20, companies_analysis_changed=5)
-        )
-        db.add(
-            _job("scan", now, companies_processed=30, companies_analysis_changed=10)
-        )
+        now = datetime.now(UTC)
+        db.add(_job("scan", now, companies_processed=20, companies_analysis_changed=5))
+        db.add(_job("scan", now, companies_processed=30, companies_analysis_changed=10))
         db.commit()
 
         pct, changed, processed = get_scan_change_rate_30d(db)
@@ -69,14 +63,10 @@ class TestGetScanChangeRate30d:
     def test_excludes_old_jobs(self, db):
         """Jobs older than 30 days are excluded."""
         self._clear_job_runs(db)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old = now - timedelta(days=35)
-        db.add(
-            _job("scan", old, companies_processed=100, companies_analysis_changed=50)
-        )
-        db.add(
-            _job("scan", now, companies_processed=10, companies_analysis_changed=2)
-        )
+        db.add(_job("scan", old, companies_processed=100, companies_analysis_changed=50))
+        db.add(_job("scan", now, companies_processed=10, companies_analysis_changed=2))
         db.commit()
 
         pct, changed, processed = get_scan_change_rate_30d(db)
@@ -87,10 +77,8 @@ class TestGetScanChangeRate30d:
     def test_excludes_non_scan_jobs(self, db):
         """Only job_type='scan' counts; briefing/company_scan excluded."""
         self._clear_job_runs(db)
-        now = datetime.now(timezone.utc)
-        db.add(
-            _job("scan", now, companies_processed=10, companies_analysis_changed=3)
-        )
+        now = datetime.now(UTC)
+        db.add(_job("scan", now, companies_processed=10, companies_analysis_changed=3))
         db.add(
             _job(
                 "briefing",
@@ -109,10 +97,8 @@ class TestGetScanChangeRate30d:
     def test_null_changed_treated_as_zero(self, db):
         """Legacy JobRuns with NULL companies_analysis_changed → 0."""
         self._clear_job_runs(db)
-        now = datetime.now(timezone.utc)
-        db.add(
-            _job("scan", now, companies_processed=10, companies_analysis_changed=None)
-        )
+        now = datetime.now(UTC)
+        db.add(_job("scan", now, companies_processed=10, companies_analysis_changed=None))
         db.commit()
 
         pct, changed, processed = get_scan_change_rate_30d(db)

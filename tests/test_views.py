@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timezone
-from urllib.parse import unquote
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
+from urllib.parse import unquote
 from uuid import UUID, uuid4
 
 import pytest
@@ -16,12 +16,11 @@ from app.models.company import Company
 from app.models.job_run import JobRun
 from app.models.outreach_history import OutreachHistory
 from app.models.readiness_snapshot import ReadinessSnapshot
-from app.models.signal_record import SignalRecord
 from app.models.signal_pack import SignalPack
+from app.models.signal_record import SignalRecord
+from app.models.user import User
 from app.services.outreach_history import OutreachCooldownBlockedError
 from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_INTEGRATION
-from app.models.user import User
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -37,7 +36,7 @@ def _make_mock_company(**overrides):
     """Return a MagicMock Company for use in templates."""
     from app.models.company import Company
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = dict(
         id=1,
         name="Acme Corp",
@@ -65,7 +64,7 @@ def _make_company_read(**overrides):
     """Return a CompanyRead schema instance for template rendering."""
     from app.schemas.company import CompanyRead
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = dict(
         id=1,
         company_name="Acme Corp",
@@ -130,8 +129,8 @@ def test_user():
 @pytest.fixture
 def views_client(mock_db_session, test_user):
     """TestClient with mocked DB and auth for view routes."""
-    from app.db.session import get_db
     from app.api.views import _require_ui_auth
+    from app.db.session import get_db
     from app.main import create_app
 
     app = create_app()
@@ -322,7 +321,7 @@ class TestCompaniesList:
         """Pagination controls shown when total exceeds page_size."""
         companies = [_make_company_read(id=i, company_name=f"Co{i}") for i in range(1, 26)]
         mock_list.return_value = (companies, 30)  # 30 total, 25 per page
-        mock_scores.return_value = ({i: 50 for i in range(1, 26)}, {})
+        mock_scores.return_value = (dict.fromkeys(range(1, 26), 50), {})
         resp = views_client.get("/companies")
         assert resp.status_code == 200
         assert "Next" in resp.text or "next" in resp.text.lower()
@@ -573,7 +572,10 @@ class TestCompanyDetail:
         assert "Acme Corp" in resp.text
         assert "75" in resp.text  # score
 
-    @patch("app.services.score_resolver.get_company_score_with_band", return_value=(80, "HIGH_PRIORITY"))
+    @patch(
+        "app.services.score_resolver.get_company_score_with_band",
+        return_value=(80, "HIGH_PRIORITY"),
+    )
     @patch("app.api.views.get_company")
     def test_detail_shows_band_when_pack_defines(
         self, mock_get, mock_get_score, views_client, mock_db_session
@@ -640,8 +642,7 @@ class TestCompanyDetail:
                 mock_o.first.return_value = _make_mock_company()
                 mock_f.first.return_value = _make_mock_company()
             elif model is SignalPack or (
-                hasattr(model, "parent")
-                and getattr(model.parent, "class_", None) is SignalPack
+                hasattr(model, "parent") and getattr(model.parent, "class_", None) is SignalPack
             ):
                 mock_o.first.return_value = (uuid4(),) if model is not SignalPack else None
             return mock_q
@@ -694,7 +695,7 @@ class TestCompanyDetail:
             source="referral",
             notes="Test notes",
             company_linkedin_url="https://linkedin.com/company/fulldata",
-            last_scan_at=datetime(2025, 2, 15, 10, 0, 0, tzinfo=timezone.utc),
+            last_scan_at=datetime(2025, 2, 15, 10, 0, 0, tzinfo=UTC),
         )
         mock_get.return_value = company
 
@@ -702,7 +703,7 @@ class TestCompanyDetail:
         mock_signal.source_type = "job_board"
         mock_signal.source_url = "https://example.com/jobs"
         mock_signal.content_text = "Hiring senior engineers"
-        mock_signal.created_at = datetime(2025, 2, 14, tzinfo=timezone.utc)
+        mock_signal.created_at = datetime(2025, 2, 14, tzinfo=UTC)
 
         mock_analysis = MagicMock()
         mock_analysis.stage = "scaling_team"
@@ -934,7 +935,7 @@ class TestCompanyDetail:
 
         mock_outreach = MagicMock()
         mock_outreach.id = 1
-        mock_outreach.sent_at = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+        mock_outreach.sent_at = datetime(2026, 2, 18, 14, 0, 0, tzinfo=UTC)
         mock_outreach.outreach_type = "email"
         mock_outreach.message = "Follow-up message sent"
         mock_outreach.notes = "Will follow up next week"
@@ -1178,7 +1179,9 @@ class TestWorkspaceIdFiltering:
         assert resp.status_code == 303
         assert "scan_all=running" in resp.headers.get("location", "")
 
-    def test_scan_all_not_blocked_when_other_workspace_job_running(self, views_client, mock_db_session):
+    def test_scan_all_not_blocked_when_other_workspace_job_running(
+        self, views_client, mock_db_session
+    ):
         """Running scan with different workspace_id does NOT block Scan all.
 
         When the only running job has workspace_id != default and != NULL, the filter

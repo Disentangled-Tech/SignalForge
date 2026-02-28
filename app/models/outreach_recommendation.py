@@ -40,6 +40,4 @@ class OutreachRecommendation(Base):
         nullable=False,
     )
 
-    company: Mapped[Company] = relationship(
-        "Company", back_populates="outreach_recommendations"
-    )
+    company: Mapped[Company] = relationship("Company", back_populates="outreach_recommendations")

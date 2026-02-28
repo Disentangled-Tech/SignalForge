@@ -184,9 +184,7 @@ def test_get_company_scores_batch_prefers_snapshot_over_cto_need(db: Session) ->
     assert result == {company.id: 82}
 
 
-def test_get_company_score_uses_workspace_pack(
-    db: Session, fractional_cto_pack_id
-) -> None:
+def test_get_company_score_uses_workspace_pack(db: Session, fractional_cto_pack_id) -> None:
     """Phase 3: get_company_score with workspace_id resolves pack from workspace."""
     from uuid import uuid4
 

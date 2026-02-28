@@ -60,9 +60,7 @@ class TestRunScan:
         assert response.status_code == 403
 
     @patch("app.services.scan_orchestrator.run_scan_all", new_callable=AsyncMock)
-    def test_run_scan_with_workspace_id_passes_to_run_scan_all(
-        self, mock_scan, client: TestClient
-    ):
+    def test_run_scan_with_workspace_id_passes_to_run_scan_all(self, mock_scan, client: TestClient):
         """POST /internal/run_scan with workspace_id forwards it (Phase 3)."""
         job = JobRun(job_type="scan", status="completed")
         job.id = 43
@@ -101,9 +99,7 @@ class TestRunScan:
 
 class TestRunBriefing:
     @patch("app.services.briefing.generate_briefing")
-    def test_valid_token_calls_generate_briefing(
-        self, mock_briefing, client: TestClient
-    ):
+    def test_valid_token_calls_generate_briefing(self, mock_briefing, client: TestClient):
         """POST /internal/run_briefing with valid token triggers briefing."""
         mock_briefing.return_value = [MagicMock(), MagicMock(), MagicMock()]
 
@@ -152,9 +148,7 @@ class TestRunBriefing:
         )
 
     @patch("app.services.briefing.generate_briefing")
-    def test_briefing_error_returns_failed(
-        self, mock_briefing, client: TestClient
-    ):
+    def test_briefing_error_returns_failed(self, mock_briefing, client: TestClient):
         """POST /internal/run_briefing returns failed status on exception."""
         mock_briefing.side_effect = RuntimeError("LLM down")
 
@@ -174,9 +168,7 @@ class TestRunBriefing:
 
 class TestRunScore:
     @patch("app.services.readiness.score_nightly.run_score_nightly")
-    def test_valid_token_calls_run_score_nightly(
-        self, mock_score, client: TestClient
-    ):
+    def test_valid_token_calls_run_score_nightly(self, mock_score, client: TestClient):
         """POST /internal/run_score with valid token triggers score job."""
         mock_score.return_value = {
             "status": "completed",
@@ -232,9 +224,7 @@ class TestRunScore:
         assert "DB error" in data["error"]
 
     @patch("app.pipeline.executor.run_stage")
-    def test_run_score_with_workspace_and_pack_params(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_run_score_with_workspace_and_pack_params(self, mock_run_stage, client: TestClient):
         """POST /internal/run_score passes workspace_id and pack_id to executor."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -259,9 +249,7 @@ class TestRunScore:
         assert call_kwargs["workspace_id"] == workspace_id
         assert str(call_kwargs["pack_id"]) == pack_id
 
-    def test_run_score_invalid_workspace_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_score_invalid_workspace_id_returns_422(self, client: TestClient):
         """POST /internal/run_score with invalid workspace_id returns 422."""
         response = client.post(
             "/internal/run_score",
@@ -293,9 +281,7 @@ class TestRunUpdateLeadFeed:
     """Tests for POST /internal/run_update_lead_feed."""
 
     @patch("app.pipeline.executor.run_stage")
-    def test_valid_token_calls_run_stage(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_valid_token_calls_run_stage(self, mock_run_stage, client: TestClient):
         """POST /internal/run_update_lead_feed with valid token triggers stage."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -317,16 +303,12 @@ class TestRunUpdateLeadFeed:
         mock_run_stage.assert_called_once()
         assert mock_run_stage.call_args[1]["job_type"] == "update_lead_feed"
 
-    def test_run_update_lead_feed_missing_token_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_update_lead_feed without token returns 422."""
         response = client.post("/internal/run_update_lead_feed")
         assert response.status_code == 422
 
-    def test_run_update_lead_feed_wrong_token_returns_403(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_wrong_token_returns_403(self, client: TestClient):
         """POST /internal/run_update_lead_feed with wrong token returns 403."""
         response = client.post(
             "/internal/run_update_lead_feed",
@@ -334,9 +316,7 @@ class TestRunUpdateLeadFeed:
         )
         assert response.status_code == 403
 
-    def test_run_update_lead_feed_invalid_workspace_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_invalid_workspace_id_returns_422(self, client: TestClient):
         """POST /internal/run_update_lead_feed with invalid workspace_id returns 422."""
         response = client.post(
             "/internal/run_update_lead_feed",
@@ -349,9 +329,7 @@ class TestRunUpdateLeadFeed:
         assert "workspace_id" in detail
         assert "uuid" in detail
 
-    def test_run_update_lead_feed_invalid_pack_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_invalid_pack_id_returns_422(self, client: TestClient):
         """POST /internal/run_update_lead_feed with invalid pack_id returns 422."""
         response = client.post(
             "/internal/run_update_lead_feed",
@@ -372,9 +350,7 @@ class TestRunBackfillLeadFeed:
     """Tests for POST /internal/run_backfill_lead_feed."""
 
     @patch("app.services.lead_feed.run_update.run_backfill_lead_feed")
-    def test_valid_token_calls_run_backfill(
-        self, mock_backfill, client: TestClient
-    ):
+    def test_valid_token_calls_run_backfill(self, mock_backfill, client: TestClient):
         """POST /internal/run_backfill_lead_feed with valid token triggers backfill."""
         mock_backfill.return_value = {
             "status": "completed",
@@ -395,16 +371,12 @@ class TestRunBackfillLeadFeed:
         assert data["total_rows_upserted"] == 15
         mock_backfill.assert_called_once()
 
-    def test_run_backfill_lead_feed_missing_token_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_backfill_lead_feed_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_backfill_lead_feed without token returns 422."""
         response = client.post("/internal/run_backfill_lead_feed")
         assert response.status_code == 422
 
-    def test_run_backfill_lead_feed_wrong_token_returns_403(
-        self, client: TestClient
-    ):
+    def test_run_backfill_lead_feed_wrong_token_returns_403(self, client: TestClient):
         """POST /internal/run_backfill_lead_feed with wrong token returns 403."""
         response = client.post(
             "/internal/run_backfill_lead_feed",
@@ -418,9 +390,7 @@ class TestRunBackfillLeadFeed:
 
 class TestRunAlertScan:
     @patch("app.services.readiness.alert_scan.run_alert_scan")
-    def test_valid_token_calls_run_alert_scan(
-        self, mock_alert_scan, client: TestClient
-    ):
+    def test_valid_token_calls_run_alert_scan(self, mock_alert_scan, client: TestClient):
         """POST /internal/run_alert_scan with valid token triggers alert scan."""
         mock_alert_scan.return_value = {
             "status": "completed",
@@ -454,9 +424,7 @@ class TestRunAlertScan:
         assert response.status_code == 403
 
     @patch("app.services.readiness.alert_scan.run_alert_scan")
-    def test_run_alert_scan_error_returns_failed(
-        self, mock_alert_scan, client: TestClient
-    ):
+    def test_run_alert_scan_error_returns_failed(self, mock_alert_scan, client: TestClient):
         """POST /internal/run_alert_scan returns failed status on exception."""
         mock_alert_scan.side_effect = RuntimeError("Alert scan error")
 
@@ -476,9 +444,7 @@ class TestRunAlertScan:
 
 class TestRunDerive:
     @patch("app.pipeline.executor.run_stage")
-    def test_run_derive_valid_token_returns_same_shape(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_run_derive_valid_token_returns_same_shape(self, mock_run_stage, client: TestClient):
         """POST /internal/run_derive with valid token returns expected keys."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -563,9 +529,7 @@ class TestRunDerive:
 
 class TestRunIngest:
     @patch("app.services.ingestion.ingest_daily.run_ingest_daily")
-    def test_valid_token_calls_run_ingest_daily(
-        self, mock_ingest, client: TestClient
-    ):
+    def test_valid_token_calls_run_ingest_daily(self, mock_ingest, client: TestClient):
         """POST /internal/run_ingest with valid token triggers ingest job."""
         mock_ingest.return_value = {
             "status": "completed",
@@ -627,9 +591,7 @@ class TestRunDailyAggregation:
     """Tests for POST /internal/run_daily_aggregation."""
 
     @patch("app.pipeline.executor.run_stage")
-    def test_run_daily_aggregation_returns_expected_shape(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_run_daily_aggregation_returns_expected_shape(self, mock_run_stage, client: TestClient):
         """POST /internal/run_daily_aggregation returns status, job_run_id, inserted, companies_scored, ranked_count."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -698,4 +660,3 @@ class TestRunDailyAggregation:
             headers={"X-Internal-Token": "wrong-token"},
         )
         assert response.status_code == 403
-

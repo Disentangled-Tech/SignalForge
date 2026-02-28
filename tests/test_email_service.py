@@ -5,8 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.services.email_service import (
     _build_html_email,
     _build_text_email,
@@ -190,4 +188,3 @@ def test_send_email_partial_failures_subject(mock_smtp_cls: MagicMock) -> None:
     sent_msg = mock_server.sendmail.call_args[0][2]
     # Subject is MIME-encoded; "Partial Failures" appears as Partial_Failures in q-encoding
     assert "Partial_Failures" in sent_msg or "Partial Failures" in sent_msg
-

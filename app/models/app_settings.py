@@ -14,4 +14,3 @@ class AppSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
-

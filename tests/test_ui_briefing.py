@@ -10,12 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from bs4 import BeautifulSoup
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_db, require_ui_auth
 from app.models import Company, EngagementSnapshot, ReadinessSnapshot, SignalPack, User
-
 from tests.test_constants import TEST_USERNAME_VIEWS
 
 
@@ -42,9 +40,7 @@ def briefing_ui_client(db):
 
 
 @pytest.mark.integration
-def test_briefing_renders_emerging_companies_section(
-    briefing_ui_client: TestClient, db
-) -> None:
+def test_briefing_renders_emerging_companies_section(briefing_ui_client: TestClient, db) -> None:
     """GET /briefing: emerging_companies section exists when data present."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
     pack_id = pack.id if pack else None

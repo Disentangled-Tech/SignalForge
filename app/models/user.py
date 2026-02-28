@@ -23,13 +23,10 @@ class User(Base):
 
     def set_password(self, password: str) -> None:
         """Hash and store password using bcrypt."""
-        self.password_hash = _bcrypt.hashpw(
-            password.encode("utf-8"), _bcrypt.gensalt()
-        ).decode("utf-8")
+        self.password_hash = _bcrypt.hashpw(password.encode("utf-8"), _bcrypt.gensalt()).decode(
+            "utf-8"
+        )
 
     def verify_password(self, password: str) -> bool:
         """Verify password against stored hash."""
-        return _bcrypt.checkpw(
-            password.encode("utf-8"), self.password_hash.encode("utf-8")
-        )
-
+        return _bcrypt.checkpw(password.encode("utf-8"), self.password_hash.encode("utf-8"))

@@ -8,6 +8,7 @@ Adds workspace_id (nullable, FK to workspaces) for tenant scoping. Adds
 indexes (workspace_id, started_at) and (workspace_id, status) for future
 API list/filter by workspace. Additive only.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

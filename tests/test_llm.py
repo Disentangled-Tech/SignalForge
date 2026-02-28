@@ -14,9 +14,7 @@ from openai import APITimeoutError, RateLimitError
 
 from app.config import Settings
 from app.llm.openai_provider import OpenAIProvider
-from app.llm.router import clear_provider_cache, get_llm_provider
-from app.llm.router import ModelRole
-
+from app.llm.router import ModelRole, clear_provider_cache, get_llm_provider
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -31,7 +29,9 @@ def _clear_cache():
     clear_provider_cache()
 
 
-def _make_mock_response(content: str = "Hello!", prompt_tokens: int = 10, completion_tokens: int = 5):
+def _make_mock_response(
+    content: str = "Hello!", prompt_tokens: int = 10, completion_tokens: int = 5
+):
     """Build a fake ChatCompletion response object."""
     message = SimpleNamespace(content=content)
     choice = SimpleNamespace(message=message)
@@ -131,8 +131,10 @@ class TestOpenAIProviderComplete:
         assert call_kwargs["response_format"] == {"type": "json_object"}
 
     def test_retry_on_rate_limit(self):
-        with patch("app.llm.openai_provider.OpenAI") as MockOpenAI, \
-             patch("app.llm.openai_provider.time") as mock_time:
+        with (
+            patch("app.llm.openai_provider.OpenAI") as MockOpenAI,
+            patch("app.llm.openai_provider.time") as mock_time,
+        ):
             mock_client = MagicMock()
             MockOpenAI.return_value = mock_client
             mock_time.monotonic.return_value = 0.0
@@ -220,8 +222,10 @@ class TestRouter:
 class TestProviderRetryOnTimeout:
     def test_provider_retries_on_timeout(self):
         """Provider retries on APITimeoutError and eventually succeeds."""
-        with patch("app.llm.openai_provider.OpenAI") as MockOpenAI, \
-             patch("app.llm.openai_provider.time") as mock_time:
+        with (
+            patch("app.llm.openai_provider.OpenAI") as MockOpenAI,
+            patch("app.llm.openai_provider.time") as mock_time,
+        ):
             mock_client = MagicMock()
             MockOpenAI.return_value = mock_client
             mock_time.monotonic.return_value = 0.0
@@ -265,4 +269,3 @@ class TestPromptLogging:
             with caplog.at_level("DEBUG"):
                 provider.complete(long_prompt)
         assert long_prompt in caplog.text
-

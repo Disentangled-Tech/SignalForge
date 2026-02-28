@@ -42,4 +42,3 @@ def extract_text(html: str) -> str:
         text = text[:MAX_TEXT_LENGTH]
 
     return text
-

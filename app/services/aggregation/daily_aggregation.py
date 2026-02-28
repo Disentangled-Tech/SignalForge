@@ -130,9 +130,7 @@ def run_daily_aggregation(
         )
         for rs, es, company in emerging:
             band = (
-                getattr(es, "esl_decision", None)
-                or getattr(es, "engagement_type", None)
-                or "N/A"
+                getattr(es, "esl_decision", None) or getattr(es, "engagement_type", None) or "N/A"
             )
             ranked_companies.append(
                 {

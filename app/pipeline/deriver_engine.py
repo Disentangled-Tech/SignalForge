@@ -51,6 +51,7 @@ def _build_passthrough_map(pack: Pack | None) -> dict[str, str]:
                 result[str(etype)] = str(sid)
     return result
 
+
 def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
     """Load core passthrough map and pattern derivers (Issue #285).
 

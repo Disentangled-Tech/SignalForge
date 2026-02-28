@@ -41,10 +41,11 @@ class TestValidateAllPacksCLI:
         """validate_all_packs returns 1 when a pack fails ValidationError (exclude list bypassed)."""
         from app.packs import validate_all_packs as validate_module
 
-        with patch.object(
-            validate_module, "EXCLUDE_PACK_IDS", frozenset()
-        ), patch.object(
-            validate_module, "_packs_root", return_value=Path(__file__).parent.parent / "packs"
+        with (
+            patch.object(validate_module, "EXCLUDE_PACK_IDS", frozenset()),
+            patch.object(
+                validate_module, "_packs_root", return_value=Path(__file__).parent.parent / "packs"
+            ),
         ):
             exit_code = validate_module.validate_all_packs()
         assert exit_code == 1
@@ -67,7 +68,7 @@ class TestValidateAllPacksCLI:
 
     def test_main_exits_with_validate_all_packs_return_code(self) -> None:
         """main() calls sys.exit with validate_all_packs return value."""
-        from app.packs.validate_all_packs import main, validate_all_packs
+        from app.packs.validate_all_packs import main
 
         with patch("app.packs.validate_all_packs.validate_all_packs", return_value=0):
             with pytest.raises(SystemExit) as exc_info:

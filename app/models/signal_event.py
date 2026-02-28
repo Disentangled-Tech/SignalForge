@@ -43,6 +43,4 @@ class SignalEvent(Base):
         nullable=True,
     )
 
-    company: Mapped[Company | None] = relationship(
-        "Company", back_populates="signal_events"
-    )
+    company: Mapped[Company | None] = relationship("Company", back_populates="signal_events")

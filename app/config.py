@@ -115,9 +115,7 @@ class Settings:
         self.llm_model_outreach = (
             os.getenv("LLM_MODEL_OUTREACH") or legacy_model or self.llm_model_outreach
         )
-        self.llm_model_scout = (
-            os.getenv("LLM_MODEL_SCOUT") or legacy_model or self.llm_model_scout
-        )
+        self.llm_model_scout = os.getenv("LLM_MODEL_SCOUT") or legacy_model or self.llm_model_scout
         self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
         self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))
 

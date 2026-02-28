@@ -5,14 +5,13 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import pytest
 
 from app.services.fetcher import USER_AGENT, fetch_page
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _mock_response(text: str = "<html>OK</html>", status_code: int = 200) -> httpx.Response:
     """Create a mock httpx.Response."""
@@ -139,4 +138,3 @@ class TestFetchPageRedirect:
             call_kwargs = MockClient.call_args[1]
             assert call_kwargs["follow_redirects"] is True
             assert call_kwargs["max_redirects"] == 3
-

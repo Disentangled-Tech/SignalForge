@@ -56,4 +56,3 @@ def logout(response: Response) -> dict:
 def me(current_user: User = Depends(require_auth)) -> UserRead:
     """Return the currently authenticated user's information."""
     return UserRead.model_validate(current_user)
-

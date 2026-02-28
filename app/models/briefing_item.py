@@ -44,4 +44,3 @@ class BriefingItem(Base):
     analysis: Mapped[AnalysisRecord] = relationship(
         "AnalysisRecord", back_populates="briefing_items"
     )
-

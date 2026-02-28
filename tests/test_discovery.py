@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.services.page_discovery import _normalize_url, discover_pages
-
 
 # ---------------------------------------------------------------------------
 # URL normalization
@@ -70,6 +67,7 @@ class TestDiscoverPages:
 
     async def test_respects_max_5_limit(self):
         """Even if all paths return content, we cap at 5 pages."""
+
         async def _mock_fetch(url: str) -> str | None:
             return _SUBPAGE_HTML
 
@@ -186,12 +184,11 @@ class TestValidPageCriteria:
         assert _is_valid_page("<html>ok</html>", "x" * 50) is False
 
     def test_rejects_exactly_min_length_text_with_empty_html(self):
-        from app.services.page_discovery import _is_valid_page, MIN_TEXT_LENGTH
+        from app.services.page_discovery import MIN_TEXT_LENGTH, _is_valid_page
 
         assert _is_valid_page("", "x" * MIN_TEXT_LENGTH) is False
 
     def test_accepts_long_text_with_non_empty_html(self):
-        from app.services.page_discovery import _is_valid_page, MIN_TEXT_LENGTH
+        from app.services.page_discovery import MIN_TEXT_LENGTH, _is_valid_page
 
         assert _is_valid_page("<html>ok</html>", "x" * (MIN_TEXT_LENGTH + 1)) is True
-

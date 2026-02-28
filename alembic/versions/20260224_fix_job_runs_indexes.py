@@ -8,6 +8,7 @@ Create Date: 2026-02-24
   multi-tenant isolation
 - Add ix_job_runs_workspace_job_started for rate limit query performance
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

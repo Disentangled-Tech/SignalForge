@@ -6,6 +6,7 @@ Create Date: 2026-02-24
 
 Optimizes briefing query: filter by (workspace_id, pack_id, as_of).
 """
+
 from collections.abc import Sequence
 
 from alembic import op

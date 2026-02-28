@@ -66,7 +66,9 @@ def test_store_duplicate_returns_none(db: Session) -> None:
         event_time=datetime(2026, 2, 18, 11, 0, 0, tzinfo=UTC),
     )
     assert result is None
-    assert db.query(SignalEvent).filter(SignalEvent.source == "producthunt").count() == initial_count
+    assert (
+        db.query(SignalEvent).filter(SignalEvent.source == "producthunt").count() == initial_count
+    )
 
 
 def test_duplicate_signal_event_insert(db: Session) -> None:

@@ -29,6 +29,7 @@ from app.services.readiness.scoring_constants import (
 
 # ── decay_momentum boundary tests ──────────────────────────────────────
 
+
 class TestDecayMomentum:
     """decay_momentum returns correct values at boundary days (v2-spec §4.2)."""
 
@@ -55,6 +56,7 @@ class TestDecayMomentum:
 
 
 # ── decay_pressure boundary tests ──────────────────────────────────────
+
 
 class TestDecayPressure:
     """decay_pressure returns correct values at boundary days (v2-spec §4.2)."""
@@ -83,6 +85,7 @@ class TestDecayPressure:
 
 # ── decay_complexity boundary tests ────────────────────────────────────
 
+
 class TestDecayComplexity:
     """decay_complexity returns correct values at boundary days (v2-spec §4.2)."""
 
@@ -109,6 +112,7 @@ class TestDecayComplexity:
 
 
 # ── Constants exist and are non-empty ───────────────────────────────────
+
 
 class TestConstantsExist:
     """All constants are defined and non-empty."""
@@ -173,18 +177,22 @@ class TestFromPackDecayAndSuppressors:
 
     def test_from_pack_decay_parses_momentum_breakpoints(self) -> None:
         """Pack decay.momentum parses to sorted (max_days, value) list."""
-        cfg = from_pack({
-            "decay": {
-                "momentum": {"0-30": 1.0, "31-60": 0.7, "61-90": 0.4, "91+": 0.0},
-            },
-        })
+        cfg = from_pack(
+            {
+                "decay": {
+                    "momentum": {"0-30": 1.0, "31-60": 0.7, "61-90": 0.4, "91+": 0.0},
+                },
+            }
+        )
         assert cfg["decay_momentum"] == [(30, 1.0), (60, 0.7), (90, 0.4), (9999, 0.0)]
 
     def test_from_pack_suppressors_override_defaults(self) -> None:
         """Pack suppressors override module defaults."""
-        cfg = from_pack({
-            "suppressors": {"cto_hired_60_days": 80, "cto_hired_180_days": 55},
-        })
+        cfg = from_pack(
+            {
+                "suppressors": {"cto_hired_60_days": 80, "cto_hired_180_days": 55},
+            }
+        )
         assert cfg["suppress_cto_hired_60_days"] == 80
         assert cfg["suppress_cto_hired_180_days"] == 55
 

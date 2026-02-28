@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ def test_cooldown_blocks_when_last_outreach_under_60_days(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     ten_days_ago = as_of - timedelta(days=10)
     create_outreach_record(
         db,
@@ -53,7 +53,7 @@ def test_cooldown_allows_when_last_outreach_exactly_60_days(db: Session) -> None
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     exactly_60_days_ago = as_of - timedelta(days=60)
     create_outreach_record(
         db,
@@ -82,7 +82,7 @@ def test_cooldown_allows_when_last_outreach_over_60_days(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     sixty_one_days_ago = as_of - timedelta(days=61)
     create_outreach_record(
         db,
@@ -111,7 +111,7 @@ def test_declined_blocks_when_declined_within_180_days(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     hundred_days_ago = as_of - timedelta(days=100)
     create_outreach_record(
         db,
@@ -143,7 +143,7 @@ def test_declined_allows_when_declined_exactly_180_days(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     exactly_180_days_ago = as_of - timedelta(days=180)
     create_outreach_record(
         db,
@@ -173,7 +173,7 @@ def test_declined_allows_when_declined_over_180_days(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     hundred_eighty_one_days_ago = as_of - timedelta(days=181)
     create_outreach_record(
         db,
@@ -203,7 +203,7 @@ def test_declined_allows_when_outcome_not_declined(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     fifty_days_ago = as_of - timedelta(days=50)
     create_outreach_record(
         db,
@@ -235,7 +235,7 @@ def test_first_outreach_always_allowed(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     record = create_outreach_record(
         db,
         company_id=company.id,
@@ -254,7 +254,7 @@ def test_cooldown_uses_sent_at_from_new_record(db: Session) -> None:
     db.commit()
     db.refresh(company)
 
-    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
+    as_of = datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC)
     sixty_one_days_ago = as_of - timedelta(days=61)
     create_outreach_record(
         db,
@@ -284,8 +284,6 @@ def test_check_outreach_cooldown_returns_allowed_when_no_history(db: Session) ->
     db.commit()
     db.refresh(company)
 
-    result = check_outreach_cooldown(
-        db, company.id, datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc)
-    )
+    result = check_outreach_cooldown(db, company.id, datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC))
     assert result.allowed is True
     assert result.reason is None

@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.models.analysis_record import AnalysisRecord
 from app.models.company import Company
 from app.models.operator_profile import OperatorProfile
@@ -175,9 +173,7 @@ class TestGenerateOutreachHappyPath:
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.resolve_prompt_content")
-    def test_generate_outreach_uses_pack_offer_type_when_provided(
-        self, mock_render, mock_get_llm
-    ):
+    def test_generate_outreach_uses_pack_offer_type_when_provided(self, mock_render, mock_get_llm):
         """Phase 3: When pack provided, offer_type comes from pack manifest."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -220,27 +216,32 @@ class TestGenerateOutreachEdgeCases:
     def test_word_count_over_140_triggers_retry(self, mock_render, mock_get_llm, caplog):
         """When message > 140 words, shorten retry includes the actual message."""
         long_message = " ".join(["word"] * 200)
-        short_response = json.dumps({
-            "subject": "Short",
-            "message": "Hi Jane. " + " ".join(["word"] * 70),
-            "operator_claims_used": [],
-            "company_specific_hooks": [],
-        })
+        short_response = json.dumps(
+            {
+                "subject": "Short",
+                "message": "Hi Jane. " + " ".join(["word"] * 70),
+                "operator_claims_used": [],
+                "company_specific_hooks": [],
+            }
+        )
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
         mock_render.return_value = "prompt"
         mock_llm.complete.side_effect = [
-            json.dumps({
-                "subject": "Subject",
-                "message": long_message,
-                "operator_claims_used": [],
-                "company_specific_hooks": [],
-            }),
+            json.dumps(
+                {
+                    "subject": "Subject",
+                    "message": long_message,
+                    "operator_claims_used": [],
+                    "company_specific_hooks": [],
+                }
+            ),
             short_response,
         ]
 
         db = _make_mock_db(operator_profile=_make_operator_profile())
         import logging
+
         with caplog.at_level(logging.WARNING):
             result = generate_outreach(db, _make_company(), _make_analysis())
 
@@ -334,9 +335,7 @@ class TestProfileOutreachIntegration:
 
     @patch("app.services.outreach.get_llm_provider")
     @patch("app.services.outreach.resolve_prompt_content")
-    def test_profile_from_db_flows_to_outreach_prompt(
-        self, mock_render, mock_get_llm, db
-    ):
+    def test_profile_from_db_flows_to_outreach_prompt(self, mock_render, mock_get_llm, db):
         """Seeded OperatorProfile content is passed as OPERATOR_PROFILE_MARKDOWN."""
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
@@ -349,15 +348,10 @@ class TestProfileOutreachIntegration:
         db.flush()
 
         try:
-            result = generate_outreach(
-                db, _make_company(), _make_analysis()
-            )
+            result = generate_outreach(db, _make_company(), _make_analysis())
             assert result["subject"] != ""
 
             call_kwargs = mock_render.call_args[1]
             assert call_kwargs["OPERATOR_PROFILE_MARKDOWN"] == seeded_content
         finally:
             db.rollback()
-
-
-

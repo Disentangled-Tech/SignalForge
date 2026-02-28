@@ -206,8 +206,7 @@ def test_get_ranked_companies_for_api_empty_db_returns_empty_list(db: Session) -
 def test_get_ranked_companies_for_api_respects_limit(db: Session) -> None:
     """Respects limit parameter."""
     companies = [
-        Company(name=f"Limit Co {i}", website_url=f"https://limit{i}.example.com")
-        for i in range(5)
+        Company(name=f"Limit Co {i}", website_url=f"https://limit{i}.example.com") for i in range(5)
     ]
     db.add_all(companies)
     db.commit()
@@ -295,14 +294,10 @@ def test_get_ranked_companies_for_api_respects_outreach_threshold(db: Session) -
     _add_engagement_snapshot(db, company.id, as_of, esl_score=0.5)
     db.commit()
 
-    result = get_ranked_companies_for_api(
-        db, as_of, limit=5, outreach_score_threshold=30
-    )
+    result = get_ranked_companies_for_api(db, as_of, limit=5, outreach_score_threshold=30)
     assert len(result) == 0
 
-    result_low = get_ranked_companies_for_api(
-        db, as_of, limit=5, outreach_score_threshold=20
-    )
+    result_low = get_ranked_companies_for_api(db, as_of, limit=5, outreach_score_threshold=20)
     assert len(result_low) == 1
 
 
@@ -335,7 +330,9 @@ def api_client_with_auth(db: Session) -> TestClient:
     app.dependency_overrides.pop(require_auth, None)
 
 
-def test_api_companies_top_returns_sorted_list(api_client_with_auth: TestClient, db: Session) -> None:
+def test_api_companies_top_returns_sorted_list(
+    api_client_with_auth: TestClient, db: Session
+) -> None:
     """GET /api/companies/top returns companies ordered by composite score descending."""
     companies = [
         Company(name=f"API Ranked {i}", website_url=f"https://apiranked{i}.example.com")
@@ -374,7 +371,9 @@ def test_api_companies_top_returns_sorted_list(api_client_with_auth: TestClient,
     assert data["companies"][2]["composite_score"] == 70
 
 
-def test_api_companies_top_includes_recommendation_band(api_client_with_auth: TestClient, db: Session) -> None:
+def test_api_companies_top_includes_recommendation_band(
+    api_client_with_auth: TestClient, db: Session
+) -> None:
     """GET /api/companies/top includes recommendation_band when available."""
     company = Company(name="API Band Co", website_url="https://apiband.example.com")
     db.add(company)
@@ -406,7 +405,9 @@ def test_api_companies_top_includes_recommendation_band(api_client_with_auth: Te
     assert data["companies"][0]["recommendation_band"] == "WATCH"
 
 
-def test_api_companies_top_includes_top_signals(api_client_with_auth: TestClient, db: Session) -> None:
+def test_api_companies_top_includes_top_signals(
+    api_client_with_auth: TestClient, db: Session
+) -> None:
     """GET /api/companies/top includes top_signals from pack taxonomy."""
     company = Company(name="API Signals Co", website_url="https://apisignals.example.com")
     db.add(company)

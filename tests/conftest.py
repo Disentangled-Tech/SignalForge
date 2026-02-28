@@ -164,6 +164,7 @@ def core_pack_id(db):
 def bookkeeping_pack_id(db):
     """UUID of bookkeeping_v1 pack (Issue #175, Phase 3). Deprecated: use esl_blocked_pack_id or second_pack_id (Issue #289 M1)."""
     from app.models import SignalPack
+
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "bookkeeping_v1").first()
     if pack is None:
         pytest.skip("bookkeeping_v1 pack not found (run migration 20260224_bookkeeping_pack)")

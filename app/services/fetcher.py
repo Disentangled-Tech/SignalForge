@@ -45,4 +45,3 @@ async def fetch_page(url: str) -> str | None:
             logger.error("HTTP error fetching %s: %s", url, exc)
             return None
     return None
-

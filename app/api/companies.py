@@ -83,9 +83,7 @@ def api_companies_top(
     if ws_id is not None:
         validate_uuid_param_or_422(ws_id, "workspace_id")
         _require_workspace_access(db, user, ws_id)
-    companies = get_ranked_companies_for_api(
-        db, as_of, limit=limit, workspace_id=ws_id
-    )
+    companies = get_ranked_companies_for_api(db, as_of, limit=limit, workspace_id=ws_id)
     return RankedCompaniesResponse(companies=companies, total=len(companies))
 
 
@@ -233,4 +231,3 @@ def api_delete_company(
     deleted = delete_company(db, company_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Company not found")
-

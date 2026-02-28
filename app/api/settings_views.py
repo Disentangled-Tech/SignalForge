@@ -52,17 +52,10 @@ def settings_page(
     flash_message = request.query_params.get("success")
     error = request.query_params.get("error")
 
-    recent_jobs = (
-        db.query(JobRun)
-        .order_by(JobRun.started_at.desc())
-        .limit(20)
-        .all()
-    )
+    recent_jobs = db.query(JobRun).order_by(JobRun.started_at.desc()).limit(20).all()
 
     ingest_running = (
-        db.query(JobRun)
-        .filter(JobRun.job_type == "ingest", JobRun.status == "running")
-        .first()
+        db.query(JobRun).filter(JobRun.job_type == "ingest", JobRun.status == "running").first()
         is not None
     )
 
@@ -205,9 +198,7 @@ def settings_run_ingest(
 ):
     """Queue ingestion job and redirect back to settings (Issue #90)."""
     ingest_running = (
-        db.query(JobRun)
-        .filter(JobRun.job_type == "ingest", JobRun.status == "running")
-        .first()
+        db.query(JobRun).filter(JobRun.job_type == "ingest", JobRun.status == "running").first()
     )
     if ingest_running is not None:
         return RedirectResponse(
@@ -258,7 +249,4 @@ def profile_save(
             status_code=303,
         )
     update_operator_profile(db, content)
-    return RedirectResponse(
-        url="/settings/profile?success=Profile+saved", status_code=303
-    )
-
+    return RedirectResponse(url="/settings/profile?success=Profile+saved", status_code=303)

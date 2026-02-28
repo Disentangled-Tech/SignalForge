@@ -4,6 +4,7 @@ Adds: index on evidence_sources.content_hash for lookups; expression index on
 evidence_bundles (run_context domain/name) for domain+name dedupe lookups;
 optional trigger to reject UPDATE/DELETE on evidence_bundles (immutability).
 """
+
 from collections.abc import Sequence
 
 from alembic import op

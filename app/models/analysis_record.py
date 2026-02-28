@@ -49,4 +49,3 @@ class AnalysisRecord(Base):
     briefing_items: Mapped[list[BriefingItem]] = relationship(
         "BriefingItem", back_populates="analysis", cascade="all, delete-orphan"
     )
-

@@ -65,9 +65,7 @@ def _derive_stage(
     """Derive stage: populates signal_instances from SignalEvents (Phase 2)."""
     from app.pipeline.deriver_engine import run_deriver
 
-    return StageResult(
-        run_deriver(db, workspace_id=workspace_id, pack_id=pack_id)
-    )
+    return StageResult(run_deriver(db, workspace_id=workspace_id, pack_id=pack_id))
 
 
 def _update_lead_feed_stage(
@@ -98,9 +96,7 @@ def _daily_aggregation_stage(
     """Daily aggregation stage: ingest → derive → score (Issue #246, Phase 1)."""
     from app.services.aggregation.daily_aggregation import run_daily_aggregation
 
-    return StageResult(
-        run_daily_aggregation(db, workspace_id=workspace_id, pack_id=pack_id)
-    )
+    return StageResult(run_daily_aggregation(db, workspace_id=workspace_id, pack_id=pack_id))
 
 
 # Registry: job_type -> callable (db, workspace_id, pack_id, **kwargs) -> dict

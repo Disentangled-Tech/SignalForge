@@ -259,9 +259,7 @@ class ProductHuntAdapter(SourceAdapter):
 
         with httpx.Client() as client:
             while True:
-                nodes, has_next, end_cursor = _fetch_page(
-                    client, token, posted_after, after_cursor
-                )
+                nodes, has_next, end_cursor = _fetch_page(client, token, posted_after, after_cursor)
 
                 for node in nodes:
                     raw = _post_node_to_raw_event(node)

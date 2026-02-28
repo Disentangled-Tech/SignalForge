@@ -76,9 +76,7 @@ def check_policy_gate(
             threshold,
             extra={"stability_modifier": stability_modifier, "threshold": threshold},
         )
-        safeguards.append(
-            f"Stability cap triggered (SM < {threshold}) → Soft Value Share only"
-        )
+        safeguards.append(f"Stability cap triggered (SM < {threshold}) → Soft Value Share only")
         return PolicyGateResult(
             recommendation_type="Soft Value Share",
             should_generate_draft=True,

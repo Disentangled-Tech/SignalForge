@@ -108,4 +108,3 @@ class TestExtractTextEmpty:
     def test_returns_empty_for_tags_only(self):
         html = "<script>alert('x')</script>"
         assert extract_text(html) == ""
-

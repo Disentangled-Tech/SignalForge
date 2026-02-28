@@ -82,10 +82,7 @@ def get_llm_provider(
             max_retries=settings.llm_max_retries,
         )
     else:
-        raise ValueError(
-            f"Unknown LLM provider: '{provider_name}'. "
-            f"Supported providers: openai"
-        )
+        raise ValueError(f"Unknown LLM provider: '{provider_name}'. Supported providers: openai")
 
     _provider_cache[cache_key] = provider
     logger.info("Created LLM provider: %s role=%s model=%s", provider_name, role.value, model)
@@ -95,4 +92,3 @@ def get_llm_provider(
 def clear_provider_cache() -> None:
     """Clear the provider cache. Useful for testing."""
     _provider_cache.clear()
-

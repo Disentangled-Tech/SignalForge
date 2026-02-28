@@ -182,9 +182,7 @@ class TestRunScanCompanyFull:
 
         await run_scan_company_full(db, 1, pack=mock_pack, pack_id=workspace_pack_uuid)
 
-        mock_analyze.assert_called_once_with(
-            db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
-        )
+        mock_analyze.assert_called_once_with(db, 1, pack=mock_pack, pack_id=workspace_pack_uuid)
 
     @pytest.mark.asyncio
     @patch("app.services.scan_orchestrator.score_company")
@@ -427,9 +425,7 @@ class TestRunScanAll:
         job = await run_scan_all(db, workspace_id=workspace_id)
 
         assert job.pack_id == workspace_pack_uuid
-        mock_scan_full.assert_awaited_once_with(
-            db, 1, pack=mock_pack, pack_id=workspace_pack_uuid
-        )
+        mock_scan_full.assert_awaited_once_with(db, 1, pack=mock_pack, pack_id=workspace_pack_uuid)
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -446,9 +442,11 @@ class TestRunScanAll:
         from app.services.pack_resolver import get_default_pack, resolve_pack
         from app.services.scan_orchestrator import run_scan_company_full
 
-        fractional_cto = db.query(SignalPack).filter(
-            SignalPack.pack_id == "fractional_cto_v1", SignalPack.version == "1"
-        ).first()
+        fractional_cto = (
+            db.query(SignalPack)
+            .filter(SignalPack.pack_id == "fractional_cto_v1", SignalPack.version == "1")
+            .first()
+        )
         if fractional_cto is None:
             pytest.skip("fractional_cto_v1 pack not found")
 
@@ -477,12 +475,14 @@ class TestRunScanAll:
 
         mock_llm = MagicMock()
         mock_get_llm.return_value = mock_llm
-        stage_resp = json.dumps({
-            "stage": "early_customers",
-            "confidence": 70,
-            "evidence_bullets": [],
-            "assumptions": [],
-        })
+        stage_resp = json.dumps(
+            {
+                "stage": "early_customers",
+                "confidence": 70,
+                "evidence_bullets": [],
+                "assumptions": [],
+            }
+        )
         pain_resp = json.dumps({"signals": {}})
         mock_llm.complete.side_effect = [stage_resp, pain_resp, "Explanation."]
 
