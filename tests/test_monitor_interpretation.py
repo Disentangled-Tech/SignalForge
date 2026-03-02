@@ -22,10 +22,12 @@ def _change_event(
         page_url=page_url,
         timestamp=datetime.now(UTC),
         diff_summary=diff_summary,
-        before_hash=None,
-        after_hash=None,
+        before_hash="prev_hash",
+        after_hash="curr_hash",
         snippet_before=None,
         snippet_after=None,
+        company_id=1,
+        source_type=None,
     )
 
 

@@ -1,4 +1,4 @@
-"""Schemas for the diff-based monitor (M3). ChangeEvent used by diff detector and interpretation."""
+"""Monitor schemas: ChangeEvent (M3, Issue #280). Used by diff detector, runner, and LLM interpretation (M5)."""
 
 from __future__ import annotations
 
@@ -8,18 +8,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChangeEvent(BaseModel):
-    """Structured change event from monitor diff detection (M3).
-
-    Emitted when page content changes; consumed by LLM interpretation (M5)
-    to produce Core Event candidates. Pack-agnostic.
-    """
+    """Structured change event for a monitored page (before/after diff). Consumed by LLM interpretation (M5)."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     page_url: str = Field(..., min_length=1, max_length=2048)
     timestamp: datetime = Field(...)
-    before_hash: str | None = Field(None, max_length=64)
-    after_hash: str | None = Field(None, max_length=64)
-    diff_summary: str = Field(..., min_length=1, max_length=10_000)
+    before_hash: str = Field(..., min_length=1, max_length=64)
+    after_hash: str = Field(..., min_length=1, max_length=64)
+    diff_summary: str = Field(..., max_length=2000)
     snippet_before: str | None = Field(None, max_length=2000)
     snippet_after: str | None = Field(None, max_length=2000)
+    company_id: int = Field(..., ge=1)
+    source_type: str | None = Field(None, max_length=32)
