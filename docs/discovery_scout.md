@@ -55,6 +55,13 @@ When enabled, the Scout run calls the **Evidence Extractor** per validated bundl
 - **Override:** The service `run()` (and `DiscoveryScoutService.run()`) accept an optional parameter `run_extractor: bool | None = None`. If provided (True/False), it overrides the config value for that run; if `None`, config is used. The internal `POST /internal/run_scout` endpoint does not pass `run_extractor`, so production behavior is entirely config-driven.
 - **Structured payload shape:** When the extractor runs, each bundle’s `structured_payload` in the Evidence Store has the ExtractionResult shape: `company` (normalized company), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). See `app/extractor/schemas.py` and [evidence-store.md](evidence-store.md).
 
+## Verification (optional) M3, Issue #278
+
+When enabled, the Scout runs the **Verification Gate** after building validated bundles (and optional structured payloads) and **before** calling the Evidence Store. Bundles that fail verification are quarantined (with structured `reason_codes` in the quarantine payload) and are **not** stored in `evidence_bundles`; only passing bundles are passed to `store_evidence_bundle`. When disabled (default), all validated bundles are stored as before.
+
+- **Config:** `SCOUT_VERIFICATION_GATE_ENABLED` in environment: set to `1`, `true`, or `yes` to enable; default is off (`0`).
+- **Quarantine:** Failed bundles are written to `evidence_quarantine` with `payload.reason_codes` (list of strings) and `reason` set to a human-readable summary. See [evidence-store.md](evidence-store.md).
+
 ## Key Code Locations
 
 | Area | Location |
@@ -62,7 +69,7 @@ When enabled, the Scout run calls the **Evidence Extractor** per validated bundl
 | Schemas | `app/schemas/scout.py` — `EvidenceBundle`, `EvidenceItem`, `ScoutRunInput`, `RunScoutRequest`, `ScoutRunResult`, `ScoutRunMetadata`, `evidence_bundle_json_schema()` |
 | Source filter | `app/scout/sources.py` — `is_source_allowed()`, `filter_allowed_sources()` |
 | Query planner | `app/scout/query_planner.py` — `QueryPlanner`, `plan_queries()` |
-| Config | `app/config.py` — `scout_source_allowlist`, `scout_source_denylist`, `scout_run_extractor` |
+| Config | `app/config.py` — `scout_source_allowlist`, `scout_source_denylist`, `scout_run_extractor`, `scout_verification_gate_enabled` |
 
 DiscoveryScoutService, persistence models, and the internal API are added in earlier milestones (M2–M5). This doc describes the full design; see the implementation plan for step-by-step milestones.
 
