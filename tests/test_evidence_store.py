@@ -332,13 +332,23 @@ def test_store_evidence_bundle_per_bundle_failure_quarantines(db: Session) -> No
 
 
 def test_quarantine_verification_failure_stores_reason_codes(db: Session) -> None:
-    """quarantine_verification_failure writes payload with reason_codes (M3)."""
-    payload = {"run_id": "run-v", "bundle_index": 0, "bundle": {}}
+    """quarantine_verification_failure writes payload with reason_codes (M6)."""
+    run_id = "run-v"
+    bundle_dict = {"candidate_company_name": "V Co", "company_website": "https://v.example.com"}
     reason_codes = ["EVENT_TYPE_UNKNOWN", "EVENT_MISSING_REQUIRED_FIELDS"]
-    quarantine_verification_failure(db, payload=payload, reason="; ".join(reason_codes), reason_codes=reason_codes)
+    quarantine_verification_failure(
+        db,
+        run_id=run_id,
+        bundle_index=0,
+        bundle_dict=bundle_dict,
+        structured_payload=None,
+        reason_codes=reason_codes,
+    )
     rows = db.query(EvidenceQuarantine).all()
     assert len(rows) == 1
     assert rows[0].payload.get("reason_codes") == reason_codes
+    assert rows[0].payload.get("run_id") == run_id
+    assert rows[0].payload.get("bundle") == bundle_dict
     assert rows[0].reason == "EVENT_TYPE_UNKNOWN; EVENT_MISSING_REQUIRED_FIELDS"
 
 

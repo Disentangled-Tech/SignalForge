@@ -21,6 +21,13 @@ class StoreEvidenceRequest(BaseModel):
     metadata: ScoutRunMetadata
     run_context: dict[str, Any] | None = Field(None)
     raw_model_output: dict[str, Any] | None = Field(None)
+    # M6 (Issue #278): when True, run verification gate; failures quarantined, only passing stored
+    run_verification: bool = Field(False, description="Run verification gate before store")
+    # Optional structured payloads per bundle (for verification when run_verification=True)
+    structured_payloads: list[dict[str, Any] | None] | None = Field(
+        None,
+        description="One entry per bundle; required length match when run_verification=True",
+    )
 
 
 class EvidenceBundleRecord(BaseModel):

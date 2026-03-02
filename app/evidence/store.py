@@ -63,16 +63,25 @@ def _quarantine(db: Session, payload: dict, reason: str) -> None:
 
 def quarantine_verification_failure(
     db: Session,
-    payload: dict,
-    reason: str,
+    run_id: str,
+    bundle_index: int,
+    bundle_dict: dict,
+    structured_payload: dict | None,
     reason_codes: list[str],
 ) -> None:
-    """Quarantine a bundle that failed the Verification Gate; stores reason_codes in payload (M3).
+    """Quarantine a single bundle that failed verification (M6). Caller must commit as needed.
 
-    Caller must flush/commit as needed. Use when verify_bundles returns passed=False.
+    Stores reason_codes in payload for review API. Used by internal store endpoint and Scout.
     """
-    payload_with_codes = {**payload, "reason_codes": reason_codes}
-    _quarantine(db, payload_with_codes, reason)
+    payload: dict = {
+        "run_id": run_id,
+        "bundle_index": bundle_index,
+        "bundle": bundle_dict,
+        "structured_payload": structured_payload,
+        "reason_codes": reason_codes,
+    }
+    reason = "; ".join(reason_codes)
+    _quarantine(db, payload, reason)
 
 
 def store_evidence_bundle(
