@@ -64,6 +64,32 @@ class ExtractionEntityPerson(BaseModel):
     role: str | None = Field(None, max_length=128)
 
 
+# ── Payload key compatibility (M2: events vs core_event_candidates) ──────────
+#
+# TODO(M2 follow-up): (1) Decide contract when both keys exist and events==[]: currently
+# we use core_event_candidates (events is falsy). If product requires "always prefer
+# events key when present", use: raw = payload.get("events") if "events" in payload
+# else payload.get("core_event_candidates"). (2) Add integration test: store bundle
+# with ExtractionResult-shaped structured_payload and run verification (and seeder).
+# (3) Docstring: state that when both exist and events is [], we return
+# core_event_candidates (prefer = "events if truthy else core_event_candidates").
+
+
+def get_events_from_payload(payload: dict | None) -> list[dict]:
+    """Return list of event dicts from structured_payload.
+
+    Accepts both ExtractionResult shape (core_event_candidates) and
+    StructuredExtractionPayload shape (events). Prefers 'events' when both present.
+    Returns only list items that are dicts; empty list if missing or not a list.
+    """
+    if not payload:
+        return []
+    raw = payload.get("events") or payload.get("core_event_candidates")
+    if not isinstance(raw, list):
+        return []
+    return [e for e in raw if isinstance(e, dict)]
+
+
 # ── M3: Structured payload contract ─────────────────────────────────────────
 
 # Reasonable upper bound for claim value (DB is Text; limit for validation and consistency)
