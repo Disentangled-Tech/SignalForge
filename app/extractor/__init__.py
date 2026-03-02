@@ -2,6 +2,8 @@
 
 This package produces normalized entities (Company, Person) and Core Event candidates
 only—no signal derivation. Distinct from app.services.extractor (HTML text extraction).
+Aligned with the SignalForge Architecture Contract (§4 LLM Boundary Rules).
+See docs/discovery_scout.md and docs/evidence-store.md.
 """
 
 from __future__ import annotations

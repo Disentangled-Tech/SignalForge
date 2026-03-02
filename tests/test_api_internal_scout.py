@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
+from tests.test_constants import TEST_WORKSPACE_ID
 from tests.test_internal import VALID_TOKEN
 
 
@@ -37,7 +38,7 @@ def test_run_scout_missing_token_returns_422(client: TestClient) -> None:
     """POST /internal/run_scout without X-Internal-Token returns 422."""
     response = client.post(
         "/internal/run_scout",
-        json={"icp_definition": "Seed-stage B2B"},
+        json={"icp_definition": "Seed-stage B2B", "workspace_id": str(TEST_WORKSPACE_ID)},
     )
     assert response.status_code == 422
 
@@ -47,7 +48,7 @@ def test_run_scout_wrong_token_returns_403(client: TestClient) -> None:
     response = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": "wrong-token"},
-        json={"icp_definition": "Seed-stage B2B"},
+        json={"icp_definition": "Seed-stage B2B", "workspace_id": str(TEST_WORKSPACE_ID)},
     )
     assert response.status_code == 403
 
@@ -59,6 +60,13 @@ def test_run_scout_valid_token_returns_run_id_and_bundles_count(
     db,
 ) -> None:
     """POST /internal/run_scout with valid token returns run_id, bundles_count, status."""
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Test WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
     mock_llm = MagicMock()
     mock_llm.complete.return_value = _valid_llm_response()
     mock_llm.model = "gpt-4o"
@@ -72,6 +80,7 @@ def test_run_scout_valid_token_returns_run_id_and_bundles_count(
             "exclusion_rules": None,
             "pack_id": None,
             "page_fetch_limit": 10,
+            "workspace_id": str(ws.id),
         },
     )
 
@@ -106,10 +115,17 @@ def test_run_scout_creates_scout_runs_row_no_companies_or_events(
     companies_before = db.query(Company).count()
     events_before = db.query(SignalEvent).count()
 
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Test WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
     response = client_with_db.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "Fintech startup", "page_fetch_limit": 5},
+        json={"icp_definition": "Fintech startup", "page_fetch_limit": 5, "workspace_id": str(ws.id)},
     )
 
     assert response.status_code == 200
@@ -139,10 +155,17 @@ def test_run_scout_also_persists_to_evidence_store(
     mock_llm.model = "gpt-4o"
     mock_get_llm.return_value = mock_llm
 
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Test WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
     response = client_with_db.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 5},
+        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 5, "workspace_id": str(ws.id)},
     )
     assert response.status_code == 200
     data = response.json()
@@ -168,20 +191,28 @@ def test_run_scout_missing_body_returns_422(client: TestClient) -> None:
 
 
 def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
-    """POST /internal/run_scout returns 422 for invalid body (missing/empty icp, page_fetch_limit out of range)."""
+    """POST /internal/run_scout returns 422 for invalid body (missing icp/workspace_id, empty icp, page_fetch_limit out of range)."""
     # Missing icp_definition
     r1 = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"page_fetch_limit": 10},
+        json={"page_fetch_limit": 10, "workspace_id": str(TEST_WORKSPACE_ID)},
     )
     assert r1.status_code == 422
+
+    # Missing workspace_id
+    r1b = client.post(
+        "/internal/run_scout",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 10},
+    )
+    assert r1b.status_code == 422
 
     # Empty icp_definition
     r2 = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "", "page_fetch_limit": 10},
+        json={"icp_definition": "", "page_fetch_limit": 10, "workspace_id": str(TEST_WORKSPACE_ID)},
     )
     assert r2.status_code == 422
 
@@ -189,7 +220,7 @@ def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
     r3 = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 101},
+        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 101, "workspace_id": str(TEST_WORKSPACE_ID)},
     )
     assert r3.status_code == 422
 
@@ -197,6 +228,6 @@ def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
     r4 = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "B2B SaaS", "page_fetch_limit": -1},
+        json={"icp_definition": "B2B SaaS", "page_fetch_limit": -1, "workspace_id": str(TEST_WORKSPACE_ID)},
     )
     assert r4.status_code == 422

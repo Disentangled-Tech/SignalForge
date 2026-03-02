@@ -76,9 +76,9 @@ class RunScoutRequest(BaseModel):
     exclusion_rules: str | None = Field(None, max_length=2000)
     pack_id: str | None = Field(None, max_length=64)
     page_fetch_limit: int = Field(10, ge=0, le=100)
-    workspace_id: uuid.UUID | None = Field(
-        None,
-        description="Workspace to scope this run; stored on scout_runs for tenant boundary.",
+    workspace_id: uuid.UUID = Field(
+        ...,
+        description="Workspace to scope this run; stored on scout_runs for tenant boundary. Required for tenant scoping.",
     )
 
 

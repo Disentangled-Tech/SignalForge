@@ -2,6 +2,7 @@
 
 from app.evidence.repository import (
     get_bundle,
+    get_bundle_for_workspace,
     list_bundles_by_run,
     list_bundles_by_run_for_workspace,
     list_claims_for_bundle,
@@ -11,6 +12,7 @@ from app.evidence.store import store_evidence_bundle
 
 __all__ = [
     "get_bundle",
+    "get_bundle_for_workspace",
     "list_bundles_by_run",
     "list_bundles_by_run_for_workspace",
     "list_claims_for_bundle",

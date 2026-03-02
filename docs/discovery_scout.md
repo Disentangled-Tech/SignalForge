@@ -26,6 +26,7 @@ The **Discovery Scout** is an LLM-powered flow that produces **Evidence Bundles 
 | **ICP definition** | Text description of ideal customer profile; used by the Query Planner to phrase search queries. |
 | **Exclusion rules** | Optional text; can inform allowlist/denylist or downstream filtering. |
 | **Allowlist / denylist** | Config (e.g. `SCOUT_SOURCE_ALLOWLIST`, `SCOUT_SOURCE_DENYLIST` in env or `app/config.py`). Denylist blocks domains/URLs; empty allowlist = all allowed (subject to denylist). |
+| **workspace_id** | **Required** (API). Scopes the run to a tenant; stored on `scout_runs` for list/filter. |
 | **pack_id** | Optional. Used only for **query emphasis hints** (e.g. pack-specific keywords), not for derivation or storage. |
 | **page_fetch_limit** | Optional cap on number of pages fetched per run. |
 
@@ -48,7 +49,7 @@ No `signal_id`, `event_type`, or pack-specific fields. JSON schema is available 
 
 ## Optional Extractor (M4, Issue #277)
 
-When enabled, the Scout run calls the **Evidence Extractor** per validated bundle before persisting to the Evidence Store. The Extractor produces normalized entities (Company, Person) and Core Event candidates only—no signal derivation. Its output is written into each bundle’s `structured_payload` in the Evidence Store.
+When enabled, the Scout run calls the **Evidence Extractor** per validated bundle before persisting to the Evidence Store. The Extractor produces normalized entities (Company, Person) and Core Event candidates only—no signal derivation. All extracted fields and events are source-backed (mapped to source_refs / source_ids). Its output is written into each bundle’s `structured_payload` in the Evidence Store.
 
 - **Config:** `SCOUT_RUN_EXTRACTOR` in environment: set to `1`, `true`, or `yes` to enable; default is off (`0`). When off, `store_evidence_bundle` receives `structured_payloads=None` (current production behavior).
 - **Override:** The service `run()` (and `DiscoveryScoutService.run()`) accept an optional parameter `run_extractor: bool | None = None`. If provided (True/False), it overrides the config value for that run; if `None`, config is used. The internal `POST /internal/run_scout` endpoint does not pass `run_extractor`, so production behavior is entirely config-driven.
@@ -69,7 +70,7 @@ DiscoveryScoutService, persistence models, and the internal API are added in ear
 
 - **Ingest → Derive → Score:** Writes to `companies`, `signal_events`, `signal_instances`, snapshots. Scout does **not** use this path.
 - **Scan:** Web scraping → `SignalRecord` → analysis/scoring for existing companies. Scout is independent; it discovers **candidates** and outputs evidence only.
-- A future step may feed Evidence Bundles into a separate “evidence-to-events” pipeline (out of scope for the current Evidence-Only milestone).
+- A future step may feed Evidence Bundles into a separate “evidence-to-events” pipeline (out of scope for the current Evidence-Only milestone). **Any such evidence-to-events step that writes SignalEvent rows from extractor output must enforce workspace (and optionally pack) when resolving company and writing events;** failure to scope would allow cross-tenant data.
 ## Schema (M3)
 
 - **scout_runs:** run_id (UUID), workspace_id (nullable, FK to workspaces), started_at, finished_at, model_version, tokens_used, latency_ms, page_fetch_count, config_snapshot (JSONB), status, error_message.
@@ -82,7 +83,7 @@ Indexes support list/filter by workspace and time/status: `(workspace_id, starte
 Scout runs are associated with a tenant via **workspace_id** on `scout_runs`. Until an API or UI exposes scout data:
 
 - **Any future API or UI that lists or filters scout runs or evidence bundles must enforce workspace scoping:** require a valid workspace context (e.g. from auth or query param) and filter all queries with `WHERE workspace_id = :current_workspace_id`. Do not expose unscoped “list all scout runs” endpoints; that would allow cross-tenant data leakage.
-- When adding the internal scout endpoint (e.g. `POST /internal/run_scout`), require and store `workspace_id` so runs are always tenant-scoped.
+- The internal scout endpoint `POST /internal/run_scout` **requires** `workspace_id` in the request body; it is stored on `scout_runs` so runs are always tenant-scoped.
 
 ## Sensitive data and access control
 

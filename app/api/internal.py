@@ -428,7 +428,8 @@ async def run_scout_endpoint(
 ):
     """Trigger LLM Discovery Scout (Evidence-Only). Returns run_id, bundles_count, status.
 
-    Body: icp_definition, optional exclusion_rules, optional pack_id, optional page_fetch_limit.
+    Body: icp_definition, workspace_id (required for tenant scoping), optional exclusion_rules,
+    optional pack_id, optional page_fetch_limit.
     Does not write to companies or signal_events; output is stored in scout_runs, scout_evidence_bundles,
     and the Evidence Store (evidence_bundles, evidence_sources, etc.).
     """
