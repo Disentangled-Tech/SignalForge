@@ -36,9 +36,24 @@ def _minimal_bundle(
     )
 
 
+def _bundle_with_matching_domain(
+    name: str = "Acme",
+    website: str = "https://acme.example.com",
+    evidence_url: str = "https://acme.example.com/page",
+) -> EvidenceBundle:
+    """Bundle that passes M5 domain rule (evidence URL same domain as company_website)."""
+    return EvidenceBundle(
+        candidate_company_name=name,
+        company_website=website,
+        why_now_hypothesis="Hypothesis.",
+        evidence=[_make_item(evidence_url, "snippet")],
+        missing_information=[],
+    )
+
+
 def test_verify_bundle_returns_passed_true_when_rules_pass() -> None:
-    """verify_bundle returns passed=True and empty reason_codes when all rules pass (M1 stubs)."""
-    bundle = _minimal_bundle(evidence_count=1)
+    """verify_bundle returns passed=True and empty reason_codes when all rules pass (M5 fact rules)."""
+    bundle = _bundle_with_matching_domain()
     result = verify_bundle(bundle, None)
     assert isinstance(result, VerificationResult)
     assert result.passed is True
@@ -47,7 +62,7 @@ def test_verify_bundle_returns_passed_true_when_rules_pass() -> None:
 
 def test_verify_bundle_with_structured_payload() -> None:
     """verify_bundle accepts optional structured_payload and returns result."""
-    bundle = _minimal_bundle(evidence_count=1)
+    bundle = _bundle_with_matching_domain()
     payload = {"events": [], "company": {"name": "Acme", "domain": "acme.example.com"}}
     result = verify_bundle(bundle, payload)
     assert result.passed is True
@@ -57,7 +72,9 @@ def test_verify_bundle_with_structured_payload() -> None:
 def test_verify_bundles_returns_one_result_per_bundle() -> None:
     """verify_bundles returns list of VerificationResult in same order as bundles."""
     b1 = _minimal_bundle(name="First", evidence_count=0)
-    b2 = _minimal_bundle(name="Second", website="https://second.example.com", evidence_count=1)
+    b2 = _bundle_with_matching_domain(
+        name="Second", website="https://second.example.com", evidence_url="https://second.example.com/p"
+    )
     results = verify_bundles([b1, b2])
     assert len(results) == 2
     assert all(isinstance(r, VerificationResult) for r in results)
@@ -66,8 +83,8 @@ def test_verify_bundles_returns_one_result_per_bundle() -> None:
 
 def test_verify_bundles_with_structured_payloads_aligned_by_index() -> None:
     """verify_bundles uses structured_payloads[i] for bundle i when provided."""
-    b1 = _minimal_bundle(name="A", evidence_count=1)
-    b2 = _minimal_bundle(name="B", evidence_count=1)
+    b1 = _bundle_with_matching_domain(name="A", website="https://a.example.com", evidence_url="https://a.example.com/p")
+    b2 = _bundle_with_matching_domain(name="B", website="https://b.example.com", evidence_url="https://b.example.com/p")
     payloads = [{"events": []}, {"events": [], "company": {"name": "B", "domain": "b.example.com"}}]
     results = verify_bundles([b1, b2], structured_payloads=payloads)
     assert len(results) == 2
@@ -89,7 +106,7 @@ def test_verify_bundles_empty_list_returns_empty_results() -> None:
 
 def test_verify_bundle_returns_passed_false_when_event_rule_fails() -> None:
     """verify_bundle returns passed=False and reason_codes when an event fails (M2)."""
-    bundle = _minimal_bundle(evidence_count=1)
+    bundle = _bundle_with_matching_domain()
     payload = {"events": [{"event_type": "not_in_taxonomy", "confidence": 0.9}]}
     result = verify_bundle(bundle, payload)
     assert result.passed is False
