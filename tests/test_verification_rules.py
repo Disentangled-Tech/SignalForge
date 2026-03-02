@@ -184,30 +184,162 @@ def test_check_event_required_fields_returns_code_when_confidence_is_bool() -> N
     ]
 
 
-def test_check_fact_domain_match_stub_returns_empty() -> None:
-    """M1 stub: check_fact_domain_match returns no reason codes."""
+def test_check_fact_domain_match_returns_empty_when_no_evidence() -> None:
+    """M5: check_fact_domain_match returns [] when evidence is empty (nothing to match)."""
     bundle = _minimal_bundle()
     assert check_fact_domain_match(bundle, None) == []
     assert check_fact_domain_match(bundle, {}) == []
 
 
-def test_check_fact_founder_primary_source_stub_returns_empty() -> None:
-    """M1 stub: check_fact_founder_primary_source returns no reason codes."""
-    bundle = _minimal_bundle()
+def test_check_fact_domain_match_returns_empty_when_evidence_url_matches_company_domain() -> None:
+    """M5: check_fact_domain_match returns [] when at least one evidence URL host matches company_website."""
+    bundle = _minimal_bundle(
+        website="https://acme.example.com",
+        evidence_count=1,
+    )
+    # Override evidence so URL is same domain as company_website
+    bundle = EvidenceBundle(
+        candidate_company_name=bundle.candidate_company_name,
+        company_website="https://acme.example.com",
+        why_now_hypothesis=bundle.why_now_hypothesis,
+        evidence=[
+            _make_item("https://acme.example.com/about", "snippet"),
+        ],
+        missing_information=bundle.missing_information,
+    )
+    assert check_fact_domain_match(bundle, None) == []
+
+
+def test_check_fact_domain_match_returns_code_when_no_evidence_url_matches() -> None:
+    """M5: check_fact_domain_match returns FACT_DOMAIN_MISMATCH when no evidence URL matches company domain."""
+    bundle = _minimal_bundle(
+        website="https://acme.example.com",
+        evidence_count=1,
+    )
+    # _minimal_bundle(evidence_count=1) uses https://example.com/p1, domain example.com != acme.example.com
+    assert check_fact_domain_match(bundle, None) == [
+        VerificationReasonCode.FACT_DOMAIN_MISMATCH
+    ]
+
+
+def test_check_fact_domain_match_normalizes_www() -> None:
+    """M5: domain match normalizes www so www.acme.com matches acme.com."""
+    bundle = EvidenceBundle(
+        candidate_company_name="Acme",
+        company_website="https://www.acme.com",
+        why_now_hypothesis="Hypothesis.",
+        evidence=[_make_item("https://acme.com/careers", "snippet")],
+        missing_information=[],
+    )
+    assert check_fact_domain_match(bundle, None) == []
+
+
+def test_check_fact_founder_primary_source_returns_empty_when_no_persons() -> None:
+    """M5: check_fact_founder_primary_source returns [] when no persons in payload."""
+    bundle = _minimal_bundle(evidence_count=1)
     assert check_fact_founder_primary_source(bundle, None) == []
     assert check_fact_founder_primary_source(bundle, {"persons": []}) == []
 
 
-def test_check_fact_hiring_jobs_or_ats_stub_returns_empty() -> None:
-    """M1 stub: check_fact_hiring_jobs_or_ats returns no reason codes."""
-    bundle = _minimal_bundle()
+def test_check_fact_founder_primary_source_returns_empty_when_person_has_backing_claim() -> None:
+    """M5: check_fact_founder_primary_source returns [] when a person claim has source_refs."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {
+        "persons": [{"name": "Jane", "role": "CEO"}],
+        "claims": [
+            {"entity_type": "person", "field": "name", "value": "Jane", "source_refs": [0]},
+        ],
+    }
+    assert check_fact_founder_primary_source(bundle, payload) == []
+
+
+def test_check_fact_founder_primary_source_returns_code_when_person_without_backing_claim() -> None:
+    """M5: check_fact_founder_primary_source returns FACT_FOUNDER_MISSING_PRIMARY_SOURCE when persons present but no claim with source_refs."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {
+        "persons": [{"name": "Jane", "role": "CEO"}],
+        "claims": [],
+    }
+    assert check_fact_founder_primary_source(bundle, payload) == [
+        VerificationReasonCode.FACT_FOUNDER_MISSING_PRIMARY_SOURCE
+    ]
+
+
+def test_check_fact_founder_primary_source_accepts_founder_entity_type() -> None:
+    """M5: entity_type 'founder' with source_refs passes."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {
+        "persons": [{"name": "Jane"}],
+        "claims": [{"entity_type": "founder", "field": "name", "value": "Jane", "source_refs": [0]}],
+    }
+    assert check_fact_founder_primary_source(bundle, payload) == []
+
+
+def test_check_fact_founder_primary_source_accepts_person_singleton_key() -> None:
+    """M5: payload with 'person' (singular) dict is treated as one person."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {
+        "person": {"name": "Jane", "role": "CEO"},
+        "claims": [{"entity_type": "person", "field": "name", "value": "Jane", "source_refs": [0]}],
+    }
+    assert check_fact_founder_primary_source(bundle, payload) == []
+
+
+def test_check_fact_hiring_jobs_or_ats_returns_empty_when_no_hiring_events() -> None:
+    """M5: check_fact_hiring_jobs_or_ats returns [] when no hiring-related event types."""
+    bundle = _minimal_bundle(evidence_count=1)
     assert check_fact_hiring_jobs_or_ats(bundle, None) == []
     assert check_fact_hiring_jobs_or_ats(bundle, {"events": []}) == []
+    payload = {"events": [{"event_type": "funding_raised", "confidence": 0.9}]}
+    assert check_fact_hiring_jobs_or_ats(bundle, payload) == []
+
+
+def test_check_fact_hiring_jobs_or_ats_returns_empty_when_jobs_url_present() -> None:
+    """M5: check_fact_hiring_jobs_or_ats returns [] when evidence includes jobs/careers URL."""
+    bundle = _minimal_bundle(website="https://acme.example.com", evidence_count=1)
+    bundle = EvidenceBundle(
+        candidate_company_name=bundle.candidate_company_name,
+        company_website=bundle.company_website,
+        why_now_hypothesis=bundle.why_now_hypothesis,
+        evidence=[_make_item("https://acme.example.com/careers", "snippet")],
+        missing_information=bundle.missing_information,
+    )
+    payload = {"events": [{"event_type": "job_posted_engineering", "confidence": 0.9}]}
+    assert check_fact_hiring_jobs_or_ats(bundle, payload) == []
+
+
+def test_check_fact_hiring_jobs_or_ats_returns_code_when_hiring_event_without_jobs_url() -> None:
+    """M5: check_fact_hiring_jobs_or_ats returns FACT_HIRING_MISSING_JOBS_OR_ATS when hiring event but no jobs/ATS evidence URL."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {"events": [{"event_type": "job_posted_engineering", "confidence": 0.9}]}
+    assert check_fact_hiring_jobs_or_ats(bundle, payload) == [
+        VerificationReasonCode.FACT_HIRING_MISSING_JOBS_OR_ATS
+    ]
+
+
+def test_check_fact_hiring_jobs_or_ats_accepts_ats_domain() -> None:
+    """M5: evidence URL from known ATS domain (e.g. greenhouse) passes."""
+    bundle = EvidenceBundle(
+        candidate_company_name="Acme",
+        company_website="https://acme.example.com",
+        why_now_hypothesis="Hypothesis.",
+        evidence=[_make_item("https://boards.greenhouse.io/acme/jobs/123", "snippet")],
+        missing_information=[],
+    )
+    payload = {"events": [{"event_type": "cto_hired", "confidence": 0.9}]}
+    assert check_fact_hiring_jobs_or_ats(bundle, payload) == []
 
 
 def test_run_all_rules_returns_empty_when_all_pass() -> None:
     """run_all_rules returns empty list when every rule passes (no events or valid events)."""
-    bundle = _minimal_bundle(evidence_count=1)
+    # Use same domain for company_website and evidence so fact domain rule passes (M5)
+    bundle = EvidenceBundle(
+        candidate_company_name="Acme",
+        company_website="https://acme.example.com",
+        why_now_hypothesis="Hypothesis.",
+        evidence=[_make_item("https://acme.example.com/page", "snippet")],
+        missing_information=[],
+    )
     assert run_all_rules(bundle, None) == []
     assert (
         run_all_rules(
@@ -219,10 +351,24 @@ def test_run_all_rules_returns_empty_when_all_pass() -> None:
 
 def test_run_all_rules_returns_reason_codes_when_event_fails() -> None:
     """run_all_rules returns combined reason codes when an event rule fails (M2)."""
-    bundle = _minimal_bundle(evidence_count=1)
+    bundle = EvidenceBundle(
+        candidate_company_name="Acme",
+        company_website="https://acme.example.com",
+        why_now_hypothesis="Hypothesis.",
+        evidence=[_make_item("https://acme.example.com/p", "snippet")],
+        missing_information=[],
+    )
     payload = {"events": [{"event_type": "invalid_signal", "confidence": 0.9}]}
     codes = run_all_rules(bundle, payload)
     assert VerificationReasonCode.EVENT_TYPE_UNKNOWN in codes
+
+
+def test_run_all_rules_returns_fact_reason_codes_when_fact_rule_fails() -> None:
+    """run_all_rules returns fact reason codes when a fact rule fails (M5)."""
+    # Domain mismatch: evidence URL different domain than company_website
+    bundle = _minimal_bundle(website="https://acme.example.com", evidence_count=1)
+    codes = run_all_rules(bundle, None)
+    assert VerificationReasonCode.FACT_DOMAIN_MISMATCH in codes
 
 
 def test_check_event_rules_skip_non_dict_entries_in_events() -> None:
