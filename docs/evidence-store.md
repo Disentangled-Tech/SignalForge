@@ -144,7 +144,7 @@ Read schemas: `EvidenceBundleRead`, `EvidenceSourceRead`, `EvidenceClaimRead` in
 
 **Scout integration:** `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
 
-**When populated by the Extractor:** When the optional [Evidence Extractor](discovery_scout.md#optional-extractor-m4-issue-277) is enabled (config `SCOUT_RUN_EXTRACTOR` or `run_extractor=True`), each bundle’s `structured_payload` is populated with **ExtractionResult** shape: `company` (normalized company object), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). The Extractor does not derive signals; it emits only core-event types (validated against core taxonomy) and all outputs are source-backed (fields/events mapped to source_refs). See `app/extractor/schemas.py`.
+**When populated by the Extractor:** When the optional [Evidence Extractor](discovery_scout.md#optional-extractor-m4-issue-277) is enabled (config `SCOUT_RUN_EXTRACTOR` or `run_extractor=True`), each bundle's `structured_payload` is populated with **ExtractionResult** shape: `company` (normalized company object), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). The Extractor does not derive signals; it emits only core-event types (validated against core taxonomy) and all outputs are source-backed (fields/events mapped to source_refs). See `app/extractor/schemas.py`.
 
 ### 6.1 Structured payload contract (recommended producer schema)
 
