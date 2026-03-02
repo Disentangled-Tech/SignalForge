@@ -62,10 +62,11 @@ async def run(
     seed_urls: list[str] | None = None,
     allowlist: list[str] | None = None,
     denylist: list[str] | None = None,
-    fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
+    fetch_page: Callable[..., Awaitable[str | None]] | None = None,
     llm_provider: LLMProvider | None = None,
     workspace_id: uuid.UUID,
     run_extractor: bool | None = None,
+    check_robots: bool = False,
 ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
     """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
 
@@ -81,10 +82,13 @@ async def run(
         seed_urls: URLs to fetch. If None, no pages are fetched (empty content).
         allowlist: Source allowlist. If None, uses settings.scout_source_allowlist.
         denylist: Source denylist. If None, uses settings.scout_source_denylist.
-        fetch_page: Async callable(url) -> str | None. If None, uses app.services.fetcher.fetch_page.
+        fetch_page: Async callable(url, check_robots=False) -> str | None. If None, uses
+            app.services.fetcher.fetch_page (with check_robots). Callables that accept only
+            (url) remain supported for backward compatibility.
         llm_provider: LLM provider. If None, uses get_llm_provider(role=ModelRole.SCOUT).
         workspace_id: Required. Scopes the run to a tenant; stored on scout_runs.
         run_extractor: If True/False, override settings.scout_run_extractor (M4). If None, use config.
+        check_robots: When using default fetcher, consult robots.txt before each fetch (default False).
 
     Returns:
         (run_id, list of validated EvidenceBundles, metadata).
@@ -106,7 +110,10 @@ async def run(
     if urls_to_fetch:
         from app.services.fetcher import fetch_page as _fetch_page
 
-        fetcher = fetch_page if fetch_page is not None else _fetch_page
+        async def _default_fetcher(url: str) -> str | None:
+            return await _fetch_page(url, check_robots=check_robots)
+
+        fetcher = fetch_page if fetch_page is not None else _default_fetcher
         for url in urls_to_fetch:
             html = await fetcher(url)
             if html:
@@ -252,10 +259,11 @@ class DiscoveryScoutService:
         seed_urls: list[str] | None = None,
         allowlist: list[str] | None = None,
         denylist: list[str] | None = None,
-        fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
+        fetch_page: Callable[..., Awaitable[str | None]] | None = None,
         llm_provider: LLMProvider | None = None,
         workspace_id: uuid.UUID,
         run_extractor: bool | None = None,
+        check_robots: bool = False,
     ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
         """Run discovery scout. See module-level run() for full doc."""
         return await run(
@@ -271,4 +279,5 @@ class DiscoveryScoutService:
             llm_provider=llm_provider,
             workspace_id=workspace_id,
             run_extractor=run_extractor,
+            check_robots=check_robots,
         )

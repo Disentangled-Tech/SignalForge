@@ -138,3 +138,58 @@ class TestFetchPageRedirect:
             call_kwargs = MockClient.call_args[1]
             assert call_kwargs["follow_redirects"] is True
             assert call_kwargs["max_redirects"] == 3
+
+
+class TestFetchPageCheckRobots:
+    """When check_robots=True, fetcher consults robots.txt before fetching."""
+
+    async def test_check_robots_disallowed_returns_none_without_fetch(self):
+        """If robots.txt disallows the URL, return None and do not perform HTTP GET."""
+        with patch(
+            "app.services.fetcher.robots_module.can_fetch", new_callable=AsyncMock
+        ) as mock_can_fetch:
+            mock_can_fetch.return_value = False
+            with patch("app.services.fetcher.httpx.AsyncClient") as MockClient:
+                result = await fetch_page("https://example.com/blog", check_robots=True)
+                assert result is None
+                mock_can_fetch.assert_called_once_with("https://example.com/blog", USER_AGENT)
+                MockClient.assert_not_called()
+
+    async def test_check_robots_allowed_fetches_as_usual(self):
+        """If robots.txt allows the URL, fetch proceeds and returns HTML."""
+        mock_resp = _mock_response("<html>OK</html>")
+        with patch(
+            "app.services.fetcher.robots_module.can_fetch", new_callable=AsyncMock
+        ) as mock_can_fetch:
+            mock_can_fetch.return_value = True
+            with patch("app.services.fetcher.httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.get.return_value = mock_resp
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = instance
+
+                result = await fetch_page("https://example.com/blog", check_robots=True)
+                assert result == "<html>OK</html>"
+                mock_can_fetch.assert_called_once_with(
+                    "https://example.com/blog", "SignalForge/0.1 (startup-monitor)"
+                )
+                MockClient.assert_called_once()
+
+    async def test_default_check_robots_false_unchanged_behavior(self):
+        """Default check_robots=False preserves existing behavior (no robots check)."""
+        mock_resp = _mock_response("<html>Default</html>")
+        with patch(
+            "app.services.fetcher.robots_module.can_fetch", new_callable=AsyncMock
+        ) as mock_can_fetch:
+            with patch("app.services.fetcher.httpx.AsyncClient") as MockClient:
+                instance = AsyncMock()
+                instance.get.return_value = mock_resp
+                instance.__aenter__ = AsyncMock(return_value=instance)
+                instance.__aexit__ = AsyncMock(return_value=False)
+                MockClient.return_value = instance
+
+                result = await fetch_page("https://example.com/")
+                assert result == "<html>Default</html>"
+                mock_can_fetch.assert_not_called()
+                MockClient.assert_called_once()
