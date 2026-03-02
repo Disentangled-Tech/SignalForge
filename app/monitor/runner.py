@@ -1,21 +1,35 @@
-"""Monitor runner: fetch → snapshot → diff → collect ChangeEvents (M4, Issue #280)."""
+"""Monitor runner: fetch → snapshot → diff → collect ChangeEvents (M4, Issue #280).
+
+M6: run_monitor_full runs the full pipeline and persists Core Event candidates
+as SignalEvents with source='page_monitor' and deterministic source_event_id.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime
 from urllib.parse import urljoin
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.ingestion.event_storage import store_signal_event
 from app.models.company import Company
 from app.monitor.detector import detect_change
+from app.monitor.interpretation import interpret_change_event
 from app.monitor.schemas import ChangeEvent
 from app.monitor.snapshot_store import save_snapshot
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+from app.schemas.core_events import CoreEventCandidate
 from app.services.extractor import extract_text
 from app.services.fetcher import fetch_page
+from app.services.pack_resolver import get_pack_for_workspace
 
 logger = logging.getLogger(__name__)
+
+# Source identifier for monitor-origin SignalEvents (plan M6)
+PAGE_MONITOR_SOURCE = "page_monitor"
 
 # URL paths to monitor (plan: blog, careers, press, pricing, docs/changelog)
 MONITOR_PATHS = ["/blog", "/careers", "/press", "/pricing", "/docs/changelog"]
@@ -101,3 +115,98 @@ async def run_monitor(
                 source_type=source_type,
             )
     return events
+
+
+def _source_event_id(change_ev: ChangeEvent, candidate: CoreEventCandidate, index: int) -> str:
+    """Deterministic source_event_id for deduplication (plan M6)."""
+    payload = (
+        f"{change_ev.company_id}:{change_ev.page_url}:{change_ev.timestamp.isoformat()}:"
+        f"{candidate.event_type}:{index}:{(candidate.summary or '')[:200]}"
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+async def run_monitor_full(
+    db: Session,
+    *,
+    workspace_id: str | UUID | None = None,
+    company_ids: list[int] | None = None,
+    llm_provider: object | None = None,
+) -> dict:
+    """Run monitor end-to-end: fetch → snapshots → diff → interpret → persist (M6).
+
+    Runs run_monitor to collect ChangeEvents, interprets each via LLM, validates
+    against core taxonomy, and persists each candidate as a SignalEvent with
+    source='page_monitor' and deterministic source_event_id. Pack is resolved
+    from workspace (default workspace when workspace_id omitted).
+
+    Parameters
+    ----------
+    db : Session
+        Active database session (caller manages transaction).
+    workspace_id : str | UUID | None
+        Workspace for pack resolution; uses DEFAULT_WORKSPACE_ID when omitted.
+    company_ids : list[int] | None
+        If provided, only these companies; else all with website_url.
+    llm_provider : object | None
+        Optional LLM provider for interpretation; None uses default.
+
+    Returns
+    -------
+    dict
+        status, change_events_count, events_stored, events_skipped_duplicate,
+        companies_processed; error key on failure.
+    """
+    ws_id = str(workspace_id or DEFAULT_WORKSPACE_ID)
+    pack_id: UUID | None = get_pack_for_workspace(db, ws_id)
+
+    change_events = await run_monitor(db, company_ids=company_ids)
+    if company_ids is not None:
+        companies_processed = (
+            db.query(Company)
+            .filter(
+                Company.id.in_(company_ids),
+                Company.website_url.isnot(None),
+            )
+            .count()
+        )
+    else:
+        companies_processed = db.query(Company).filter(Company.website_url.isnot(None)).count()
+
+    events_stored = 0
+    events_skipped_duplicate = 0
+
+    for change_ev in change_events:
+        candidates = interpret_change_event(
+            change_ev,
+            llm_provider=llm_provider,
+        )
+        event_time = change_ev.timestamp
+        for idx, candidate in enumerate(candidates):
+            source_event_id = _source_event_id(change_ev, candidate, idx)
+            used_time = candidate.event_time if candidate.event_time is not None else event_time
+            result = store_signal_event(
+                db,
+                company_id=change_ev.company_id,
+                source=PAGE_MONITOR_SOURCE,
+                source_event_id=source_event_id,
+                event_type=candidate.event_type,
+                event_time=used_time,
+                title=candidate.title,
+                summary=candidate.summary,
+                url=candidate.url or change_ev.page_url,
+                confidence=candidate.confidence,
+                pack_id=pack_id,
+            )
+            if result is not None:
+                events_stored += 1
+            else:
+                events_skipped_duplicate += 1
+
+    return {
+        "status": "completed",
+        "change_events_count": len(change_events),
+        "events_stored": events_stored,
+        "events_skipped_duplicate": events_skipped_duplicate,
+        "companies_processed": companies_processed,
+    }

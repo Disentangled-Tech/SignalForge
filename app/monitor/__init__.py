@@ -12,7 +12,7 @@ M6 integration (when adding monitor runner and store_signal_event):
 from app.monitor.detector import detect_change
 from app.monitor.diff import compute_diff
 from app.monitor.interpretation import interpret_change_event
-from app.monitor.runner import run_monitor
+from app.monitor.runner import run_monitor, run_monitor_full
 from app.monitor.schemas import ChangeEvent
 from app.monitor.snapshot_store import get_latest_snapshot, save_snapshot
 
@@ -23,5 +23,6 @@ __all__ = [
     "get_latest_snapshot",
     "interpret_change_event",
     "run_monitor",
+    "run_monitor_full",
     "save_snapshot",
 ]

@@ -439,6 +439,123 @@ class TestRunAlertScan:
         assert "Alert scan error" in data["error"]
 
 
+# ── /internal/run_monitor (M6, Issue #280) ───────────────────────────
+
+
+class TestRunMonitor:
+    """Tests for POST /internal/run_monitor (diff-based monitor full run + persistence)."""
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_valid_token_calls_run_monitor_full(self, mock_run_monitor_full, client: TestClient):
+        """POST /internal/run_monitor with valid token triggers run_monitor_full."""
+        mock_run_monitor_full.return_value = {
+            "status": "completed",
+            "change_events_count": 1,
+            "events_stored": 1,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 2,
+        }
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["change_events_count"] == 1
+        assert data["events_stored"] == 1
+        assert data["events_skipped_duplicate"] == 0
+        assert data["companies_processed"] == 2
+        mock_run_monitor_full.assert_called_once()
+
+    def test_run_monitor_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_monitor without token header returns 422."""
+        response = client.post("/internal/run_monitor")
+        assert response.status_code == 422
+
+    def test_run_monitor_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_monitor with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_run_monitor_with_workspace_id_passes_to_run_monitor_full(
+        self, mock_run_monitor_full, client: TestClient
+    ):
+        """POST /internal/run_monitor with workspace_id forwards it."""
+        mock_run_monitor_full.return_value = {
+            "status": "completed",
+            "change_events_count": 0,
+            "events_stored": 0,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 0,
+        }
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": "00000000-0000-0000-0000-000000000001"},
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_run_monitor_full.call_args[1]
+        assert call_kwargs["workspace_id"] == "00000000-0000-0000-0000-000000000001"
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_run_monitor_with_company_ids_passes_list(
+        self, mock_run_monitor_full, client: TestClient
+    ):
+        """POST /internal/run_monitor with company_ids forwards parsed list."""
+        mock_run_monitor_full.return_value = {
+            "status": "completed",
+            "change_events_count": 0,
+            "events_stored": 0,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 1,
+        }
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"company_ids": "1,2,3"},
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_run_monitor_full.call_args[1]
+        assert call_kwargs["company_ids"] == [1, 2, 3]
+
+    def test_run_monitor_invalid_company_ids_returns_422(self, client: TestClient):
+        """POST /internal/run_monitor with non-integer company_ids returns 422."""
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"company_ids": "1,not-a-number"},
+        )
+        assert response.status_code == 422
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_run_monitor_error_returns_failed(self, mock_run_monitor_full, client: TestClient):
+        """POST /internal/run_monitor returns failed status on exception."""
+        mock_run_monitor_full.side_effect = RuntimeError("Monitor error")
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert data["change_events_count"] == 0
+        assert data["events_stored"] == 0
+        assert "Monitor error" in data["error"]
+
+
 # ── /internal/run_derive ────────────────────────────────────────────
 
 
@@ -643,7 +760,9 @@ class TestRunDailyAggregation:
             "score_result": {"companies_scored": 8},
             # 8 companies scored; all 8 appear in ranked_count because threshold=0
             "ranked_count": 8,
-            "ranked_companies": [{"company_name": f"Co{i}", "composite": 50, "band": "allow"} for i in range(8)],
+            "ranked_companies": [
+                {"company_name": f"Co{i}", "composite": 50, "band": "allow"} for i in range(8)
+            ],
             "error": None,
         }
 
