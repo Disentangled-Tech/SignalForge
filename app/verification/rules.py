@@ -55,13 +55,6 @@ def _get_events(structured_payload: dict | None) -> list[dict[str, Any]]:
     return [e for e in structured_payload["events"] if isinstance(e, dict)]
 
 
-def _get_events(structured_payload: dict | None) -> list[dict[str, Any]]:
-    """Return list of event dicts from structured_payload; empty if missing or not a list."""
-    if not structured_payload or not isinstance(structured_payload.get("events"), list):
-        return []
-    return [e for e in structured_payload["events"] if isinstance(e, dict)]
-
-
 def check_event_type_in_taxonomy(
     _bundle: EvidenceBundle,
     structured_payload: dict | None,
