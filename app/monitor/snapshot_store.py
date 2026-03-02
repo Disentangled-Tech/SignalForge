@@ -1,13 +1,21 @@
-"""Page snapshot store: save and retrieve latest snapshot by (company_id, url)."""
+"""Page snapshot storage for monitor (M2, Issue #280)."""
 
 from __future__ import annotations
 
-from datetime import datetime
+import hashlib
+import logging
+from datetime import UTC, datetime
 
-from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.models.page_snapshot import PageSnapshot
+
+logger = logging.getLogger(__name__)
+
+
+def _compute_hash(content_text: str) -> str:
+    """SHA-256 hex digest of content text."""
+    return hashlib.sha256(content_text.encode("utf-8")).hexdigest()
 
 
 def save_snapshot(
@@ -15,11 +23,27 @@ def save_snapshot(
     company_id: int,
     url: str,
     content_text: str | None,
-    content_hash: str,
-    fetched_at: datetime,
+    content_hash: str | None = None,
+    fetched_at: datetime | None = None,
     source_type: str | None = None,
 ) -> PageSnapshot:
-    """Append a page snapshot. Caller should commit."""
+    """Save or update snapshot for (company_id, url). Latest wins."""
+    if content_hash is None:
+        content_hash = _compute_hash(content_text or "")
+    if fetched_at is None:
+        fetched_at = datetime.now(UTC)
+    existing = db.query(PageSnapshot).filter(
+        PageSnapshot.company_id == company_id,
+        PageSnapshot.url == url,
+    ).first()
+    if existing:
+        existing.content_hash = content_hash
+        existing.content_text = content_text
+        existing.fetched_at = fetched_at
+        existing.source_type = source_type
+        db.flush()
+        db.refresh(existing)
+        return existing
     row = PageSnapshot(
         company_id=company_id,
         url=url,
@@ -39,14 +63,12 @@ def get_latest_snapshot(
     company_id: int,
     url: str,
 ) -> PageSnapshot | None:
-    """Return the most recent snapshot for (company_id, url) by fetched_at, or None."""
-    stmt = (
-        select(PageSnapshot)
-        .where(
+    """Return the latest snapshot for (company_id, url), or None."""
+    return (
+        db.query(PageSnapshot)
+        .filter(
             PageSnapshot.company_id == company_id,
             PageSnapshot.url == url,
         )
-        .order_by(desc(PageSnapshot.fetched_at))
-        .limit(1)
+        .first()
     )
-    return db.execute(stmt).scalar_one_or_none()

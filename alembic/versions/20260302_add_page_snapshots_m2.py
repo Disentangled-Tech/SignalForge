@@ -1,11 +1,11 @@
-"""Add page_snapshots table (M2 Diff-Based Monitor Engine).
+"""Add page_snapshots table (Diff-Based Monitor M2, Issue #280).
 
 Revision ID: 20260302_page_snapshots
 Revises: 20260302_evidence_bundle_id
 Create Date: 2026-03-02
 
-Append-only snapshot store keyed by (company_id, url); latest by fetched_at
-used for diff detection. Pack-agnostic; no pack_id.
+One row per (company_id, url); updated on each fetch (latest wins).
+Used by monitor for diff detection; pack-agnostic.
 """
 
 from collections.abc import Sequence
@@ -24,35 +24,27 @@ def upgrade() -> None:
     op.create_table(
         "page_snapshots",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column(
-            "company_id",
-            sa.Integer(),
-            nullable=False,
-        ),
+        sa.Column("company_id", sa.Integer(), nullable=False),
         sa.Column("url", sa.String(length=2048), nullable=False),
         sa.Column("content_hash", sa.String(length=64), nullable=False),
         sa.Column("content_text", sa.Text(), nullable=True),
         sa.Column("fetched_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("source_type", sa.String(length=64), nullable=True),
+        sa.Column("source_type", sa.String(length=32), nullable=True),
+        sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(
-            ["company_id"],
-            ["companies.id"],
-            ondelete="CASCADE",
-        ),
     )
     op.create_index(
-        "ix_page_snapshots_company_url_fetched",
+        "ix_page_snapshots_company_id_url",
         "page_snapshots",
-        ["company_id", "url", "fetched_at"],
-        unique=False,
-        postgresql_ops={"fetched_at": "DESC"},
+        ["company_id", "url"],
+        unique=True,
     )
 
 
 def downgrade() -> None:
     op.drop_index(
-        "ix_page_snapshots_company_url_fetched",
+        "ix_page_snapshots_company_id_url",
         table_name="page_snapshots",
+        if_exists=True,
     )
-    op.drop_table("page_snapshots")
+    op.drop_table("page_snapshots", if_exists=True)

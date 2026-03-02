@@ -79,3 +79,6 @@ class Company(Base):
     lead_feed: Mapped[list[LeadFeed]] = relationship(
         "LeadFeed", back_populates="company", cascade="all, delete-orphan"
     )
+    page_snapshots: Mapped[list["PageSnapshot"]] = relationship(
+        "PageSnapshot", back_populates="company", cascade="all, delete-orphan"
+    )
