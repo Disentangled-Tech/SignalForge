@@ -7,10 +7,20 @@ fact rules.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from app.core_taxonomy.loader import is_valid_signal_id
+from app.verification.schemas import VerificationReasonCode
 
 if TYPE_CHECKING:
     from app.schemas.scout import EvidenceBundle
+
+
+def _get_events(structured_payload: dict | None) -> list[dict[str, Any]]:
+    """Return list of event dicts from structured_payload; empty if missing or not a list."""
+    if not structured_payload or not isinstance(structured_payload.get("events"), list):
+        return []
+    return [e for e in structured_payload["events"] if isinstance(e, dict)]
 
 
 def check_event_type_in_taxonomy(
@@ -19,20 +29,44 @@ def check_event_type_in_taxonomy(
 ) -> list[str]:
     """Event rule: every core event candidate event_type must be in core taxonomy.
 
-    M1: Stub — returns no failures. M2: use is_valid_signal_id from core_taxonomy.
+    M2: uses is_valid_signal_id from core_taxonomy. Returns EVENT_TYPE_UNKNOWN if any
+    event has unknown event_type.
     """
-    return []
+    reason_codes: list[str] = []
+    for event in _get_events(structured_payload):
+        event_type = event.get("event_type")
+        if event_type is None or not isinstance(event_type, str):
+            reason_codes.append(VerificationReasonCode.EVENT_TYPE_UNKNOWN)
+            break
+        if not is_valid_signal_id(event_type.strip()):
+            reason_codes.append(VerificationReasonCode.EVENT_TYPE_UNKNOWN)
+            break
+    return reason_codes
 
 
 def check_event_timestamped_citation(
-    _bundle: EvidenceBundle,
+    bundle: EvidenceBundle,
     structured_payload: dict | None,
 ) -> list[str]:
     """Event rule: each core event must have at least one source_ref to evidence with timestamp_seen.
 
-    M1: Stub — returns no failures. M2: implement.
+    M2: requires at least one source_ref pointing to a valid evidence index (evidence
+    items have required timestamp_seen). Returns EVENT_MISSING_TIMESTAMPED_CITATION
+    if any event lacks a valid timestamped citation.
     """
-    return []
+    reason_codes: list[str] = []
+    evidence = bundle.evidence
+    evidence_len = len(evidence)
+    for event in _get_events(structured_payload):
+        source_refs = event.get("source_refs")
+        if not isinstance(source_refs, list):
+            reason_codes.append(VerificationReasonCode.EVENT_MISSING_TIMESTAMPED_CITATION)
+            break
+        has_valid_ref = any(isinstance(i, int) and 0 <= i < evidence_len for i in source_refs)
+        if not has_valid_ref:
+            reason_codes.append(VerificationReasonCode.EVENT_MISSING_TIMESTAMPED_CITATION)
+            break
+    return reason_codes
 
 
 def check_event_required_fields(
@@ -41,9 +75,26 @@ def check_event_required_fields(
 ) -> list[str]:
     """Event rule: event_type and confidence present; event_time optional.
 
-    M1: Stub — returns no failures. M2: implement.
+    M2: requires event_type (non-empty string) and confidence (present) per
+    CoreEventCandidate. Returns EVENT_MISSING_REQUIRED_FIELDS if any event fails.
     """
-    return []
+    reason_codes: list[str] = []
+    for event in _get_events(structured_payload):
+        event_type = event.get("event_type")
+        confidence = event.get("confidence")
+        has_event_type = (
+            event_type is not None and isinstance(event_type, str) and event_type.strip() != ""
+        )
+        # Reject bool (subclass of int); require numeric only per CoreEventCandidate
+        has_confidence = (
+            confidence is not None
+            and not isinstance(confidence, bool)
+            and isinstance(confidence, (int, float))
+        )  # 0.0 is valid
+        if not has_event_type or not has_confidence:
+            reason_codes.append(VerificationReasonCode.EVENT_MISSING_REQUIRED_FIELDS)
+            break
+    return reason_codes
 
 
 def check_fact_domain_match(
