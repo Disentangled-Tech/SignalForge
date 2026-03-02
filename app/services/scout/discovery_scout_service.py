@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.evidence.store import store_evidence_bundle
+from app.evidence.store import quarantine_verification_failure, store_evidence_bundle
 from app.extractor.service import extract
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
@@ -26,6 +26,7 @@ from app.prompts.loader import render_prompt
 from app.schemas.scout import EvidenceBundle, ScoutRunMetadata
 from app.scout.query_planner import plan_queries
 from app.scout.sources import filter_allowed_sources
+from app.verification import verify_bundles
 
 if TYPE_CHECKING:
     from app.llm.provider import LLMProvider
@@ -184,14 +185,46 @@ async def run(
         structured_payloads = [
             extract(vb).model_dump(mode="json") for vb in validated
         ]
+
+    # M3 (Issue #278): Verification Gate — when enabled, verify then quarantine failures, store only passing.
+    bundles_to_store = validated
+    payloads_to_store = structured_payloads
+    if settings.scout_verification_gate_enabled and validated:
+        results = verify_bundles(validated, structured_payloads)
+        passing_indices = [i for i, r in enumerate(results) if r.passed]
+        for i, r in enumerate(results):
+            if not r.passed:
+                quarantine_verification_failure(
+                    db,
+                    payload={
+                        "run_id": run_id,
+                        "scout_version": model_version,
+                        "bundle_index": i,
+                        "bundle": validated[i].model_dump(mode="json"),
+                        "run_context": run_context,
+                        "raw_model_output": raw_model_output,
+                        "structured_payload": (
+                            structured_payloads[i] if structured_payloads and i < len(structured_payloads) else None
+                        ),
+                    },
+                    reason="; ".join(r.reason_codes),
+                    reason_codes=r.reason_codes,
+                )
+        bundles_to_store = [validated[i] for i in passing_indices]
+        payloads_to_store = (
+            [structured_payloads[j] for j in passing_indices]
+            if structured_payloads is not None
+            else None
+        )
+
     store_evidence_bundle(
         db,
         run_id=run_id,
         scout_version=model_version,
-        bundles=validated,
+        bundles=bundles_to_store,
         run_context=run_context,
         raw_model_output=raw_model_output,
-        structured_payloads=structured_payloads,
+        structured_payloads=payloads_to_store,
         pack_id=None,
     )
     db.commit()
