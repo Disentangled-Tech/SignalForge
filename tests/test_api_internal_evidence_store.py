@@ -318,3 +318,178 @@ def test_list_evidence_bundles_for_workspace_returns_only_for_that_workspace(
     assert resp_b_wrong_ws.status_code == 200
     assert resp_b_wrong_ws.json()["count"] == 0
     assert resp_b_wrong_ws.json()["bundles"] == []
+
+
+# ─── M6: Optional verification on POST /internal/evidence/store ─────────────────
+
+
+def test_store_evidence_with_verification_failing_bundle_quarantined_not_stored(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """POST /internal/evidence/store with run_verification=True: failing bundle quarantined with reason_codes, not stored."""
+    run_id = "m6-verify-fail-run"
+    body = {
+        "run_id": run_id,
+        "bundles": [
+            {
+                "candidate_company_name": "Pass Co",
+                "company_website": "https://pass.example.com",
+                "why_now_hypothesis": "Seed.",
+                "evidence": [
+                    {
+                        "url": "https://pass.example.com/news",
+                        "quoted_snippet": "Seed round.",
+                        "timestamp_seen": "2026-02-27T12:00:00Z",
+                        "source_type": "web",
+                        "confidence_score": 0.9,
+                    }
+                ],
+                "missing_information": [],
+            },
+            {
+                "candidate_company_name": "Fail Co",
+                "company_website": "https://fail.example.com",
+                "why_now_hypothesis": "Hiring.",
+                "evidence": [
+                    {
+                        "url": "https://fail.example.com/jobs",
+                        "quoted_snippet": "CTO role.",
+                        "timestamp_seen": "2026-02-27T12:00:00Z",
+                        "source_type": "web",
+                        "confidence_score": 0.8,
+                    }
+                ],
+                "missing_information": [],
+            },
+        ],
+        "metadata": {"model_version": "gpt-4o", "tokens_used": None, "latency_ms": None, "page_fetch_count": 0},
+        "run_context": {"run_id": run_id},
+        "raw_model_output": None,
+        "run_verification": True,
+        "structured_payloads": [
+            {"events": [{"event_type": "funding_raised", "confidence": 0.9, "source_refs": [0]}]},
+            {"events": [{"event_type": "not_in_taxonomy", "confidence": 0.9}]},
+        ],
+    }
+    response = client_with_db.post(
+        "/internal/evidence/store",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json=body,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["stored_count"] == 1
+    assert data["quarantined_count"] == 1
+    assert len(data["bundle_ids"]) == 1
+
+    # Failing bundle must not be in evidence_bundles; only passing bundle stored
+    from app.evidence.repository import list_bundles_by_run
+
+    bundles = list_bundles_by_run(db, run_id)
+    assert len(bundles) == 1
+    assert bundles[0].structured_payload == body["structured_payloads"][0]
+
+    # Quarantine must contain one entry with reason_codes
+    list_resp = client_with_db.get(
+        "/internal/evidence/quarantine",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"limit": 10},
+    )
+    assert list_resp.status_code == 200
+    entries = list_resp.json()["entries"]
+    assert len(entries) >= 1
+    quarantine_entry = next((e for e in entries if e.get("payload", {}).get("run_id") == run_id), None)
+    assert quarantine_entry is not None
+    assert quarantine_entry["payload"].get("reason_codes") is not None
+    assert "EVENT_TYPE_UNKNOWN" in quarantine_entry["payload"]["reason_codes"]
+    assert quarantine_entry["payload"].get("bundle_index") == 1
+
+
+def test_store_evidence_with_verification_all_pass_all_stored(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """POST /internal/evidence/store with run_verification=True and all passing: all bundles stored, quarantined_count=0."""
+    run_id = "m6-verify-pass-run"
+    body = {
+        "run_id": run_id,
+        "bundles": [
+            {
+                "candidate_company_name": "Co A",
+                "company_website": "https://coa.example.com",
+                "why_now_hypothesis": "Funding.",
+                "evidence": [
+                    {
+                        "url": "https://coa.example.com/news",
+                        "quoted_snippet": "Series A.",
+                        "timestamp_seen": "2026-02-27T12:00:00Z",
+                        "source_type": "web",
+                        "confidence_score": 0.9,
+                    }
+                ],
+                "missing_information": [],
+            },
+        ],
+        "metadata": {"model_version": "gpt-4o", "tokens_used": None, "latency_ms": None, "page_fetch_count": 0},
+        "run_context": {"run_id": run_id},
+        "raw_model_output": None,
+        "run_verification": True,
+        "structured_payloads": [
+            {"events": [{"event_type": "funding_raised", "confidence": 0.9, "source_refs": [0]}]},
+        ],
+    }
+    response = client_with_db.post(
+        "/internal/evidence/store",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json=body,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["stored_count"] == 1
+    assert data["quarantined_count"] == 0
+    assert len(data["bundle_ids"]) == 1
+
+    from app.evidence.repository import list_bundles_by_run
+
+    bundles = list_bundles_by_run(db, run_id)
+    assert len(bundles) == 1
+
+
+def test_store_evidence_without_verification_unchanged_behavior(
+    client_with_db: TestClient,
+) -> None:
+    """POST /internal/evidence/store without run_verification (default): no quarantined_count, all bundles stored."""
+    body = _valid_store_body()
+    assert "run_verification" not in body or body.get("run_verification") is False
+    response = client_with_db.post(
+        "/internal/evidence/store",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json=body,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    assert data["stored_count"] == 1
+    assert "quarantined_count" not in data
+    assert len(data["bundle_ids"]) == 1
+
+
+def test_store_evidence_verification_payload_length_mismatch_returns_422(
+    client: TestClient,
+) -> None:
+    """POST /internal/evidence/store with run_verification=True and structured_payloads length != bundles returns 422."""
+    body = _valid_store_body()
+    body["run_verification"] = True
+    body["structured_payloads"] = [{"events": []}, {"events": []}]  # 2 payloads, 1 bundle
+    response = client.post(
+        "/internal/evidence/store",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        json=body,
+    )
+    assert response.status_code == 422
+    detail = response.json().get("detail")
+    detail_str = detail if isinstance(detail, str) else str(detail)
+    assert "structured_payloads" in detail_str
