@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.evidence.store import quarantine_verification_failure, store_evidence_bundle
 from app.extractor.service import extract
+from app.interpretation.llm import interpret_bundle_to_core_events
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
@@ -66,6 +67,7 @@ async def run(
     llm_provider: LLMProvider | None = None,
     workspace_id: uuid.UUID,
     run_extractor: bool | None = None,
+    run_interpretation: bool | None = None,
     check_robots: bool = False,
 ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
     """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
@@ -88,6 +90,8 @@ async def run(
         llm_provider: LLM provider. If None, uses get_llm_provider(role=ModelRole.SCOUT).
         workspace_id: Required. Scopes the run to a tenant; stored on scout_runs.
         run_extractor: If True/False, override settings.scout_run_extractor (M4). If None, use config.
+        run_interpretation: If True/False, override settings.scout_run_interpretation (M4). If None, use config.
+            When True with run_extractor, runs LLM interpretation per bundle then extract(bundle, raw_extraction).
         check_robots: When using default fetcher, consult robots.txt before each fetch (default False).
 
     Returns:
@@ -184,14 +188,30 @@ async def run(
 
     # Persist to Evidence Store (M6): immutable bundles with core versioning; same transaction.
     # M4: optionally run Extractor per bundle and pass structured_payloads (default off).
+    # M4 (Issue #281): when run_interpretation and run_extractor, run LLM interpretation then extract with raw_extraction.
     run_context = {"run_id": run_id, **config_snapshot}
     raw_model_output = {"raw_response": raw_response, "parsed_bundles": bundle_dicts}
     use_extractor = run_extractor if run_extractor is not None else settings.scout_run_extractor
+    use_interpretation = (
+        run_interpretation if run_interpretation is not None else settings.scout_run_interpretation
+    )
     structured_payloads: list[dict | None] | None = None
     if use_extractor and validated:
-        structured_payloads = [
-            extract(vb).model_dump(mode="json") for vb in validated
-        ]
+        if use_interpretation:
+            payloads: list[dict] = []
+            for vb in validated:
+                candidates = interpret_bundle_to_core_events(vb, llm_provider=provider)
+                raw_extraction: dict = {
+                    "company": {
+                        "name": vb.candidate_company_name,
+                        "website_url": vb.company_website,
+                    },
+                    "core_event_candidates": [c.model_dump(mode="json") for c in candidates],
+                }
+                payloads.append(extract(vb, raw_extraction).model_dump(mode="json"))
+            structured_payloads = payloads
+        else:
+            structured_payloads = [extract(vb).model_dump(mode="json") for vb in validated]
 
     # M3 (Issue #278): Verification Gate — when enabled, verify then quarantine failures, store only passing.
     bundles_to_store = validated
@@ -207,7 +227,9 @@ async def run(
                     bundle_index=i,
                     bundle_dict=validated[i].model_dump(mode="json"),
                     structured_payload=(
-                        structured_payloads[i] if structured_payloads and i < len(structured_payloads) else None
+                        structured_payloads[i]
+                        if structured_payloads and i < len(structured_payloads)
+                        else None
                     ),
                     reason_codes=r.reason_codes,
                 )
@@ -257,6 +279,7 @@ class DiscoveryScoutService:
         llm_provider: LLMProvider | None = None,
         workspace_id: uuid.UUID,
         run_extractor: bool | None = None,
+        run_interpretation: bool | None = None,
         check_robots: bool = False,
     ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
         """Run discovery scout. See module-level run() for full doc."""
@@ -273,5 +296,6 @@ class DiscoveryScoutService:
             llm_provider=llm_provider,
             workspace_id=workspace_id,
             run_extractor=run_extractor,
+            run_interpretation=run_interpretation,
             check_robots=check_robots,
         )

@@ -1,9 +1,10 @@
 """LLM Event Interpretation (Issue #281).
 
 Schema and contract for classifying raw content into CoreEvent candidates.
-No LLM call in this package; see interpretation schemas and (later) llm module.
+Scout wiring (M4): interpret_bundle_to_core_events for evidence bundles.
 """
 
+from app.interpretation.llm import interpret_bundle_to_core_events
 from app.interpretation.schemas import (
     InterpretationInput,
     InterpretationOutput,
@@ -14,4 +15,5 @@ __all__ = [
     "InterpretationInput",
     "InterpretationOutput",
     "InterpretationOutputItem",
+    "interpret_bundle_to_core_events",
 ]
