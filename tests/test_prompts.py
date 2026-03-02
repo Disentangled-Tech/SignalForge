@@ -67,6 +67,11 @@ TEMPLATE_PLACEHOLDERS = {
         "PAGE_URL",
         "DIFF_SUMMARY",
     },
+    "event_interpretation_v1": {
+        "CORE_EVENT_TYPES",
+        "CONTENT",
+        "EVIDENCE_BLOCK",
+    },
 }
 
 ALL_TEMPLATES = list(TEMPLATE_PLACEHOLDERS.keys())
