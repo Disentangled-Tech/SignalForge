@@ -61,6 +61,7 @@ When enabled, the Scout run calls the **Evidence Extractor** per validated bundl
 When enabled, the Scout run validates each evidence bundle (and optional structured payload) against the pack-agnostic Verification Gate before writing to the Evidence Store. Bundles that fail verification are quarantined with structured `reason_codes` and are **not** stored; only passing bundles are sent to `store_evidence_bundle`.
 
 - **Config:** `SCOUT_VERIFICATION_GATE_ENABLED` in environment: set to `1`, `true`, or `yes` to enable; default is off (`0`). When off, all validated bundles are stored (current production behavior). When on, failed bundles go to `evidence_quarantine` with `payload.reason_codes` set.
+- **Quarantine:** Failed bundles are written to `evidence_quarantine` with `payload.reason_codes` (list of strings) and `reason` set to a human-readable summary. See [evidence-store.md §6.2](evidence-store.md#62-verification-gate-issue-278).
 - **Rules:** Event rules (event type in core taxonomy, timestamped citation, required fields) and fact rules (domain match, founder primary source, hiring jobs/ATS). See [evidence-store.md §6.2](evidence-store.md#62-verification-gate-issue-278) and `app/verification/`.
 
 ## Key Code Locations

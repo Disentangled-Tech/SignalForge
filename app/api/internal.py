@@ -464,29 +464,78 @@ async def store_evidence_endpoint(
     """Persist Scout-run result to Evidence Store (testing / external Scout runner).
 
     Body: run_id, bundles, metadata (ScoutRunMetadata), optional run_context, optional raw_model_output.
-    Requires X-Internal-Token. Returns stored_count and bundle_ids.
+    M6: optional run_verification; when True, verify_bundles runs first, failures are quarantined
+    with reason_codes, only passing bundles are stored. Optional structured_payloads (length must
+    match bundles when run_verification=True). Requires X-Internal-Token. Returns stored_count and
+    bundle_ids; when run_verification was used, quarantined_count is also returned.
     """
-    from app.evidence.store import store_evidence_bundle
+    from fastapi import HTTPException
+
+    from app.evidence.store import quarantine_verification_failure, store_evidence_bundle
+    from app.verification import verify_bundles
 
     try:
         run_context = body.run_context if body.run_context is not None else {"run_id": body.run_id}
+        bundles_to_store = body.bundles
+        structured_payloads_to_store = None
+        quarantined_count = 0
+
+        if body.run_verification and body.bundles:
+            if body.structured_payloads is not None and len(body.structured_payloads) != len(
+                body.bundles
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="structured_payloads length must match bundles when run_verification=True",
+                )
+            structured_payloads_for_verify = (
+                body.structured_payloads
+                if body.structured_payloads is not None
+                else [None] * len(body.bundles)
+            )
+            results = verify_bundles(body.bundles, structured_payloads_for_verify)
+            for i, result in enumerate(results):
+                if not result.passed:
+                    quarantine_verification_failure(
+                        db,
+                        run_id=body.run_id,
+                        bundle_index=i,
+                        bundle_dict=body.bundles[i].model_dump(mode="json"),
+                        structured_payload=structured_payloads_for_verify[i],
+                        reason_codes=result.reason_codes,
+                    )
+                    quarantined_count += 1
+            passing_indices = [i for i, r in enumerate(results) if r.passed]
+            bundles_to_store = [body.bundles[i] for i in passing_indices]
+            if body.structured_payloads is not None:
+                structured_payloads_to_store = [
+                    body.structured_payloads[i] for i in passing_indices
+                ]
+            elif passing_indices:
+                structured_payloads_to_store = [None] * len(passing_indices)
+
         records = store_evidence_bundle(
             db,
             run_id=body.run_id,
             scout_version=body.metadata.model_version,
-            bundles=body.bundles,
+            bundles=bundles_to_store,
             run_context=run_context,
             raw_model_output=body.raw_model_output,
-            structured_payloads=None,
+            structured_payloads=structured_payloads_to_store,
             pack_id=None,
         )
         db.commit()
-        return {
+        out: dict = {
             "status": "completed",
             "stored_count": len(records),
             "bundle_ids": [str(r.id) for r in records],
             "error": None,
         }
+        if body.run_verification:
+            out["quarantined_count"] = quarantined_count
+        return out
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Internal evidence store failed")
         db.rollback()

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.evidence.store import store_evidence_bundle
+from app.evidence.store import quarantine_verification_failure, store_evidence_bundle
 from app.models import (
     EvidenceBundle as EvidenceBundleORM,
 )
@@ -329,6 +329,27 @@ def test_store_evidence_bundle_per_bundle_failure_quarantines(db: Session) -> No
     assert "simulated per-bundle failure" in (rows[0].reason or "")
     assert rows[0].payload.get("bundle_index") == 1
     assert rows[0].payload.get("bundle", {}).get("candidate_company_name") == "Second"
+
+
+def test_quarantine_verification_failure_stores_reason_codes(db: Session) -> None:
+    """quarantine_verification_failure writes payload with reason_codes (M6)."""
+    run_id = "run-v"
+    bundle_dict = {"candidate_company_name": "V Co", "company_website": "https://v.example.com"}
+    reason_codes = ["EVENT_TYPE_UNKNOWN", "EVENT_MISSING_REQUIRED_FIELDS"]
+    quarantine_verification_failure(
+        db,
+        run_id=run_id,
+        bundle_index=0,
+        bundle_dict=bundle_dict,
+        structured_payload=None,
+        reason_codes=reason_codes,
+    )
+    rows = db.query(EvidenceQuarantine).all()
+    assert len(rows) == 1
+    assert rows[0].payload.get("reason_codes") == reason_codes
+    assert rows[0].payload.get("run_id") == run_id
+    assert rows[0].payload.get("bundle") == bundle_dict
+    assert rows[0].reason == "EVENT_TYPE_UNKNOWN; EVENT_MISSING_REQUIRED_FIELDS"
 
 
 def test_store_evidence_bundle_run_context_stored(db: Session) -> None:

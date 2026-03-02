@@ -3,6 +3,10 @@
 Tests the contract: verify_bundles → quarantine failures (with reason_codes) →
 store only passing bundles. Failing bundle must appear in evidence_quarantine with
 reason_codes in payload and must not appear in evidence_bundles.
+
+TODO(#278): Add integration test where a bundle fails only a fact rule (e.g. domain
+mismatch or hiring event without jobs URL) and assert quarantined with expected
+reason_codes and not stored (mirrors existing event-failure test).
 """
 
 from __future__ import annotations
