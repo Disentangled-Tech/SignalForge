@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.db.session import get_db
 from app.schemas.evidence import StoreEvidenceRequest
 from app.schemas.scout import RunScoutRequest
+from app.schemas.seeder import SeedFromBundlesRequest
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +424,73 @@ async def run_daily_aggregation_endpoint(
         raise
     except Exception as exc:
         logger.exception("Internal daily aggregation job failed")
+        return {"status": "failed", "error": str(exc)}
+
+
+@router.post("/run_watchlist_seed")
+async def run_watchlist_seed_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    x_idempotency_key: str | None = Header(None, alias="X-Idempotency-Key"),
+    body: SeedFromBundlesRequest = ...,
+    pack_id: str | None = Query(
+        None, description="Pack UUID; uses workspace active pack if omitted"
+    ),
+):
+    """Trigger watchlist seed flow: seed from bundles → derive → score (Issue #279 M3).
+
+    Body: bundle_ids (required), optional workspace_id. When MULTI_WORKSPACE_ENABLED
+    is true, workspace_id is required to enforce tenant boundaries (bundles are
+    loaded workspace-scoped). Optional pack_id query uses workspace active pack
+    when omitted. Returns status, seed_result, derive_result, score_result.
+
+    Idempotency: Pass X-Idempotency-Key to skip duplicate runs. Use
+    workspace-scoped keys (e.g. ``{workspace_id}:{timestamp}``) to avoid
+    collisions across workspaces.
+    """
+    from uuid import UUID
+
+    from app.pipeline.executor import run_stage
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+    settings = get_settings()
+    if settings.multi_workspace_enabled and body.workspace_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="workspace_id is required when MULTI_WORKSPACE_ENABLED is true to enforce tenant boundaries",
+        )
+
+    validate_uuid_param_or_422(pack_id, "pack_id")
+    pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
+    ws_id = (
+        str(body.workspace_id) if body.workspace_id is not None else DEFAULT_WORKSPACE_ID
+    )
+
+    try:
+        result = run_stage(
+            db,
+            job_type="watchlist_seed",
+            workspace_id=ws_id,
+            pack_id=pack_uuid,
+            idempotency_key=x_idempotency_key,
+            bundle_ids=body.bundle_ids,
+        )
+        return {
+            "status": result["status"],
+            "job_run_id": result.get("job_run_id"),
+            "seed_result": result["seed_result"],
+            "derive_result": result["derive_result"],
+            "score_result": result["score_result"],
+            "error": result.get("error"),
+        }
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        if "Unknown job_type" in str(exc):
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise
+    except Exception as exc:
+        logger.exception("Internal run_watchlist_seed failed")
         return {"status": "failed", "error": str(exc)}
 
 
