@@ -92,6 +92,8 @@ Items that failed validation (e.g. schema mismatch, length). No FK to bundles; p
 | reason | text (nullable) | Human-readable reason |
 | created_at | timestamptz | Insert time |
 
+When quarantine is triggered by the **Verification Gate** (Issue #278), `payload` must include **`reason_codes`**: a list of strings (e.g. `EVENT_TYPE_UNKNOWN`, `EVENT_MISSING_TIMESTAMPED_CITATION`). The `reason` column is set to a human-readable summary (e.g. `"; ".join(reason_codes)`). A future migration may add an optional `reason_codes` column for filtering; until then, consumers read `payload.get("reason_codes")`.
+
 **Location:** `app/models/evidence_quarantine.py`
 
 ---
@@ -142,7 +144,7 @@ Read schemas: `EvidenceBundleRead`, `EvidenceSourceRead`, `EvidenceClaimRead` in
 
 - **`store_evidence_bundle(db, run_id, scout_version, bundles, run_context, raw_model_output, ...)`** — Inserts one `evidence_bundles` row per Scout `EvidenceBundle`; for each evidence item, get-or-create `evidence_sources` by `(content_hash, url)` and link via `evidence_bundle_sources`; optionally insert `evidence_claims` from structured payload. Invalid inputs (e.g. length mismatch) are written to `evidence_quarantine` instead of bundles. Insert-only; no UPDATE on bundles.
 
-**Scout integration:** `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
+**Scout integration:** `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. When the **Verification Gate** is enabled (config `SCOUT_VERIFICATION_GATE_ENABLED`), Scout runs `verify_bundles()` first; bundles that fail verification are quarantined (with `reason_codes` in payload) and only passing bundles are stored. See [Discovery Scout](discovery_scout.md#verification-optional-m3-issue-278). Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
 
 **When populated by the Extractor:** When the optional [Evidence Extractor](discovery_scout.md#optional-extractor-m4-issue-277) is enabled (config `SCOUT_RUN_EXTRACTOR` or `run_extractor=True`), each bundle's `structured_payload` is populated with **ExtractionResult** shape: `company` (normalized company object), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). The Extractor does not derive signals; it emits only core-event types (validated against core taxonomy) and all outputs are source-backed (fields/events mapped to source_refs). See `app/extractor/schemas.py`.
 
