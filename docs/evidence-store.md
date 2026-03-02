@@ -1,6 +1,6 @@
 # Evidence Store — Schema and Repository
 
-This document describes the **immutable Evidence Store** for Scout (LLM Discovery) outputs: tables, versioning, and the read-only Evidence Repository. It implements [GitHub issue #276](https://github.com/Disentangled-Tech/SignalForge/issues/276) and aligns with the [SignalForge Architecture Contract](SignalForge%20Architecture%20Contract) (Evidence = Core; pack-agnostic). The store is a **separate lineage** from the ingest/derive pipeline: it does not write to `signal_events`, `signal_instances`, or companies.
+This document describes the **immutable Evidence Store** for Scout (LLM Discovery) outputs: tables, versioning, and the read-only Evidence Repository. It implements [GitHub issue #276](https://github.com/Disentangled-Tech/SignalForge/issues/276) and aligns with the [SignalForge Architecture Contract](SignalForge%20Architecture%20Contract) (Evidence = Core; pack-agnostic). The store is a **separate lineage** from the ingest/derive pipeline: it does not write to `signal_events`, `signal_instances`, or companies. Monitoring and diff detection (e.g. the Diff-Based Monitor, see [monitor.md](monitor.md)) are also Core-owned and pack-agnostic; they do not use the Evidence Store but share the same Core boundary.
 
 ---
 
