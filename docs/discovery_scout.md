@@ -9,7 +9,8 @@ The **Discovery Scout** is an LLM-powered flow that produces **Evidence Bundles 
 3. **Page fetch** — Fetches pages from allowed sources only, with a configurable page limit.
 4. **LLM extraction** — Calls the LLM with a prompt that requests structured **Evidence Bundle** output (citations, hypothesis, missing information).
 5. **Validation** — Parses and validates output against the strict `EvidenceBundle` schema; citation rule: when `why_now_hypothesis` is non-empty, `evidence` must be non-empty.
-6. **Persistence** — Writes only to scout-specific tables (`scout_runs`, `scout_evidence_bundles`). Raw model output and run metadata (model version, tokens, latency) are stored for audit.
+6. **Verification (optional)** — When the verification gate is enabled, each validated bundle (and optional structured payload) is checked against pack-agnostic fact and event rules. Bundles that fail are quarantined with structured reason codes and are **not** stored; only passing bundles are sent to the Evidence Store. When the gate is disabled, all validated bundles proceed to persistence. See [Evidence Store — Verification Gate](evidence-store.md#62-verification-gate-issue-278).
+7. **Persistence** — Writes only to scout-specific tables (`scout_runs`, `scout_evidence_bundles`). Raw model output and run metadata (model version, tokens, latency) are stored for audit. Evidence bundles that passed validation (and verification when enabled) are written to the Evidence Store via `store_evidence_bundle`.
 
 ## What the Scout Does Not Do
 
@@ -55,12 +56,13 @@ When enabled, the Scout run calls the **Evidence Extractor** per validated bundl
 - **Override:** The service `run()` (and `DiscoveryScoutService.run()`) accept an optional parameter `run_extractor: bool | None = None`. If provided (True/False), it overrides the config value for that run; if `None`, config is used. The internal `POST /internal/run_scout` endpoint does not pass `run_extractor`, so production behavior is entirely config-driven.
 - **Structured payload shape:** When the extractor runs, each bundle’s `structured_payload` in the Evidence Store has the ExtractionResult shape: `company` (normalized company), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). See `app/extractor/schemas.py` and [evidence-store.md](evidence-store.md).
 
-## Verification (optional) M3, Issue #278
+## Optional Verification Gate (Issue #278)
 
-When enabled, the Scout runs the **Verification Gate** after building validated bundles (and optional structured payloads) and **before** calling the Evidence Store. Bundles that fail verification are quarantined (with structured `reason_codes` in the quarantine payload) and are **not** stored in `evidence_bundles`; only passing bundles are passed to `store_evidence_bundle`. When disabled (default), all validated bundles are stored as before.
+When enabled, the Scout run validates each evidence bundle (and optional structured payload) against the pack-agnostic Verification Gate before writing to the Evidence Store. Bundles that fail verification are quarantined with structured `reason_codes` and are **not** stored; only passing bundles are sent to `store_evidence_bundle`.
 
-- **Config:** `SCOUT_VERIFICATION_GATE_ENABLED` in environment: set to `1`, `true`, or `yes` to enable; default is off (`0`).
-- **Quarantine:** Failed bundles are written to `evidence_quarantine` with `payload.reason_codes` (list of strings) and `reason` set to a human-readable summary. See [evidence-store.md](evidence-store.md).
+- **Config:** `SCOUT_VERIFICATION_GATE_ENABLED` in environment: set to `1`, `true`, or `yes` to enable; default is off (`0`). When off, all validated bundles are stored (current production behavior). When on, failed bundles go to `evidence_quarantine` with `payload.reason_codes` set.
+- **Quarantine:** Failed bundles are written to `evidence_quarantine` with `payload.reason_codes` (list of strings) and `reason` set to a human-readable summary. See [evidence-store.md §6.2](evidence-store.md#62-verification-gate-issue-278).
+- **Rules:** Event rules (event type in core taxonomy, timestamped citation, required fields) and fact rules (domain match, founder primary source, hiring jobs/ATS). See [evidence-store.md §6.2](evidence-store.md#62-verification-gate-issue-278) and `app/verification/`.
 
 ## Key Code Locations
 
@@ -78,6 +80,7 @@ DiscoveryScoutService, persistence models, and the internal API are added in ear
 - **Ingest → Derive → Score:** Writes to `companies`, `signal_events`, `signal_instances`, snapshots. Scout does **not** use this path.
 - **Scan:** Web scraping → `SignalRecord` → analysis/scoring for existing companies. Scout is independent; it discovers **candidates** and outputs evidence only.
 - A future step may feed Evidence Bundles into a separate “evidence-to-events” pipeline (out of scope for the current Evidence-Only milestone). **Any such evidence-to-events step that writes SignalEvent rows from extractor output must enforce workspace (and optionally pack) when resolving company and writing events;** failure to scope would allow cross-tenant data.
+
 ## Schema (M3)
 
 - **scout_runs:** run_id (UUID), workspace_id (nullable, FK to workspaces), started_at, finished_at, model_version, tokens_used, latency_ms, page_fetch_count, config_snapshot (JSONB), status, error_message.
