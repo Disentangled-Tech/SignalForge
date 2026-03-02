@@ -134,7 +134,7 @@ def run_daily_aggregation(
             )
             ranked_companies.append(
                 {
-                    "name": company.name,
+                    "company_name": company.name,
                     "composite": rs.composite,
                     "band": band,
                 }

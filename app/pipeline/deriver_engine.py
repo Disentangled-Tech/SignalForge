@@ -11,7 +11,6 @@ Issue #285, Milestone 6: derive uses core derivers only; pack deriver fallback r
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -33,25 +32,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PATTERN_SOURCE_FIELDS = ("title", "summary")
 
 
-def _build_passthrough_map(pack: Pack | None) -> dict[str, str]:
-    """Build event_type -> signal_id map from pack derivers.passthrough."""
-    if not pack or not pack.derivers:
-        return {}
-    # derivers.yaml: top-level "derivers" key, then "passthrough" list
-    inner = pack.derivers.get("derivers") or pack.derivers
-    passthrough = inner.get("passthrough") if isinstance(inner, dict) else []
-    if not isinstance(passthrough, list):
-        return {}
-    result: dict[str, str] = {}
-    for item in passthrough:
-        if isinstance(item, dict):
-            etype = item.get("event_type")
-            sid = item.get("signal_id")
-            if etype and sid:
-                result[str(etype)] = str(sid)
-    return result
-
-
 def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
     """Load core passthrough map and pattern derivers (Issue #285).
 
@@ -62,60 +42,7 @@ def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
         FileNotFoundError: When core derivers.yaml is missing.
         ValueError: When core derivers fail schema validation.
     """
-    if not pack or not pack.derivers:
-        return []
-    inner = pack.derivers.get("derivers") or pack.derivers
-    pattern_list = inner.get("pattern") if isinstance(inner, dict) else []
-    if not isinstance(pattern_list, list):
-        return []
-    result: list[dict[str, Any]] = []
-    for item in pattern_list:
-        if not isinstance(item, dict):
-            continue
-        sid = item.get("signal_id")
-        pat_str = item.get("pattern") or item.get("regex")
-        if not sid or not pat_str:
-            continue
-        try:
-            compiled = re.compile(pat_str)
-        except re.error:
-            logger.warning("Invalid pattern deriver regex for signal_id=%s, skipping", sid)
-            continue
-        source_fields = item.get("source_fields")
-        if source_fields is None:
-            source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
-        elif not isinstance(source_fields, list):
-            source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
-        else:
-            # Filter by schema-validated whitelist (title, summary, url, source)
-            source_fields = [f for f in source_fields if f in ALLOWED_PATTERN_SOURCE_FIELDS]
-            if not source_fields:
-                source_fields = list(_DEFAULT_PATTERN_SOURCE_FIELDS)
-        min_confidence = item.get("min_confidence")
-        if min_confidence is not None:
-            min_confidence = float(min_confidence)
-        result.append(
-            {
-                "signal_id": str(sid),
-                "compiled": compiled,
-                "source_fields": source_fields,
-                "min_confidence": min_confidence,
-            }
-        )
-    return result
-
-
-def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
-    """Load core passthrough map and pattern derivers (Issue #285).
-
-    Returns (passthrough_map, pattern_derivers) in the format expected by
-    _evaluate_event_derivers. Results come from lru_cached core_derivers module.
-
-    Raises:
-        FileNotFoundError: When core derivers.yaml is missing.
-        ValueError: When core derivers fail schema validation.
-    """
-    passthrough_map = get_core_passthrough_map()
+    passthrough_map = dict(get_core_passthrough_map())
     pattern_derivers: list[dict[str, Any]] = list(get_core_pattern_derivers())
     return passthrough_map, pattern_derivers
 
@@ -263,8 +190,9 @@ def _run_deriver_core(
             "error": "No passthrough or pattern derivers available",
         }
 
-    # Query SignalEvents: no pack filter (Issue #287 M2); company_id required; optional company_ids scope
-    q = db.query(SignalEvent).filter(SignalEvent.company_id.isnot(None))
+    # Query SignalEvents: no pack filter (Issue #287 M2); optional company_ids scope.
+    # Events with company_id=None are loaded and skipped in the loop (events_skipped).
+    q = db.query(SignalEvent)
     if company_ids is not None:
         q = q.filter(SignalEvent.company_id.in_(company_ids))
     events = q.all()

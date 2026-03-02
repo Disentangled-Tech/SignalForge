@@ -320,16 +320,16 @@ class TestRunDeriver:
         assert len(instances) == 3
         signal_ids = {i.signal_id for i in instances}
         assert signal_ids == {"funding_raised", "job_posted_engineering", "cto_role_posted"}
-        # Pack isolation: every instance must have pack_id equal to job pack_id (no cross-pack)
+        # Issue #287 M2: deriver writes to core pack only (job pack_id is audit only)
         for inst in instances:
-            assert inst.pack_id == fractional_cto_pack_id, (
-                f"SignalInstance pack_id must match job pack_id; got {inst.pack_id}"
+            assert inst.pack_id == core_pack_id, (
+                f"SignalInstance pack_id must be core pack; got {inst.pack_id}"
             )
 
     def test_deriver_output_instances_all_have_job_pack_id(
-        self, db: Session, fractional_cto_pack_id
+        self, db: Session, fractional_cto_pack_id, core_pack_id
     ) -> None:
-        """Regression: every SignalInstance created by deriver has pack_id == run_deriver pack_id."""
+        """Regression: every SignalInstance created by deriver has pack_id == core pack (Issue #287 M2)."""
         company = Company(
             name="PackScopeCo",
             domain="packscope.example.com",
@@ -349,8 +349,8 @@ class TestRunDeriver:
         instances = db.query(SignalInstance).filter(SignalInstance.entity_id == company.id).all()
         assert len(instances) == 2
         for inst in instances:
-            assert inst.pack_id == fractional_cto_pack_id, (
-                f"Deriver must only create instances for job pack_id; "
+            assert inst.pack_id == core_pack_id, (
+                f"Deriver must create instances for core pack only; "
                 f"entity_id={inst.entity_id} signal_id={inst.signal_id} pack_id={inst.pack_id}"
             )
 
