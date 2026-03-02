@@ -22,14 +22,14 @@ def save_snapshot(
     db: Session,
     company_id: int,
     url: str,
-    content_text: str,
+    content_text: str | None,
     content_hash: str | None = None,
     fetched_at: datetime | None = None,
     source_type: str | None = None,
 ) -> PageSnapshot:
     """Save or update snapshot for (company_id, url). Latest wins."""
     if content_hash is None:
-        content_hash = _compute_hash(content_text)
+        content_hash = _compute_hash(content_text or "")
     if fetched_at is None:
         fetched_at = datetime.now(UTC)
     existing = db.query(PageSnapshot).filter(

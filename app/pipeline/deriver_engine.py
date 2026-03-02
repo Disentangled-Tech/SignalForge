@@ -42,7 +42,7 @@ def _load_core_derivers() -> tuple[dict[str, str], list[dict[str, Any]]]:
         FileNotFoundError: When core derivers.yaml is missing.
         ValueError: When core derivers fail schema validation.
     """
-    passthrough_map = get_core_passthrough_map()
+    passthrough_map = dict(get_core_passthrough_map())
     pattern_derivers: list[dict[str, Any]] = list(get_core_pattern_derivers())
     return passthrough_map, pattern_derivers
 
@@ -190,8 +190,9 @@ def _run_deriver_core(
             "error": "No passthrough or pattern derivers available",
         }
 
-    # Query SignalEvents: no pack filter (Issue #287 M2); company_id required; optional company_ids scope
-    q = db.query(SignalEvent).filter(SignalEvent.company_id.isnot(None))
+    # Query SignalEvents: no pack filter (Issue #287 M2); optional company_ids scope.
+    # Events with company_id=None are loaded and skipped in the loop (events_skipped).
+    q = db.query(SignalEvent)
     if company_ids is not None:
         q = q.filter(SignalEvent.company_id.in_(company_ids))
     events = q.all()
