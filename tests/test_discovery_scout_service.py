@@ -10,9 +10,11 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.evidence.repository import list_bundles_by_run
+from app.models.evidence_quarantine import EvidenceQuarantine
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.services.scout.discovery_scout_service import run
+from app.verification.schemas import VerificationResult
 from tests.test_constants import TEST_WORKSPACE_ID
 
 
@@ -391,3 +393,106 @@ async def test_scout_run_with_extractor_on_stores_and_read_back_structured_paylo
     assert "core_event_candidates" in payload
     assert isinstance(payload["core_event_candidates"], list)
     assert "version" in payload
+
+
+def _two_bundles_llm_json() -> str:
+    """Return LLM response JSON with two valid EvidenceBundles (for M3 verification gate test)."""
+    return json.dumps(
+        {
+            "bundles": [
+                {
+                    "candidate_company_name": "Pass Co",
+                    "company_website": "https://pass.example.com",
+                    "why_now_hypothesis": "Seed round.",
+                    "evidence": [
+                        {
+                            "url": "https://pass.example.com/news",
+                            "quoted_snippet": "Seed round.",
+                            "timestamp_seen": "2025-02-27T12:00:00Z",
+                            "source_type": "news",
+                            "confidence_score": 0.9,
+                        }
+                    ],
+                    "missing_information": [],
+                },
+                {
+                    "candidate_company_name": "Fail Co",
+                    "company_website": "https://fail.example.com",
+                    "why_now_hypothesis": "Hiring.",
+                    "evidence": [
+                        {
+                            "url": "https://fail.example.com/jobs",
+                            "quoted_snippet": "CTO role.",
+                            "timestamp_seen": "2025-02-27T12:00:00Z",
+                            "source_type": "careers",
+                            "confidence_score": 0.9,
+                        }
+                    ],
+                    "missing_information": [],
+                },
+            ]
+        }
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_scout_run_with_verification_enabled_quarantines_failures_stores_passing(
+    db: Session,
+) -> None:
+    """M3: With verification gate enabled, failing bundle is quarantined with reason_codes; only passing stored."""
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Verification WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
+    # When verify_bundles returns one pass and one fail, Scout must quarantine the failed and store only the passing.
+    def mock_verify_bundles(bundles, structured_payloads=None):
+        from app.verification.service import verify_bundles as real_verify_bundles
+
+        results = real_verify_bundles(bundles, structured_payloads)
+        # Force second bundle to fail so we assert quarantine + single stored bundle
+        if len(results) >= 2:
+            results = [
+                results[0],
+                VerificationResult(passed=False, reason_codes=["EVENT_TYPE_UNKNOWN"]),
+            ]
+        return results
+
+    settings = MagicMock()
+    settings.scout_source_allowlist = []
+    settings.scout_source_denylist = []
+    settings.scout_run_extractor = False
+    settings.scout_verification_gate_enabled = True
+
+    with patch(
+        "app.services.scout.discovery_scout_service.get_settings",
+        return_value=settings,
+    ), patch(
+        "app.services.scout.discovery_scout_service.verify_bundles",
+        side_effect=mock_verify_bundles,
+    ):
+        run_id, bundles, _ = await _run_with_mocks(
+            db,
+            workspace_id=ws.id,
+            seed_urls=["https://example.com"],
+            llm_response=_two_bundles_llm_json(),
+            run_extractor=False,
+        )
+
+    # Scout returns both validated bundles to caller; store path only persists passing
+    assert len(bundles) == 2
+
+    # Evidence store: only the first (passing) bundle was stored
+    stored = list_bundles_by_run(db, run_id)
+    assert len(stored) == 1
+    assert stored[0].structured_payload is None  # run_extractor=False
+
+    # One quarantine row with reason_codes
+    quarantine_rows = db.query(EvidenceQuarantine).all()
+    assert len(quarantine_rows) == 1
+    assert quarantine_rows[0].payload.get("reason_codes") == ["EVENT_TYPE_UNKNOWN"]
+    assert quarantine_rows[0].payload.get("bundle_index") == 1
+    assert "Fail Co" in str(quarantine_rows[0].payload.get("bundle", {}).get("candidate_company_name", ""))

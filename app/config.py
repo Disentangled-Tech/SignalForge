@@ -82,6 +82,8 @@ class Settings:
     scout_source_denylist: list[str] = ()  # denylist takes precedence; e.g. ["blocked.com"]
     # M4 (Issue #277): when True, run Extractor per bundle and pass structured_payloads to store
     scout_run_extractor: bool = False
+    # M3 (Issue #278): when True, run Verification Gate before store; failed bundles quarantined
+    scout_verification_gate_enabled: bool = False
 
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", self.app_name)
@@ -164,3 +166,5 @@ class Settings:
         self.scout_source_denylist = [s.strip().lower() for s in _deny.split(",") if s.strip()]
         _run_ext = os.getenv("SCOUT_RUN_EXTRACTOR", "0").strip().lower()
         self.scout_run_extractor = _run_ext in ("1", "true", "yes")
+        _verif = os.getenv("SCOUT_VERIFICATION_GATE_ENABLED", "0").strip().lower()
+        self.scout_verification_gate_enabled = _verif in ("1", "true", "yes")

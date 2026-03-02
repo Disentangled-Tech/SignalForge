@@ -69,7 +69,7 @@ Evidence is immutable and must:
 	•	Include quoted snippets
 	•	Be versioned against core taxonomy/derivers
 
-Evidence must never contain pack-specific logic. The Evidence Store (see docs/evidence-store.md) implements this: immutable bundles versioned against core taxonomy/derivers at write time; pack_id on bundles is analytics-only.
+Evidence must never contain pack-specific logic. The Evidence Store (see docs/evidence-store.md) implements this: immutable bundles versioned against core taxonomy/derivers at write time; pack_id on bundles is analytics-only. The Verification Gate is pack-agnostic and runs before evidence is stored (and before any evidence-to-events step); see docs/evidence-store.md §6.2.
 
 ⸻
 

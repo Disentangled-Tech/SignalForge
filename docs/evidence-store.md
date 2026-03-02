@@ -92,6 +92,8 @@ Items that failed validation (e.g. schema mismatch, length). No FK to bundles; p
 | reason | text (nullable) | Human-readable reason |
 | created_at | timestamptz | Insert time |
 
+When quarantine is triggered by the **Verification Gate** (Issue #278), `payload` must include **`reason_codes`**: a list of strings (e.g. `EVENT_TYPE_UNKNOWN`, `EVENT_MISSING_TIMESTAMPED_CITATION`). The `reason` column is set to a human-readable summary (e.g. `"; ".join(reason_codes)`). A future migration may add an optional `reason_codes` column for filtering; until then, consumers read `payload.get("reason_codes")`.
+
 **Location:** `app/models/evidence_quarantine.py`
 
 ---
@@ -142,7 +144,7 @@ Read schemas: `EvidenceBundleRead`, `EvidenceSourceRead`, `EvidenceClaimRead` in
 
 - **`store_evidence_bundle(db, run_id, scout_version, bundles, run_context, raw_model_output, ...)`** — Inserts one `evidence_bundles` row per Scout `EvidenceBundle`; for each evidence item, get-or-create `evidence_sources` by `(content_hash, url)` and link via `evidence_bundle_sources`; optionally insert `evidence_claims` from structured payload. Invalid inputs (e.g. length mismatch) are written to `evidence_quarantine` instead of bundles. Insert-only; no UPDATE on bundles.
 
-**Scout integration:** `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
+**Scout integration:** `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. When the **Verification Gate** is enabled (config `SCOUT_VERIFICATION_GATE_ENABLED`), Scout runs `verify_bundles()` first; bundles that fail verification are quarantined (with `reason_codes` in payload) and only passing bundles are stored. See [Discovery Scout](discovery_scout.md#verification-optional-m3-issue-278). Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
 
 **When populated by the Extractor:** When the optional [Evidence Extractor](discovery_scout.md#optional-extractor-m4-issue-277) is enabled (config `SCOUT_RUN_EXTRACTOR` or `run_extractor=True`), each bundle's `structured_payload` is populated with **ExtractionResult** shape: `company` (normalized company object), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). The Extractor does not derive signals; it emits only core-event types (validated against core taxonomy) and all outputs are source-backed (fields/events mapped to source_refs). See `app/extractor/schemas.py`.
 
@@ -156,6 +158,26 @@ The `structured_payload` column accepts any JSON-serializable dict. For producer
 - **claims** — List of `ExtractionClaim` (entity_type, field, value, source_refs, confidence). When present, the store inserts `evidence_claims` rows and resolves `source_refs` (0-based indices into the bundle's evidence) to `evidence_sources.id`.
 
 Serializing with `StructuredExtractionPayload.model_dump(mode="json")` yields a dict that `store_evidence_bundle` accepts and that matches the store's expectations for `payload["claims"]` (see `app/evidence/store.py`). Out-of-range `source_refs` are ignored; only indices `0 <= ref < len(evidence)` are resolved to source IDs.
+
+### 6.2 Verification Gate (Issue #278)
+
+Before evidence enters the store, bundles can be validated by a **Verification Gate** that enforces pack-agnostic fact and event rules. The gate runs only when explicitly enabled (Scout config or internal store request). It is owned by Core per the [SignalForge Architecture Contract](SignalForge%20Architecture%20Contract) (§2 Core Responsibilities: Verification & grounding rules).
+
+#### When it runs
+
+- **Scout path:** When the verification gate is enabled (e.g. `SCOUT_VERIFICATION_GATE_ENABLED`), the Scout service runs `verify_bundles()` after validation and optional extraction. Bundles that fail are quarantined (with structured reason codes); only passing bundles are passed to `store_evidence_bundle`. When the gate is disabled, all validated bundles go to the store as before.
+- **Internal store path:** `POST /internal/evidence/store` can request verification via a body flag; when set, the same verify → quarantine failures → store only passing flow applies.
+
+#### Rules applied
+
+- **Event rules:** Event type must be in the core taxonomy; each event must have at least one timestamped citation (source_ref to evidence with `timestamp_seen`); required fields (event_type, confidence) must be present. See `app/verification/rules.py` and `VerificationReasonCode` in `app/verification/schemas.py` for reason codes (e.g. `EVENT_TYPE_UNKNOWN`, `EVENT_MISSING_TIMESTAMPED_CITATION`, `EVENT_MISSING_REQUIRED_FIELDS`).
+- **Fact rules:** Website domain must match at least one cited evidence URL; founder facts require ≥1 primary source; hiring-related events require a valid jobs page or ATS source. Reason codes include `FACT_DOMAIN_MISMATCH`, `FACT_FOUNDER_MISSING_PRIMARY_SOURCE`, `FACT_HIRING_MISSING_JOBS_OR_ATS`.
+
+#### Quarantine payload shape (verification-triggered)
+
+When the gate quarantines a bundle, the same `evidence_quarantine` row is used: `reason` is a human-readable summary (e.g. concatenation of reason codes), and **`payload` must include `reason_codes`** (list of strings) for structured filtering and review. Existing consumers that only read `reason` remain supported; the Quarantine review API exposes `reason_codes` from the payload when present (see §7).
+
+**Location:** `app/verification/` (service, rules, schemas); orchestration in Scout and internal API.
 
 ---
 
