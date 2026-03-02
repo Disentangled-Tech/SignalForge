@@ -142,6 +142,17 @@ Read schemas: `EvidenceBundleRead`, `EvidenceSourceRead`, `EvidenceClaimRead` in
 
 Scout integration: `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
 
+### 6.1 Structured payload contract (recommended producer schema)
+
+The `structured_payload` column accepts any JSON-serializable dict. For producers (e.g. extractors) that want validated, store-compatible output, the **recommended contract** is **`StructuredExtractionPayload`** from `app/schemas/core_events.py`. It defines:
+
+- **version** — Payload version (e.g. `"1.0"`) for evolution.
+- **events** — List of `CoreEventCandidate` (core taxonomy event types only).
+- **company** / **persons** — Normalized entity shapes.
+- **claims** — List of `ExtractionClaim` (entity_type, field, value, source_refs, confidence). When present, the store inserts `evidence_claims` rows and resolves `source_refs` (0-based indices into the bundle's evidence) to `evidence_sources.id`.
+
+Serializing with `StructuredExtractionPayload.model_dump(mode="json")` yields a dict that `store_evidence_bundle` accepts and that matches the store's expectations for `payload["claims"]` (see `app/evidence/store.py`). Out-of-range `source_refs` are ignored; only indices `0 <= ref < len(evidence)` are resolved to source IDs.
+
 ---
 
 ## 7. References
