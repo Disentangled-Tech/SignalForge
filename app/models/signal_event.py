@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
+if TYPE_CHECKING:
+    from app.models.company import Company
+    from app.models.evidence_bundle import EvidenceBundle
 
 
 class SignalEvent(Base):
@@ -42,5 +47,14 @@ class SignalEvent(Base):
         ForeignKey("signal_packs.id", ondelete="SET NULL"),
         nullable=True,
     )
+    evidence_bundle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_bundles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     company: Mapped[Company | None] = relationship("Company", back_populates="signal_events")
+    evidence_bundle: Mapped[EvidenceBundle | None] = relationship(
+        "EvidenceBundle",
+        foreign_keys=[evidence_bundle_id],
+    )

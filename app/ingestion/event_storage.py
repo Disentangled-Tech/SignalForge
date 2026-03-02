@@ -27,6 +27,7 @@ def store_signal_event(
     raw: dict | None = None,
     confidence: float | None = 0.7,
     pack_id: UUID | None = None,
+    evidence_bundle_id: UUID | None = None,
 ) -> SignalEvent | None:
     """Store a signal event with deduplication.
 
@@ -52,6 +53,9 @@ def store_signal_event(
         Additional event fields.
     pack_id : UUID | None
         Signal pack UUID (Issue #189). When None, event is legacy/unassigned.
+    evidence_bundle_id : UUID | None
+        FK to evidence_bundles.id (Watchlist Seeder M1). When set, event
+        originated from that evidence bundle.
 
     Returns
     -------
@@ -75,6 +79,12 @@ def store_signal_event(
             )
             return None
 
+    if evidence_bundle_id is not None:
+        logger.debug(
+            "Storing signal event with evidence_bundle_id=%s",
+            evidence_bundle_id,
+        )
+
     event = SignalEvent(
         company_id=company_id,
         source=source,
@@ -87,6 +97,7 @@ def store_signal_event(
         raw=raw,
         confidence=confidence,
         pack_id=pack_id,
+        evidence_bundle_id=evidence_bundle_id,
     )
     db.add(event)
     db.commit()
