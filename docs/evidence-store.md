@@ -161,7 +161,19 @@ Serializing with `StructuredExtractionPayload.model_dump(mode="json")` yields a 
 
 ---
 
-## 7. References
+## 7. Quarantine review API (M4, Issue #278)
+
+**Endpoints:** `GET /internal/evidence/quarantine` (list) and `GET /internal/evidence/quarantine/{id}` (detail). Both require the **X-Internal-Token** header; they are internal-only and intended for cron/scripts, not end-user or tenant-facing APIs.
+
+**Cross-tenant semantics:** The `evidence_quarantine` table has **no workspace column**. List and get return rows from the entire table with no workspace or tenant filter. Product may add workspace scoping later (e.g. store `workspace_id` in payload or add a column) if filtering by tenant is required.
+
+**List query params:** `limit` (1–500), `offset`, optional `reason_substring` (case-insensitive filter on `reason`), optional `since` (ISO 8601; only entries with `created_at >= since`). Response shape: `{ "entries": [...], "count": N }`. When the verification gate quarantines a bundle, `payload` includes `reason_codes` (list of strings); the read schema exposes them as `reason_codes` on each entry.
+
+**Payload sensitivity:** Quarantine `payload` can contain run context, bundle content, company names, and quoted snippets. It is intended only for internal/cron use with the internal token; do not expose the quarantine API to untrusted or tenant-facing callers without adding filtering and access control.
+
+---
+
+## 8. References
 
 - [Discovery Scout](discovery_scout.md) — Scout flow and Evidence Bundle output schema
 - [SignalForge Architecture Contract](SignalForge%20Architecture%20Contract) — §2.1 Evidence (immutable, versioned, pack-agnostic)

@@ -62,6 +62,21 @@ class EvidenceClaimRead(BaseModel):
     confidence: float | None = Field(None)
 
 
+class QuarantineEntryRead(BaseModel):
+    """Read DTO for one evidence_quarantine entry (M4, Issue #278)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID = Field(..., description="Quarantine row primary key")
+    payload: dict = Field(..., description="Quarantined payload (JSONB)")
+    reason: str | None = Field(None, description="Human-readable reason")
+    reason_codes: list[str] | None = Field(
+        None,
+        description="Structured reason codes from payload.reason_codes when present",
+    )
+    created_at: datetime = Field(..., description="Insert timestamp")
+
+
 class EvidenceBundleRead(BaseModel):
     """Read DTO for one evidence bundle (repository). Full row; no pack logic."""
 
