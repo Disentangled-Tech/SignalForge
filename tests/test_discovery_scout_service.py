@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
+from app.evidence.repository import list_bundles_by_run
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.services.scout.discovery_scout_service import run
@@ -57,6 +58,7 @@ async def _run_with_mocks(
     denylist: list[str] | None = None,
     allowlist: list[str] | None = None,
     page_fetch_limit: int = 10,
+    run_extractor: bool | None = None,
 ):
     """Run scout with mocked fetch and LLM."""
     if llm_response is None:
@@ -83,6 +85,7 @@ async def _run_with_mocks(
             fetch_page=fake_fetch,
             llm_provider=mock_llm,
             page_fetch_limit=page_fetch_limit,
+            run_extractor=run_extractor,
         )
 
 
@@ -241,3 +244,117 @@ async def test_output_schema_has_no_pack_specific_fields() -> None:
     assert not hasattr(b, "signal_id")
     assert not hasattr(b, "event_type")
     assert not hasattr(b, "pack_id")
+
+
+# --- M4: Optional Scout integration (Extractor) ---
+
+
+@pytest.mark.asyncio
+async def test_scout_run_with_extractor_disabled_calls_store_with_structured_payloads_none() -> None:
+    """With run_extractor=False (explicit), store_evidence_bundle receives structured_payloads=None.
+
+    Passing run_extractor=False makes the test independent of SCOUT_RUN_EXTRACTOR env.
+    """
+    mock_db = _mock_db_session()
+    store_kwargs: list[dict] = []
+
+    def capture_store(*args: object, **kwargs: object) -> list:
+        store_kwargs.append(dict(kwargs))
+        return []
+
+    with patch(
+        "app.services.scout.discovery_scout_service.store_evidence_bundle",
+        side_effect=capture_store,
+    ):
+        await _run_with_mocks(
+            mock_db,
+            seed_urls=["https://example.com/one"],
+            run_extractor=False,
+        )
+    assert len(store_kwargs) == 1
+    assert store_kwargs[0].get("structured_payloads") is None
+
+
+@pytest.mark.asyncio
+async def test_scout_run_with_extractor_enabled_calls_store_with_structured_payloads() -> None:
+    """With run_extractor=True, store_evidence_bundle receives structured_payloads list (ExtractionResult shape)."""
+    mock_db = _mock_db_session()
+    store_kwargs: list[dict] = []
+
+    def capture_store(*args: object, **kwargs: object) -> list:
+        store_kwargs.append(dict(kwargs))
+        return []
+
+    with patch(
+        "app.services.scout.discovery_scout_service.store_evidence_bundle",
+        side_effect=capture_store,
+    ):
+        run_id, bundles, _ = await _run_with_mocks(
+            mock_db,
+            seed_urls=["https://example.com"],
+            run_extractor=True,
+        )
+    assert len(bundles) == 1, "expected one validated bundle"
+    assert len(store_kwargs) == 1, "store_evidence_bundle should be called once"
+    payloads = store_kwargs[0].get("structured_payloads")
+    assert payloads is not None
+    assert len(payloads) == 1
+    one = payloads[0]
+    assert "company" in one
+    assert "core_event_candidates" in one
+    assert "version" in one
+    assert one["company"] is not None
+    assert isinstance(one["core_event_candidates"], list)
+    assert one["company"].get("name") == "Acme Inc"
+    assert one["company"].get("website_url") == "https://acme.com"
+
+
+@pytest.mark.asyncio
+async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_none_payloads() -> None:
+    """When run_extractor=True but no bundles validated, store_evidence_bundle receives structured_payloads=None."""
+    mock_db = _mock_db_session()
+    bad_json = json.dumps({"bundles": []})
+    store_kwargs: list[dict] = []
+
+    def capture_store(*args: object, **kwargs: object) -> list:
+        store_kwargs.append(dict(kwargs))
+        return []
+
+    with patch(
+        "app.services.scout.discovery_scout_service.store_evidence_bundle",
+        side_effect=capture_store,
+    ):
+        await _run_with_mocks(
+            mock_db,
+            llm_response=bad_json,
+            seed_urls=[],
+            run_extractor=True,
+        )
+    assert len(store_kwargs) == 1
+    assert store_kwargs[0].get("structured_payloads") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_scout_run_with_extractor_on_stores_and_read_back_structured_payload(
+    db: Session,
+) -> None:
+    """Integration: run with run_extractor=True persists ExtractionResult to store; read back matches."""
+    run_id, bundles, _ = await _run_with_mocks(
+        db,
+        seed_urls=["https://example.com"],
+        run_extractor=True,
+    )
+    assert len(bundles) == 1
+
+    stored = list_bundles_by_run(db, run_id)
+    assert len(stored) == 1
+    payload = stored[0].structured_payload
+    assert payload is not None
+    assert "company" in payload
+    assert payload["company"] is not None
+    assert payload["company"].get("name") == "Acme Inc"
+    assert payload["company"].get("website_url") == "https://acme.com"
+    assert "core_event_candidates" in payload
+    assert isinstance(payload["core_event_candidates"], list)
+    assert "version" in payload

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.evidence.store import store_evidence_bundle
+from app.extractor.service import extract
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
@@ -63,6 +64,7 @@ async def run(
     fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
     llm_provider: LLMProvider | None = None,
     workspace_id: uuid.UUID | None = None,
+    run_extractor: bool | None = None,
 ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
     """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
 
@@ -80,6 +82,7 @@ async def run(
         denylist: Source denylist. If None, uses settings.scout_source_denylist.
         fetch_page: Async callable(url) -> str | None. If None, uses app.services.fetcher.fetch_page.
         llm_provider: LLM provider. If None, uses get_llm_provider(role=ModelRole.SCOUT).
+        run_extractor: If True/False, override settings.scout_run_extractor (M4). If None, use config.
 
     Returns:
         (run_id, list of validated EvidenceBundles, metadata).
@@ -171,8 +174,15 @@ async def run(
     db.flush()
 
     # Persist to Evidence Store (M6): immutable bundles with core versioning; same transaction.
+    # M4: optionally run Extractor per bundle and pass structured_payloads (default off).
     run_context = {"run_id": run_id, **config_snapshot}
     raw_model_output = {"raw_response": raw_response, "parsed_bundles": bundle_dicts}
+    use_extractor = run_extractor if run_extractor is not None else settings.scout_run_extractor
+    structured_payloads: list[dict | None] | None = None
+    if use_extractor and validated:
+        structured_payloads = [
+            extract(vb).model_dump(mode="json") for vb in validated
+        ]
     store_evidence_bundle(
         db,
         run_id=run_id,
@@ -180,7 +190,7 @@ async def run(
         bundles=validated,
         run_context=run_context,
         raw_model_output=raw_model_output,
-        structured_payloads=None,
+        structured_payloads=structured_payloads,
         pack_id=None,
     )
     db.commit()
@@ -211,6 +221,7 @@ class DiscoveryScoutService:
         fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
         llm_provider: LLMProvider | None = None,
         workspace_id: uuid.UUID | None = None,
+        run_extractor: bool | None = None,
     ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
         """Run discovery scout. See module-level run() for full doc."""
         return await run(
@@ -218,11 +229,12 @@ class DiscoveryScoutService:
             icp_definition,
             exclusion_rules=exclusion_rules,
             pack_id=pack_id,
-        page_fetch_limit=page_fetch_limit,
-        seed_urls=seed_urls,
-        allowlist=allowlist,
-        denylist=denylist,
-        fetch_page=fetch_page,
-        llm_provider=llm_provider,
-        workspace_id=workspace_id,
-    )
+            page_fetch_limit=page_fetch_limit,
+            seed_urls=seed_urls,
+            allowlist=allowlist,
+            denylist=denylist,
+            fetch_page=fetch_page,
+            llm_provider=llm_provider,
+            workspace_id=workspace_id,
+            run_extractor=run_extractor,
+        )
