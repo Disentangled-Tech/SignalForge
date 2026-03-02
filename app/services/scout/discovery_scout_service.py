@@ -196,18 +196,12 @@ async def run(
             if not r.passed:
                 quarantine_verification_failure(
                     db,
-                    payload={
-                        "run_id": run_id,
-                        "scout_version": model_version,
-                        "bundle_index": i,
-                        "bundle": validated[i].model_dump(mode="json"),
-                        "run_context": run_context,
-                        "raw_model_output": raw_model_output,
-                        "structured_payload": (
-                            structured_payloads[i] if structured_payloads and i < len(structured_payloads) else None
-                        ),
-                    },
-                    reason="; ".join(r.reason_codes),
+                    run_id=run_id,
+                    bundle_index=i,
+                    bundle_dict=validated[i].model_dump(mode="json"),
+                    structured_payload=(
+                        structured_payloads[i] if structured_payloads and i < len(structured_payloads) else None
+                    ),
                     reason_codes=r.reason_codes,
                 )
         bundles_to_store = [validated[i] for i in passing_indices]

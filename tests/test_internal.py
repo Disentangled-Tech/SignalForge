@@ -592,13 +592,17 @@ class TestRunDailyAggregation:
 
     @patch("app.pipeline.executor.run_stage")
     def test_run_daily_aggregation_returns_expected_shape(self, mock_run_stage, client: TestClient):
-        """POST /internal/run_daily_aggregation returns status, job_run_id, inserted, companies_scored, ranked_count."""
+        """POST /internal/run_daily_aggregation returns status, job_run_id, inserted, companies_scored, ranked_count, ranked_companies."""
         mock_run_stage.return_value = {
             "status": "completed",
             "job_run_id": 100,
             "ingest_result": {"inserted": 5},
             "score_result": {"companies_scored": 3},
             "ranked_count": 2,
+            "ranked_companies": [
+                {"company_name": "Acme Corp", "composite": 75, "band": "allow"},
+                {"company_name": "Beta Inc", "composite": 60, "band": "nurture"},
+            ],
             "error": None,
         }
 
@@ -614,6 +618,11 @@ class TestRunDailyAggregation:
         assert data["inserted"] == 5
         assert data["companies_scored"] == 3
         assert data["ranked_count"] == 2
+        assert "ranked_companies" in data
+        assert len(data["ranked_companies"]) == 2
+        assert data["ranked_companies"][0]["company_name"] == "Acme Corp"
+        assert data["ranked_companies"][0]["composite"] == 75
+        assert data["ranked_companies"][0]["band"] == "allow"
         mock_run_stage.assert_called_once()
         assert mock_run_stage.call_args[1]["job_type"] == "daily_aggregation"
 
@@ -634,6 +643,7 @@ class TestRunDailyAggregation:
             "score_result": {"companies_scored": 8},
             # 8 companies scored; all 8 appear in ranked_count because threshold=0
             "ranked_count": 8,
+            "ranked_companies": [{"company_name": f"Co{i}", "composite": 50, "band": "allow"} for i in range(8)],
             "error": None,
         }
 
