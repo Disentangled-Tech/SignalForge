@@ -9,7 +9,7 @@ Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is 
 | **score** | `POST /internal/run_score` | Compute TRS + ESL using workspace pack **analysis config only** (weights, ESL); company eligibility for scoring is not narrowed by pack (Issue #290) | Upsert by `(company_id, as_of, pack_id)` |
 | **update_lead_feed** | `POST /internal/run_update_lead_feed` | Project `lead_feed` from snapshots | Upsert by `(workspace_id, entity_id, pack_id)` |
 
-**Separate from the pipeline:** The **LLM Discovery Scout** (`POST /internal/run_scout`) is an evidence-only flow: it produces Evidence Bundles and writes only to `scout_runs` and `scout_evidence_bundles`. It is not a stage, not workspace- or pack-scoped for storage, and does not write to companies or signal_events. See [discovery_scout.md](discovery_scout.md).
+**Separate from the pipeline:** The **LLM Discovery Scout** (`POST /internal/run_scout`) is an evidence-only flow: it produces Evidence Bundles and writes only to `scout_runs` and `scout_evidence_bundles`. It is not a stage, not workspace- or pack-scoped for storage, and does not write to companies or signal_events. See [discovery_scout.md](discovery_scout.md). The **Diff-Based Monitor** (`POST /internal/run_monitor` when implemented) is another separate flow: it produces `SignalEvent` rows with `source="page_monitor"` from page change detection; see [monitor.md](monitor.md).
 
 ## Pack selection
 
@@ -131,6 +131,19 @@ The **LLM Discovery Scout** is a **separate flow** outside the ingest → derive
 | **Purpose** | Candidate discovery and evidence collection; optional pack_id is for query emphasis hints only, not derivation or storage. |
 
 See [discovery_scout.md](discovery_scout.md) for inputs, output schema, allowlist/denylist config, and what Scout does not do.
+
+## Diff-Based Monitor (separate flow)
+
+The **Diff-Based Monitor** is a **separate flow** outside the ingest → derive → score pipeline. It is **not** a stage in `STAGE_REGISTRY` and is **not** part of `run_daily_aggregation`.
+
+| Aspect | Description |
+| ------ | ----------- |
+| **Entry** | `POST /internal/run_monitor` when implemented — requires `X-Internal-Token`. Optional `workspace_id`, `company_ids`. |
+| **Data model** | Robots-aware fetch → page snapshots → diff detection → LLM interpretation → Core Event candidates only (validated against core taxonomy). |
+| **Output** | `SignalEvent` rows with `source="page_monitor"` and deterministic `source_event_id`; events then flow through derive and score like other ingested events. |
+| **Purpose** | Detect content changes on company pages (blog, careers, press, pricing, docs/changelog) and emit pack-agnostic Core Event candidates; no pack_id in snapshot/diff/interpretation logic. |
+
+See [monitor.md](monitor.md) for scope, invariants, and relationship to Scan and Scout.
 
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 
