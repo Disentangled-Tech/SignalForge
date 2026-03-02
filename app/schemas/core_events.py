@@ -20,6 +20,8 @@ class CoreEventCandidate(BaseModel):
 
     event_type must be in core taxonomy. source_refs are 0-based indices
     into the evidence list (EvidenceBundle.evidence) for source-backed audit.
+    This is the canonical event shape; LLM Event Interpretation output maps to
+    CoreEventCandidate (Issue #281).
     """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)

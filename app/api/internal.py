@@ -462,9 +462,7 @@ async def run_watchlist_seed_endpoint(
 
     validate_uuid_param_or_422(pack_id, "pack_id")
     pack_uuid = UUID(pack_id.strip()) if pack_id and pack_id.strip() else None
-    ws_id = (
-        str(body.workspace_id) if body.workspace_id is not None else DEFAULT_WORKSPACE_ID
-    )
+    ws_id = str(body.workspace_id) if body.workspace_id is not None else DEFAULT_WORKSPACE_ID
 
     try:
         result = run_stage(
@@ -492,6 +490,68 @@ async def run_watchlist_seed_endpoint(
     except Exception as exc:
         logger.exception("Internal run_watchlist_seed failed")
         return {"status": "failed", "error": str(exc)}
+
+
+@router.post("/run_monitor")
+async def run_monitor_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID; uses default if omitted (Phase 3)",
+    ),
+    company_ids: str | None = Query(
+        None,
+        description="Optional comma-separated company IDs (e.g. 1,2,3). If omitted, all companies with website_url.",
+    ),
+):
+    """Trigger diff-based monitor: fetch → snapshots → diff → LLM interpret → persist (M6, Issue #280).
+
+    Robots-aware fetch of blog, careers, press, pricing, docs/changelog; detects changes,
+    interprets via LLM, validates against core taxonomy, and persists candidates as
+    SignalEvents with source='page_monitor'. Requires X-Internal-Token.
+
+    Returns status, change_events_count, events_stored, events_skipped_duplicate,
+    companies_processed.
+    """
+    from app.monitor.runner import run_monitor_full
+
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    ws_id = workspace_id.strip() if workspace_id and workspace_id.strip() else None
+
+    company_ids_list: list[int] | None = None
+    if company_ids and company_ids.strip():
+        try:
+            company_ids_list = [int(x.strip()) for x in company_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail="company_ids must be comma-separated integers",
+            ) from None
+
+    try:
+        result = await run_monitor_full(
+            db,
+            workspace_id=ws_id,
+            company_ids=company_ids_list,
+        )
+        return {
+            "status": result["status"],
+            "change_events_count": result["change_events_count"],
+            "events_stored": result["events_stored"],
+            "events_skipped_duplicate": result["events_skipped_duplicate"],
+            "companies_processed": result["companies_processed"],
+        }
+    except Exception as exc:
+        logger.exception("Internal run_monitor failed")
+        return {
+            "status": "failed",
+            "change_events_count": 0,
+            "events_stored": 0,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 0,
+            "error": str(exc),
+        }
 
 
 @router.post("/run_scout")
