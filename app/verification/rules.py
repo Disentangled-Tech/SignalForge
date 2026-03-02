@@ -62,7 +62,9 @@ def check_event_timestamped_citation(
         if not isinstance(source_refs, list):
             reason_codes.append(VerificationReasonCode.EVENT_MISSING_TIMESTAMPED_CITATION)
             break
-        has_valid_ref = any(isinstance(i, int) and 0 <= i < evidence_len for i in source_refs)
+        has_valid_ref = any(
+            isinstance(i, int) and 0 <= i < evidence_len for i in source_refs
+        )
         if not has_valid_ref:
             reason_codes.append(VerificationReasonCode.EVENT_MISSING_TIMESTAMPED_CITATION)
             break
@@ -83,7 +85,9 @@ def check_event_required_fields(
         event_type = event.get("event_type")
         confidence = event.get("confidence")
         has_event_type = (
-            event_type is not None and isinstance(event_type, str) and event_type.strip() != ""
+            event_type is not None
+            and isinstance(event_type, str)
+            and event_type.strip() != ""
         )
         # Reject bool (subclass of int); require numeric only per CoreEventCandidate
         has_confidence = (
