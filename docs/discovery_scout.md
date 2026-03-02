@@ -46,6 +46,14 @@ No `signal_id`, `event_type`, or pack-specific fields. JSON schema is available 
 - **Internal endpoint (when implemented):** `POST /internal/run_scout` (or `/internal/run_discovery_scout`) with body: ICP, exclusion rules, optional `pack_id`, optional `page_fetch_limit`. Requires `X-Internal-Token` header.
 - **Config:** Set `SCOUT_SOURCE_ALLOWLIST` and/or `SCOUT_SOURCE_DENYLIST` (comma-separated domains) in environment or via `app/config.py` to restrict which sources are fetched.
 
+## Optional Extractor (M4, Issue #277)
+
+When enabled, the Scout run calls the **Evidence Extractor** per validated bundle before persisting to the Evidence Store. The Extractor produces normalized entities (Company, Person) and Core Event candidates only—no signal derivation. Its output is written into each bundle’s `structured_payload` in the Evidence Store.
+
+- **Config:** `SCOUT_RUN_EXTRACTOR` in environment: set to `1`, `true`, or `yes` to enable; default is off (`0`). When off, `store_evidence_bundle` receives `structured_payloads=None` (current production behavior).
+- **Override:** The service `run()` (and `DiscoveryScoutService.run()`) accept an optional parameter `run_extractor: bool | None = None`. If provided (True/False), it overrides the config value for that run; if `None`, config is used. The internal `POST /internal/run_scout` endpoint does not pass `run_extractor`, so production behavior is entirely config-driven.
+- **Structured payload shape:** When the extractor runs, each bundle’s `structured_payload` in the Evidence Store has the ExtractionResult shape: `company` (normalized company), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). See `app/extractor/schemas.py` and [evidence-store.md](evidence-store.md).
+
 ## Key Code Locations
 
 | Area | Location |
@@ -53,7 +61,7 @@ No `signal_id`, `event_type`, or pack-specific fields. JSON schema is available 
 | Schemas | `app/schemas/scout.py` — `EvidenceBundle`, `EvidenceItem`, `ScoutRunInput`, `RunScoutRequest`, `ScoutRunResult`, `ScoutRunMetadata`, `evidence_bundle_json_schema()` |
 | Source filter | `app/scout/sources.py` — `is_source_allowed()`, `filter_allowed_sources()` |
 | Query planner | `app/scout/query_planner.py` — `QueryPlanner`, `plan_queries()` |
-| Config | `app/config.py` — `scout_source_allowlist`, `scout_source_denylist` |
+| Config | `app/config.py` — `scout_source_allowlist`, `scout_source_denylist`, `scout_run_extractor` |
 
 DiscoveryScoutService, persistence models, and the internal API are added in earlier milestones (M2–M5). This doc describes the full design; see the implementation plan for step-by-step milestones.
 

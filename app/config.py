@@ -80,6 +80,8 @@ class Settings:
     # Scout (LLM Discovery) — source allowlist/denylist; empty allowlist = all allowed
     scout_source_allowlist: list[str] = ()  # e.g. ["example.com", "news.ycombinator.com"]
     scout_source_denylist: list[str] = ()  # denylist takes precedence; e.g. ["blocked.com"]
+    # M4 (Issue #277): when True, run Extractor per bundle and pass structured_payloads to store
+    scout_run_extractor: bool = False
 
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", self.app_name)
@@ -160,3 +162,5 @@ class Settings:
         self.scout_source_allowlist = [s.strip().lower() for s in _allow.split(",") if s.strip()]
         _deny = os.getenv("SCOUT_SOURCE_DENYLIST", "").strip()
         self.scout_source_denylist = [s.strip().lower() for s in _deny.split(",") if s.strip()]
+        _run_ext = os.getenv("SCOUT_RUN_EXTRACTOR", "0").strip().lower()
+        self.scout_run_extractor = _run_ext in ("1", "true", "yes")

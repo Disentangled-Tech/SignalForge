@@ -30,7 +30,7 @@ One row per evidence bundle from a Scout run. Append-only; no `updated_at`.
 | pack_id | UUID (nullable) | FK to signal_packs.id; **analytics-only**, no pack behavior in store |
 | run_context | JSONB (nullable) | e.g. `{"run_id": "...", "workspace_id": "..."}`; used for listing by run |
 | raw_model_output | JSONB (nullable) | Raw LLM output for audit |
-| structured_payload | JSONB (nullable) | Optional structured extraction (e.g. claims) |
+| structured_payload | JSONB (nullable) | Optional structured extraction (e.g. claims, or Extractor output—see below) |
 | created_at | timestamptz | Insert time |
 
 **Index:** `(core_taxonomy_version, core_derivers_version)` for version-based queries.
@@ -140,7 +140,9 @@ Read schemas: `EvidenceBundleRead`, `EvidenceSourceRead`, `EvidenceClaimRead` in
 
 - **`store_evidence_bundle(db, run_id, scout_version, bundles, run_context, raw_model_output, ...)`** — Inserts one `evidence_bundles` row per Scout `EvidenceBundle`; for each evidence item, get-or-create `evidence_sources` by `(content_hash, url)` and link via `evidence_bundle_sources`; optionally insert `evidence_claims` from structured payload. Invalid inputs (e.g. length mismatch) are written to `evidence_quarantine` instead of bundles. Insert-only; no UPDATE on bundles.
 
-Scout integration: `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
+**Scout integration:** `app/services/scout/discovery_scout_service.py` calls `store_evidence_bundle()` after persisting `ScoutRun` and `ScoutEvidenceBundle`. Optional internal endpoint: `POST /internal/evidence/store` accepts a Scout-run-shaped body for testing or non-Scout callers.
+
+**When populated by the Extractor:** When the optional [Evidence Extractor](discovery_scout.md#optional-extractor-m4-issue-277) is enabled (config `SCOUT_RUN_EXTRACTOR` or `run_extractor=True`), each bundle’s `structured_payload` is populated with **ExtractionResult** shape: `company` (normalized company object), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). See `app/extractor/schemas.py`.
 
 ### 6.1 Structured payload contract (recommended producer schema)
 
