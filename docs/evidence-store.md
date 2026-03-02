@@ -144,6 +144,17 @@ Read schemas: `EvidenceBundleRead`, `EvidenceSourceRead`, `EvidenceClaimRead` in
 
 **When populated by the Extractor:** When the optional [Evidence Extractor](discovery_scout.md#optional-extractor-m4-issue-277) is enabled (config `SCOUT_RUN_EXTRACTOR` or `run_extractor=True`), each bundle’s `structured_payload` is populated with **ExtractionResult** shape: `company` (normalized company object), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). See `app/extractor/schemas.py`.
 
+### 6.1 Structured payload contract (recommended producer schema)
+
+The `structured_payload` column accepts any JSON-serializable dict. For producers (e.g. extractors) that want validated, store-compatible output, the **recommended contract** is **`StructuredExtractionPayload`** from `app/schemas/core_events.py`. It defines:
+
+- **version** — Payload version (e.g. `"1.0"`) for evolution.
+- **events** — List of `CoreEventCandidate` (core taxonomy event types only).
+- **company** / **persons** — Normalized entity shapes.
+- **claims** — List of `ExtractionClaim` (entity_type, field, value, source_refs, confidence). When present, the store inserts `evidence_claims` rows and resolves `source_refs` (0-based indices into the bundle's evidence) to `evidence_sources.id`.
+
+Serializing with `StructuredExtractionPayload.model_dump(mode="json")` yields a dict that `store_evidence_bundle` accepts and that matches the store's expectations for `payload["claims"]` (see `app/evidence/store.py`). Out-of-range `source_refs` are ignored; only indices `0 <= ref < len(evidence)` are resolved to source IDs.
+
 ---
 
 ## 7. References
