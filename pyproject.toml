@@ -59,6 +59,8 @@ ignore = ["E501", "B008"]  # B008: Depends/Query in defaults is FastAPI standard
 "app/models/evidence_source.py" = ["F821", "UP037"]
 "app/models/scout_run.py" = ["F821", "UP037"]
 "app/models/scout_evidence_bundle.py" = ["F821", "UP037"]
+"app/models/company.py" = ["F821", "UP037"]
+"app/models/page_snapshot.py" = ["F821", "UP037"]
 # str, Enum pattern used elsewhere (e.g. CompanySource)
 "app/llm/router.py" = ["UP042"]
 
