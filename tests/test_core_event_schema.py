@@ -17,6 +17,7 @@ from app.schemas.core_events import (
     CoreEventCandidate,
     ExtractionEntityCompany,
     ExtractionEntityPerson,
+    get_events_from_payload,
 )
 
 # --- is_valid_core_event_type ---
@@ -212,3 +213,41 @@ def test_extraction_entity_person_full() -> None:
         role="CTO",
     )
     assert obj.role == "CTO"
+
+
+# --- get_events_from_payload (M2 payload key compatibility) ---
+
+
+def test_get_events_from_payload_returns_events_key() -> None:
+    """get_events_from_payload returns list from 'events' when present."""
+    payload = {"events": [{"event_type": "funding_raised", "confidence": 0.9}]}
+    assert get_events_from_payload(payload) == [{"event_type": "funding_raised", "confidence": 0.9}]
+
+
+def test_get_events_from_payload_returns_core_event_candidates_when_no_events() -> None:
+    """get_events_from_payload returns list from 'core_event_candidates' when 'events' missing (M2)."""
+    payload = {"core_event_candidates": [{"event_type": "cto_role_posted", "confidence": 0.8}]}
+    assert get_events_from_payload(payload) == [{"event_type": "cto_role_posted", "confidence": 0.8}]
+
+
+def test_get_events_from_payload_prefers_events_over_core_event_candidates() -> None:
+    """get_events_from_payload prefers 'events' when both keys present."""
+    payload = {
+        "events": [{"event_type": "funding_raised", "confidence": 0.9}],
+        "core_event_candidates": [{"event_type": "other", "confidence": 0.5}],
+    }
+    assert get_events_from_payload(payload) == [{"event_type": "funding_raised", "confidence": 0.9}]
+
+
+def test_get_events_from_payload_returns_empty_for_none_or_missing() -> None:
+    """get_events_from_payload returns [] for None, empty dict, or non-list value."""
+    assert get_events_from_payload(None) == []
+    assert get_events_from_payload({}) == []
+    assert get_events_from_payload({"events": "not-a-list"}) == []
+    assert get_events_from_payload({"core_event_candidates": None}) == []
+
+
+def test_get_events_from_payload_filters_non_dict_entries() -> None:
+    """get_events_from_payload returns only list items that are dicts."""
+    payload = {"events": [{"a": 1}, "skip", 0, None, {"b": 2}]}
+    assert get_events_from_payload(payload) == [{"a": 1}, {"b": 2}]

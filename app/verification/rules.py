@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from app.core_taxonomy.loader import is_valid_signal_id
+from app.schemas.core_events import get_events_from_payload
 from app.verification.schemas import VerificationReasonCode
 
 if TYPE_CHECKING:
@@ -49,10 +50,12 @@ def _normalize_domain(url: str) -> str | None:
 
 
 def _get_events(structured_payload: dict | None) -> list[dict[str, Any]]:
-    """Return list of event dicts from structured_payload; empty if missing or not a list."""
-    if not structured_payload or not isinstance(structured_payload.get("events"), list):
-        return []
-    return [e for e in structured_payload["events"] if isinstance(e, dict)]
+    """Return list of event dicts from structured_payload.
+
+    Accepts both 'events' and 'core_event_candidates' (ExtractionResult shape).
+    Prefers 'events' when both keys present. Empty if missing or not a list.
+    """
+    return get_events_from_payload(structured_payload)
 
 
 def check_event_type_in_taxonomy(
