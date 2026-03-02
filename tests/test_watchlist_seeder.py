@@ -1,15 +1,18 @@
-"""Unit tests for Watchlist Seeder (Issue #279 M2): seed_from_bundles."""
+"""Tests for Watchlist Seeder (Issue #279): unit (M2), orchestration (M3), integration (M4)."""
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.evidence import store_evidence_bundle
+from app.models import Company, ReadinessSnapshot, SignalEvent, SignalInstance
 from app.models import EvidenceBundle as EvidenceBundleORM
-from app.models import SignalEvent
+from app.pipeline.deriver_engine import run_deriver
 from app.schemas.core_events import (
     CoreEventCandidate,
     ExtractionEntityCompany,
@@ -17,7 +20,8 @@ from app.schemas.core_events import (
 )
 from app.schemas.scout import EvidenceBundle as ScoutEvidenceBundle
 from app.schemas.scout import EvidenceItem
-from app.services.watchlist_seeder import seed_from_bundles
+from app.services.readiness.score_nightly import run_score_nightly
+from app.services.watchlist_seeder import run_watchlist_seed, seed_from_bundles
 
 
 def _make_scout_item(url: str, snippet: str) -> EvidenceItem:
@@ -468,3 +472,330 @@ def test_seed_from_bundles_multiple_bundles_aggregates_counts(db: Session) -> No
     assert result.companies_created == 2
     assert result.events_stored == 2
     assert result.errors == []
+
+
+# --- M4: Integration tests (Issue #279) ---
+
+_AS_OF = date(2026, 2, 18)
+
+
+@pytest.mark.integration
+def test_seed_then_derive_then_score_creates_snapshots(
+    db: Session,
+    fractional_cto_pack_id: uuid.UUID,
+    core_pack_id: uuid.UUID,
+) -> None:
+    """Integration: EvidenceBundle → seed_from_bundles → run_deriver → run_score_nightly → ReadinessSnapshot."""
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 15, 10, 0, 0, tzinfo=UTC),
+            title="Series A",
+            summary="Raised Series A",
+            url="https://integrate.example.com/news",
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db,
+        company_name="Integrate Co",
+        website="https://integrate.example.com",
+        domain="integrate.example.com",
+        events=events,
+        run_id="run-m4-integrate",
+    )
+
+    result = seed_from_bundles(db, [bundle_id])
+    assert result.errors == []
+    assert result.companies_created == 1
+    assert result.events_stored == 1
+
+    company = db.query(Company).filter(Company.domain == "integrate.example.com").first()
+    assert company is not None
+
+    derive_result = run_deriver(
+        db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
+    )
+    assert derive_result["status"] == "completed"
+    assert derive_result["instances_upserted"] >= 1
+    assert derive_result["events_processed"] >= 1
+
+    instances = (
+        db.query(SignalInstance)
+        .filter(
+            SignalInstance.entity_id == company.id,
+            SignalInstance.pack_id == core_pack_id,
+        )
+        .all()
+    )
+    assert len(instances) >= 1
+
+    with patch("app.services.readiness.score_nightly.date") as mock_date:
+        mock_date.today.return_value = _AS_OF
+        score_result = run_score_nightly(db, pack_id=fractional_cto_pack_id)
+
+    assert score_result["status"] == "completed"
+    assert score_result["companies_scored"] >= 1
+
+    snapshot = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company.id,
+            ReadinessSnapshot.as_of == _AS_OF,
+            ReadinessSnapshot.pack_id == fractional_cto_pack_id,
+        )
+        .first()
+    )
+    assert snapshot is not None
+    assert snapshot.composite >= 0
+    assert snapshot.explain is not None
+
+
+@pytest.mark.integration
+def test_seed_derive_same_core_instances_across_packs(
+    db: Session,
+    fractional_cto_pack_id: uuid.UUID,
+    second_pack_id: uuid.UUID,
+    core_pack_id: uuid.UUID,
+) -> None:
+    """Same core events produce same core SignalInstances; scoring with two packs yields two snapshots (Issue #279 M4)."""
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 14, 10, 0, 0, tzinfo=UTC),
+            title="Seed Pack Parity",
+            summary="Funding",
+            url=None,
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db,
+        company_name="Pack Parity Co",
+        website="https://packparity.example.com",
+        domain="packparity.example.com",
+        events=events,
+        run_id="run-m4-pack-parity",
+    )
+
+    seed_from_bundles(db, [bundle_id])
+    company = db.query(Company).filter(Company.domain == "packparity.example.com").first()
+    assert company is not None
+
+    run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+    core_before = {
+        (si.entity_id, si.signal_id)
+        for si in db.query(SignalInstance).filter(
+            SignalInstance.entity_id == company.id,
+            SignalInstance.pack_id == core_pack_id,
+        ).all()
+    }
+    assert len(core_before) >= 1
+
+    with patch("app.services.readiness.score_nightly.date") as mock_date:
+        mock_date.today.return_value = _AS_OF
+        run_score_nightly(db, pack_id=fractional_cto_pack_id)
+        run_score_nightly(db, pack_id=second_pack_id)
+
+    core_after = {
+        (si.entity_id, si.signal_id)
+        for si in db.query(SignalInstance).filter(
+            SignalInstance.entity_id == company.id,
+            SignalInstance.pack_id == core_pack_id,
+        ).all()
+    }
+    assert core_after == core_before, "Core SignalInstances must be identical across pack scoring"
+
+    snapshots = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company.id,
+            ReadinessSnapshot.as_of == _AS_OF,
+        )
+        .all()
+    )
+    pack_ids = {s.pack_id for s in snapshots}
+    assert fractional_cto_pack_id in pack_ids
+    assert second_pack_id in pack_ids
+    assert len(snapshots) >= 2
+
+
+# ── run_watchlist_seed orchestration (M3) ─────────────────────────────────────
+
+
+def test_run_watchlist_seed_no_pack_returns_failed(db: Session) -> None:
+    """When no pack is resolved, run_watchlist_seed returns failed with empty derive/score."""
+    with (
+        patch("app.services.watchlist_seeder.run_seed.get_pack_for_workspace", return_value=None),
+        patch("app.services.watchlist_seeder.run_seed.get_default_pack_id", return_value=None),
+    ):
+        result = run_watchlist_seed(db, [uuid.uuid4()])
+    assert result["status"] == "failed"
+    assert result["error"] == "No pack resolved for workspace"
+    assert result["derive_result"] == {}
+    assert result["score_result"] == {}
+    assert "seed_result" in result
+    assert "events_stored" in result["seed_result"]
+
+
+def test_run_watchlist_seed_success_returns_combined_result(db: Session) -> None:
+    """run_watchlist_seed with pack resolved runs seed → derive → score and returns combined result."""
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="Seed",
+            summary="",
+            url=None,
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db,
+        company_name="Orch Co",
+        website="https://orch.example.com",
+        domain="orch.example.com",
+        events=events,
+        run_id="run-orch",
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 1,
+            "instances_upserted": 1,
+            "events_processed": 1,
+            "events_skipped": 0,
+            "error": None,
+        }
+        mock_score.return_value = {
+            "status": "completed",
+            "job_run_id": 2,
+            "companies_scored": 1,
+            "companies_skipped": 0,
+            "error": None,
+        }
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "completed"
+    assert result["seed_result"]["events_stored"] == 1
+    assert result["derive_result"]["status"] == "completed"
+    assert result["score_result"]["companies_scored"] == 1
+    assert result.get("error") is None
+
+
+def test_run_watchlist_seed_derive_raises_returns_failed(db: Session) -> None:
+    """When run_deriver raises, run_watchlist_seed returns failed and still runs score."""
+    events = [
+        CoreEventCandidate(
+            event_type="launch_major",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="Launch",
+            summary="",
+            url=None,
+            confidence=0.8,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db, "Fail Co", "https://fail.example.com", "fail.example.com", events, "run-fail"
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.side_effect = RuntimeError("Deriver failed")
+        mock_score.return_value = {
+            "status": "completed",
+            "job_run_id": 3,
+            "companies_scored": 0,
+            "companies_skipped": 0,
+            "error": None,
+        }
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "failed"
+    assert "Deriver failed" in result["error"]
+    assert result["derive_result"] == {"status": "failed", "error": "Deriver failed"}
+    assert result["score_result"]["status"] == "completed"
+
+
+def test_run_watchlist_seed_score_non_completed_sets_error(db: Session) -> None:
+    """When run_score_nightly returns status != completed, overall status is failed."""
+    events = [
+        CoreEventCandidate(
+            event_type="revenue_milestone",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="Rev",
+            summary="",
+            url=None,
+            confidence=0.7,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db, "Score Co", "https://score.example.com", "score.example.com", events, "run-score"
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 4,
+            "instances_upserted": 1,
+            "events_processed": 1,
+            "events_skipped": 0,
+            "error": None,
+        }
+        mock_score.return_value = {
+            "status": "skipped",
+            "job_run_id": 5,
+            "companies_scored": 0,
+            "companies_skipped": 0,
+            "error": "No eligible companies",
+        }
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "failed"
+    assert result["error"] is not None
+    assert result["derive_result"]["status"] == "completed"
+    assert result["score_result"]["status"] == "skipped"
+
+
+def test_run_watchlist_seed_score_raises_returns_failed(db: Session) -> None:
+    """When run_score_nightly raises, run_watchlist_seed returns failed with score_result error."""
+    events = [
+        CoreEventCandidate(
+            event_type="api_launched",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="API",
+            summary="",
+            url=None,
+            confidence=0.85,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db, "Raise Co", "https://raise.example.com", "raise.example.com", events, "run-raise"
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 6,
+            "instances_upserted": 1,
+            "events_processed": 1,
+            "events_skipped": 0,
+            "error": None,
+        }
+        mock_score.side_effect = RuntimeError("Score DB error")
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "failed"
+    assert "Score DB error" in result["error"]
+    assert result["score_result"] == {"status": "failed", "error": "Score DB error"}

@@ -166,6 +166,18 @@ class TestDiscoverPages:
                 expected = f"https://example.com{path}"
                 assert call_urls[i + 1] == expected
 
+    async def test_discovery_never_uses_check_robots_true(self):
+        """discover_pages must not pass check_robots=True; regression for robots-aware default."""
+        with patch("app.services.page_discovery.fetch_page", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = _HOMEPAGE_HTML
+
+            await discover_pages("https://example.com")
+
+            for call in mock_fetch.call_args_list:
+                assert call.kwargs.get("check_robots", False) is False
+                # Single positional arg (url) only; no second positional True
+                assert len(call[0]) == 1 or (len(call[0]) == 2 and call[0][1] is False)
+
 
 # ---------------------------------------------------------------------------
 # Valid page validation

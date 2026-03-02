@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -120,7 +121,7 @@ class TestLoadCoreDerivers:
     def test_load_core_derivers_returns_passthrough_and_patterns(self) -> None:
         """_load_core_derivers returns (passthrough_map, pattern_derivers)."""
         passthrough, pattern_derivers = _load_core_derivers()
-        assert isinstance(passthrough, dict)
+        assert isinstance(passthrough, Mapping)
         assert isinstance(pattern_derivers, list)
         assert len(passthrough) > 0, "Core derivers must define passthrough mappings"
         assert passthrough.get("funding_raised") == "funding_raised"
@@ -320,7 +321,7 @@ class TestRunDeriver:
         assert len(instances) == 3
         signal_ids = {i.signal_id for i in instances}
         assert signal_ids == {"funding_raised", "job_posted_engineering", "cto_role_posted"}
-        # Issue #287 M2: deriver writes to core pack only (job pack_id is audit only)
+        # Derive writes to core pack only (Issue #287 M2); job pack_id is audit only
         for inst in instances:
             assert inst.pack_id == core_pack_id, (
                 f"SignalInstance pack_id must be core pack; got {inst.pack_id}"
@@ -350,7 +351,7 @@ class TestRunDeriver:
         assert len(instances) == 2
         for inst in instances:
             assert inst.pack_id == core_pack_id, (
-                f"Deriver must create instances for core pack only; "
+                f"Deriver must write to core pack only; "
                 f"entity_id={inst.entity_id} signal_id={inst.signal_id} pack_id={inst.pack_id}"
             )
 
@@ -491,9 +492,8 @@ class TestRunDeriver:
         db.commit()
 
         result = run_deriver(db, pack_id=fractional_cto_pack_id)
-        # Events with company_id=None are skipped; we must skip at least our 1
+        # Events with company_id=None are not selected by the query (filter: company_id.isnot(None))
         assert result["status"] == "completed"
-        assert result["events_skipped"] >= 1
 
     def test_deriver_pattern_produces_signal_instance(
         self, db: Session, fractional_cto_pack_id, core_pack_id

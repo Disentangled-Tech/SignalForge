@@ -76,6 +76,8 @@ def run_stage(
     if not stage:
         raise ValueError(f"Unknown job_type: {job_type}")
 
+    if idempotency_key:
+        stage_kwargs = {**stage_kwargs, "idempotency_key": idempotency_key}
     return stage(db, workspace_id=ws_id, pack_id=pack_str, **stage_kwargs)
 
 
@@ -129,6 +131,20 @@ def _cached_result(job: JobRun, job_type: str) -> dict:
             "inserted": 0,
             "companies_scored": job.companies_processed or 0,
             "ranked_count": 0,
+            "error": job.error_message,
+        }
+    if job_type == "watchlist_seed":
+        return {
+            **base,
+            "seed_result": {
+                "companies_created": 0,
+                "companies_matched": 0,
+                "events_stored": job.companies_processed or 0,
+                "events_skipped_duplicate": 0,
+                "errors": [],
+            },
+            "derive_result": {"status": "completed", "instances_upserted": 0},
+            "score_result": {"status": "completed", "companies_scored": 0},
             "error": job.error_message,
         }
     return base
