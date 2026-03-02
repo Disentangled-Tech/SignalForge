@@ -84,6 +84,8 @@ class Settings:
     scout_run_extractor: bool = False
     # M3 (Issue #278): when True, run Verification Gate before store; failed bundles quarantined
     scout_verification_gate_enabled: bool = False
+    # M4 (Issue #281): when True (and scout_run_extractor True), run LLM interpretation per bundle then extract with raw_extraction
+    scout_run_interpretation: bool = False
 
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", self.app_name)
@@ -168,3 +170,5 @@ class Settings:
         self.scout_run_extractor = _run_ext in ("1", "true", "yes")
         _verif = os.getenv("SCOUT_VERIFICATION_GATE_ENABLED", "0").strip().lower()
         self.scout_verification_gate_enabled = _verif in ("1", "true", "yes")
+        _interp = os.getenv("SCOUT_RUN_INTERPRETATION", "0").strip().lower()
+        self.scout_run_interpretation = _interp in ("1", "true", "yes")
