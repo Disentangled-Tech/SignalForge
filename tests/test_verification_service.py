@@ -85,3 +85,13 @@ def test_verify_bundles_empty_list_returns_empty_results() -> None:
     """verify_bundles with empty bundles returns empty list."""
     assert verify_bundles([]) == []
     assert verify_bundles([], structured_payloads=[]) == []
+
+
+def test_verify_bundle_returns_passed_false_when_event_rule_fails() -> None:
+    """verify_bundle returns passed=False and reason_codes when an event fails (M2)."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {"events": [{"event_type": "not_in_taxonomy", "confidence": 0.9}]}
+    result = verify_bundle(bundle, payload)
+    assert result.passed is False
+    assert len(result.reason_codes) >= 1
+    assert "EVENT_TYPE_UNKNOWN" in result.reason_codes
