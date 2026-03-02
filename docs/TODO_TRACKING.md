@@ -25,6 +25,22 @@ Tracks outstanding TODOs and follow-ups from maintainer reviews.
 - **Locations**: `get_emerging_companies()`, `get_weekly_review_companies()`
 - **Reference**: [docs/MINIMUM_THRESHOLD_ENFORCEMENT.md](MINIMUM_THRESHOLD_ENFORCEMENT.md)
 
+### M7 Verification Gate — config vs. doc (follow-up)
+
+- **Location**: `app/config.py`, [docs/discovery_scout.md](discovery_scout.md)
+- **TODO**: discovery_scout.md documents `SCOUT_VERIFICATION_GATE_ENABLED` and `scout_verification_gate_enabled`, but `app/config.py` does not define this setting. Either add `scout_verification_gate_enabled` to `app/config.py` and wire it where the gate is toggled, or add a short note in the doc (e.g. “(when implemented)” or “optional; add to config when enabling the gate”) so readers aren’t surprised it’s missing in code.
+- **Reference**: Verification Gate (Issue #278), M7 documentation.
+
+### M7 evidence-store.md markdown lint (follow-up)
+
+- **Location**: [docs/evidence-store.md](evidence-store.md)
+- **TODO**: Fix existing MD060 table-style warnings in evidence-store.md (sections 2, 3, 5, 6 tables) in a separate docs-only PR so the repo’s markdown lint is clean.
+
+### M7 Pre-existing test failures (follow-up)
+
+- **Locations**: `tests/test_daily_aggregation.py`, `tests/test_deriver_engine.py`
+- **TODO**: Five failing tests (daily_aggregation ranked output shape expects `company_name`; deriver_engine pack_id / return type / events_skipped). Plan a separate fix so the full suite is green and invariants are preserved. Do not weaken assertions or remove tests.
+
 ## Reference
 
 - Code review checklist: `.cursor/commands/review_code.md`
