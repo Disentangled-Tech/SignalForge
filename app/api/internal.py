@@ -377,12 +377,17 @@ async def run_daily_aggregation_endpoint(
     """Trigger daily aggregation: ingest → derive → score (Issue #246).
 
     Unified entry point for cron. Returns status, job_run_id, inserted,
-    companies_scored, ranked_count, error. Idempotent with X-Idempotency-Key.
+    companies_scored, ranked_count, ranked_companies, error. Idempotent with X-Idempotency-Key.
 
     ranked_count: count of all companies with any readiness score for today
     (outreach_score_threshold=0 is applied by the orchestrator). This is the
     monitoring population; it is NOT filtered by the configured outreach threshold.
     The briefing view (/api/briefing) applies its own threshold independently.
+
+    ranked_companies: list of all scored companies in rank order. Each item has:
+    - company_name (str): company display name
+    - composite (int | float): readiness composite score
+    - band (str): ESL/engagement band (e.g. allow, block, nurture)
     """
     from uuid import UUID
 
@@ -411,6 +416,7 @@ async def run_daily_aggregation_endpoint(
             "inserted": inserted,
             "companies_scored": companies_scored,
             "ranked_count": result.get("ranked_count", 0),
+            "ranked_companies": result.get("ranked_companies", []),
             "error": result.get("error"),
         }
     except HTTPException:
