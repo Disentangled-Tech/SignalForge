@@ -18,6 +18,7 @@ from app.models.lead_feed import LeadFeed
 from app.models.operator_profile import OperatorProfile
 from app.models.outreach_history import OutreachHistory
 from app.models.outreach_recommendation import OutreachRecommendation
+from app.models.page_snapshot import PageSnapshot
 from app.models.readiness_snapshot import ReadinessSnapshot
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
@@ -46,6 +47,7 @@ __all__ = [
     "EvidenceSource",
     "OutreachHistory",
     "OutreachRecommendation",
+    "PageSnapshot",
     "JobRun",
     "LeadFeed",
     "OperatorProfile",
