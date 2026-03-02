@@ -1,9 +1,10 @@
-"""Unit tests for Watchlist Seeder (Issue #279 M2): seed_from_bundles."""
+"""Unit tests for Watchlist Seeder (Issue #279 M2): seed_from_bundles; M3: run_watchlist_seed orchestration."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
@@ -17,7 +18,7 @@ from app.schemas.core_events import (
 )
 from app.schemas.scout import EvidenceBundle as ScoutEvidenceBundle
 from app.schemas.scout import EvidenceItem
-from app.services.watchlist_seeder import seed_from_bundles
+from app.services.watchlist_seeder import run_watchlist_seed, seed_from_bundles
 
 
 def _make_scout_item(url: str, snippet: str) -> EvidenceItem:
@@ -468,3 +469,181 @@ def test_seed_from_bundles_multiple_bundles_aggregates_counts(db: Session) -> No
     assert result.companies_created == 2
     assert result.events_stored == 2
     assert result.errors == []
+
+
+# ── run_watchlist_seed orchestration (M3) ─────────────────────────────────────
+
+
+def test_run_watchlist_seed_no_pack_returns_failed(db: Session) -> None:
+    """When no pack is resolved, run_watchlist_seed returns failed with empty derive/score."""
+    with (
+        patch("app.services.watchlist_seeder.run_seed.get_pack_for_workspace", return_value=None),
+        patch("app.services.watchlist_seeder.run_seed.get_default_pack_id", return_value=None),
+    ):
+        result = run_watchlist_seed(db, [uuid.uuid4()])
+    assert result["status"] == "failed"
+    assert result["error"] == "No pack resolved for workspace"
+    assert result["derive_result"] == {}
+    assert result["score_result"] == {}
+    assert "seed_result" in result
+    assert "events_stored" in result["seed_result"]
+
+
+def test_run_watchlist_seed_success_returns_combined_result(db: Session) -> None:
+    """run_watchlist_seed with pack resolved runs seed → derive → score and returns combined result."""
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="Seed",
+            summary="",
+            url=None,
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db,
+        company_name="Orch Co",
+        website="https://orch.example.com",
+        domain="orch.example.com",
+        events=events,
+        run_id="run-orch",
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 1,
+            "instances_upserted": 1,
+            "events_processed": 1,
+            "events_skipped": 0,
+            "error": None,
+        }
+        mock_score.return_value = {
+            "status": "completed",
+            "job_run_id": 2,
+            "companies_scored": 1,
+            "companies_skipped": 0,
+            "error": None,
+        }
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "completed"
+    assert result["seed_result"]["events_stored"] == 1
+    assert result["derive_result"]["status"] == "completed"
+    assert result["score_result"]["companies_scored"] == 1
+    assert result.get("error") is None
+
+
+def test_run_watchlist_seed_derive_raises_returns_failed(db: Session) -> None:
+    """When run_deriver raises, run_watchlist_seed returns failed and still runs score."""
+    events = [
+        CoreEventCandidate(
+            event_type="launch_major",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="Launch",
+            summary="",
+            url=None,
+            confidence=0.8,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db, "Fail Co", "https://fail.example.com", "fail.example.com", events, "run-fail"
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.side_effect = RuntimeError("Deriver failed")
+        mock_score.return_value = {
+            "status": "completed",
+            "job_run_id": 3,
+            "companies_scored": 0,
+            "companies_skipped": 0,
+            "error": None,
+        }
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "failed"
+    assert "Deriver failed" in result["error"]
+    assert result["derive_result"] == {"status": "failed", "error": "Deriver failed"}
+    assert result["score_result"]["status"] == "completed"
+
+
+def test_run_watchlist_seed_score_non_completed_sets_error(db: Session) -> None:
+    """When run_score_nightly returns status != completed, overall status is failed."""
+    events = [
+        CoreEventCandidate(
+            event_type="revenue_milestone",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="Rev",
+            summary="",
+            url=None,
+            confidence=0.7,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db, "Score Co", "https://score.example.com", "score.example.com", events, "run-score"
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 4,
+            "instances_upserted": 1,
+            "events_processed": 1,
+            "events_skipped": 0,
+            "error": None,
+        }
+        mock_score.return_value = {
+            "status": "skipped",
+            "job_run_id": 5,
+            "companies_scored": 0,
+            "companies_skipped": 0,
+            "error": "No eligible companies",
+        }
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "failed"
+    assert result["error"] is not None
+    assert result["derive_result"]["status"] == "completed"
+    assert result["score_result"]["status"] == "skipped"
+
+
+def test_run_watchlist_seed_score_raises_returns_failed(db: Session) -> None:
+    """When run_score_nightly raises, run_watchlist_seed returns failed with score_result error."""
+    events = [
+        CoreEventCandidate(
+            event_type="api_launched",
+            event_time=datetime(2026, 2, 10, 12, 0, 0, tzinfo=UTC),
+            title="API",
+            summary="",
+            url=None,
+            confidence=0.85,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db, "Raise Co", "https://raise.example.com", "raise.example.com", events, "run-raise"
+    )
+    with (
+        patch("app.pipeline.deriver_engine.run_deriver") as mock_deriver,
+        patch("app.services.readiness.score_nightly.run_score_nightly") as mock_score,
+    ):
+        mock_deriver.return_value = {
+            "status": "completed",
+            "job_run_id": 6,
+            "instances_upserted": 1,
+            "events_processed": 1,
+            "events_skipped": 0,
+            "error": None,
+        }
+        mock_score.side_effect = RuntimeError("Score DB error")
+        result = run_watchlist_seed(db, [bundle_id])
+    assert result["status"] == "failed"
+    assert "Score DB error" in result["error"]
+    assert result["score_result"] == {"status": "failed", "error": "Score DB error"}
