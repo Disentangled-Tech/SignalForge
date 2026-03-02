@@ -1,15 +1,18 @@
-"""Unit tests for Watchlist Seeder (Issue #279 M2): seed_from_bundles."""
+"""Tests for Watchlist Seeder (Issue #279): unit (M2) and integration (M4)."""
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.evidence import store_evidence_bundle
+from app.models import Company, ReadinessSnapshot, SignalEvent, SignalInstance
 from app.models import EvidenceBundle as EvidenceBundleORM
-from app.models import SignalEvent
+from app.pipeline.deriver_engine import run_deriver
 from app.schemas.core_events import (
     CoreEventCandidate,
     ExtractionEntityCompany,
@@ -17,6 +20,7 @@ from app.schemas.core_events import (
 )
 from app.schemas.scout import EvidenceBundle as ScoutEvidenceBundle
 from app.schemas.scout import EvidenceItem
+from app.services.readiness.score_nightly import run_score_nightly
 from app.services.watchlist_seeder import seed_from_bundles
 
 
@@ -468,3 +472,152 @@ def test_seed_from_bundles_multiple_bundles_aggregates_counts(db: Session) -> No
     assert result.companies_created == 2
     assert result.events_stored == 2
     assert result.errors == []
+
+
+# --- M4: Integration tests (Issue #279) ---
+
+_AS_OF = date(2026, 2, 18)
+
+
+@pytest.mark.integration
+def test_seed_then_derive_then_score_creates_snapshots(
+    db: Session,
+    fractional_cto_pack_id: uuid.UUID,
+    core_pack_id: uuid.UUID,
+) -> None:
+    """Integration: EvidenceBundle → seed_from_bundles → run_deriver → run_score_nightly → ReadinessSnapshot."""
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 15, 10, 0, 0, tzinfo=UTC),
+            title="Series A",
+            summary="Raised Series A",
+            url="https://integrate.example.com/news",
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db,
+        company_name="Integrate Co",
+        website="https://integrate.example.com",
+        domain="integrate.example.com",
+        events=events,
+        run_id="run-m4-integrate",
+    )
+
+    result = seed_from_bundles(db, [bundle_id])
+    assert result.errors == []
+    assert result.companies_created == 1
+    assert result.events_stored == 1
+
+    company = db.query(Company).filter(Company.domain == "integrate.example.com").first()
+    assert company is not None
+
+    derive_result = run_deriver(
+        db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
+    )
+    assert derive_result["status"] == "completed"
+    assert derive_result["instances_upserted"] >= 1
+    assert derive_result["events_processed"] >= 1
+
+    instances = (
+        db.query(SignalInstance)
+        .filter(
+            SignalInstance.entity_id == company.id,
+            SignalInstance.pack_id == core_pack_id,
+        )
+        .all()
+    )
+    assert len(instances) >= 1
+
+    with patch("app.services.readiness.score_nightly.date") as mock_date:
+        mock_date.today.return_value = _AS_OF
+        score_result = run_score_nightly(db, pack_id=fractional_cto_pack_id)
+
+    assert score_result["status"] == "completed"
+    assert score_result["companies_scored"] >= 1
+
+    snapshot = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company.id,
+            ReadinessSnapshot.as_of == _AS_OF,
+            ReadinessSnapshot.pack_id == fractional_cto_pack_id,
+        )
+        .first()
+    )
+    assert snapshot is not None
+    assert snapshot.composite >= 0
+    assert snapshot.explain is not None
+
+
+@pytest.mark.integration
+def test_seed_derive_same_core_instances_across_packs(
+    db: Session,
+    fractional_cto_pack_id: uuid.UUID,
+    second_pack_id: uuid.UUID,
+    core_pack_id: uuid.UUID,
+) -> None:
+    """Same core events produce same core SignalInstances; scoring with two packs yields two snapshots (Issue #279 M4)."""
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 14, 10, 0, 0, tzinfo=UTC),
+            title="Seed Pack Parity",
+            summary="Funding",
+            url=None,
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    bundle_id = _make_seeder_bundle_with_payload(
+        db,
+        company_name="Pack Parity Co",
+        website="https://packparity.example.com",
+        domain="packparity.example.com",
+        events=events,
+        run_id="run-m4-pack-parity",
+    )
+
+    seed_from_bundles(db, [bundle_id])
+    company = db.query(Company).filter(Company.domain == "packparity.example.com").first()
+    assert company is not None
+
+    run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
+
+    core_before = {
+        (si.entity_id, si.signal_id)
+        for si in db.query(SignalInstance).filter(
+            SignalInstance.entity_id == company.id,
+            SignalInstance.pack_id == core_pack_id,
+        ).all()
+    }
+    assert len(core_before) >= 1
+
+    with patch("app.services.readiness.score_nightly.date") as mock_date:
+        mock_date.today.return_value = _AS_OF
+        run_score_nightly(db, pack_id=fractional_cto_pack_id)
+        run_score_nightly(db, pack_id=second_pack_id)
+
+    core_after = {
+        (si.entity_id, si.signal_id)
+        for si in db.query(SignalInstance).filter(
+            SignalInstance.entity_id == company.id,
+            SignalInstance.pack_id == core_pack_id,
+        ).all()
+    }
+    assert core_after == core_before, "Core SignalInstances must be identical across pack scoring"
+
+    snapshots = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company.id,
+            ReadinessSnapshot.as_of == _AS_OF,
+        )
+        .all()
+    )
+    pack_ids = {s.pack_id for s in snapshots}
+    assert fractional_cto_pack_id in pack_ids
+    assert second_pack_id in pack_ids
+    assert len(snapshots) >= 2
