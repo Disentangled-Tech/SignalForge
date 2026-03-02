@@ -63,7 +63,7 @@ async def run(
     denylist: list[str] | None = None,
     fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
     llm_provider: LLMProvider | None = None,
-    workspace_id: uuid.UUID | None = None,
+    workspace_id: uuid.UUID,
     run_extractor: bool | None = None,
 ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
     """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
@@ -82,6 +82,7 @@ async def run(
         denylist: Source denylist. If None, uses settings.scout_source_denylist.
         fetch_page: Async callable(url) -> str | None. If None, uses app.services.fetcher.fetch_page.
         llm_provider: LLM provider. If None, uses get_llm_provider(role=ModelRole.SCOUT).
+        workspace_id: Required. Scopes the run to a tenant; stored on scout_runs.
         run_extractor: If True/False, override settings.scout_run_extractor (M4). If None, use config.
 
     Returns:
@@ -220,7 +221,7 @@ class DiscoveryScoutService:
         denylist: list[str] | None = None,
         fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
         llm_provider: LLMProvider | None = None,
-        workspace_id: uuid.UUID | None = None,
+        workspace_id: uuid.UUID,
         run_extractor: bool | None = None,
     ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
         """Run discovery scout. See module-level run() for full doc."""

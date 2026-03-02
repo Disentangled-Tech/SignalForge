@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.evidence import (
     get_bundle,
+    get_bundle_for_workspace,
     list_bundles_by_run,
     list_bundles_by_run_for_workspace,
     list_claims_for_bundle,
@@ -156,6 +157,98 @@ def test_list_bundles_by_run_for_workspace_returns_bundles_only_when_run_in_work
     other_ws_id = uuid.uuid4()
     not_in_ws = list_bundles_by_run_for_workspace(db, run_id, other_ws_id)
     assert not_in_ws == []
+
+
+def test_get_bundle_for_workspace_returns_bundle_only_when_run_in_workspace(
+    db: Session,
+) -> None:
+    """get_bundle_for_workspace returns bundle only if its run belongs to workspace; else None."""
+    import uuid
+
+    from app.models import ScoutRun, Workspace
+
+    ws = Workspace(name="Bundle WS")
+    db.add(ws)
+    db.flush()
+    run_id = "dddddddd-0000-4000-8000-000000000004"
+    db.add(
+        ScoutRun(
+            run_id=uuid.UUID(run_id),
+            workspace_id=ws.id,
+            model_version="test",
+            page_fetch_count=0,
+            status="completed",
+        )
+    )
+    db.flush()
+
+    bundle = EvidenceBundle(
+        candidate_company_name="Bundle Co",
+        company_website="https://bundle.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://v.com", "v")],
+    )
+    records = store_evidence_bundle(
+        db,
+        run_id=run_id,
+        scout_version="v1",
+        bundles=[bundle],
+        run_context={"run_id": run_id},
+        raw_model_output=None,
+    )
+    bundle_id = records[0].id
+
+    read = get_bundle_for_workspace(db, bundle_id, ws.id)
+    assert read is not None
+    assert read.id == bundle_id
+    assert read.run_context == {"run_id": run_id}
+
+    other_ws_id = uuid.uuid4()
+    assert get_bundle_for_workspace(db, bundle_id, other_ws_id) is None
+    assert get_bundle_for_workspace(db, uuid.uuid4(), ws.id) is None
+
+
+def test_get_bundle_for_workspace_returns_none_when_run_context_missing_or_empty(
+    db: Session,
+) -> None:
+    """get_bundle_for_workspace returns None when bundle has run_context None or no run_id (e.g. store-only flow)."""
+    from tests.test_constants import TEST_WORKSPACE_ID
+
+    # Bundle with run_context=None (e.g. stored via /internal/evidence/store without ScoutRun)
+    bundle_none = EvidenceBundle(
+        candidate_company_name="NoContext Co",
+        company_website="https://nocontext.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://x.com", "x")],
+    )
+    records_none = store_evidence_bundle(
+        db,
+        run_id="run-none-ctx",
+        scout_version="v1",
+        bundles=[bundle_none],
+        run_context=None,
+        raw_model_output=None,
+    )
+    assert len(records_none) == 1
+    assert get_bundle_for_workspace(db, records_none[0].id, TEST_WORKSPACE_ID) is None
+
+    # Bundle with run_context={} (no run_id key)
+    bundle_empty = EvidenceBundle(
+        candidate_company_name="EmptyCtx Co",
+        company_website="https://emptyctx.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_item("https://y.com", "y")],
+    )
+    records_empty = store_evidence_bundle(
+        db,
+        run_id="run-empty-ctx",
+        scout_version="v1",
+        bundles=[bundle_empty],
+        run_context={},
+        raw_model_output=None,
+    )
+    assert len(records_empty) == 1
+    assert get_bundle_for_workspace(db, records_empty[0].id, TEST_WORKSPACE_ID) is None
 
 
 def test_list_sources_for_bundle_returns_linked_sources(db: Session) -> None:

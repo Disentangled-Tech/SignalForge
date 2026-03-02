@@ -13,6 +13,7 @@ from app.evidence.repository import list_bundles_by_run
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.services.scout.discovery_scout_service import run
+from tests.test_constants import TEST_WORKSPACE_ID
 
 
 def _mock_db_session() -> MagicMock:
@@ -52,6 +53,7 @@ def _valid_llm_bundles_json() -> str:
 async def _run_with_mocks(
     db: Session,
     *,
+    workspace_id: uuid.UUID,
     seed_urls: list[str] | None = None,
     llm_response: str | None = None,
     fetch_returns: str | None = "<p>Some content</p>",
@@ -60,7 +62,7 @@ async def _run_with_mocks(
     page_fetch_limit: int = 10,
     run_extractor: bool | None = None,
 ):
-    """Run scout with mocked fetch and LLM."""
+    """Run scout with mocked fetch and LLM. workspace_id is required for tenant scoping."""
     if llm_response is None:
         llm_response = _valid_llm_bundles_json()
     if seed_urls is None:
@@ -85,6 +87,7 @@ async def _run_with_mocks(
             fetch_page=fake_fetch,
             llm_provider=mock_llm,
             page_fetch_limit=page_fetch_limit,
+            workspace_id=workspace_id,
             run_extractor=run_extractor,
         )
 
@@ -92,7 +95,16 @@ async def _run_with_mocks(
 @pytest.mark.asyncio
 async def test_run_returns_valid_bundles_and_persists(db: Session) -> None:
     """run() returns validated EvidenceBundles and persists ScoutRun + ScoutEvidenceBundle rows."""
-    run_id, bundles, metadata = await _run_with_mocks(db, seed_urls=["https://allowed.com/a"])
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Test WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
+    run_id, bundles, metadata = await _run_with_mocks(
+        db, workspace_id=ws.id, seed_urls=["https://allowed.com/a"]
+    )
     assert isinstance(run_id, str)
     assert len(run_id) > 0
     assert len(bundles) == 1
@@ -128,7 +140,9 @@ async def test_run_does_not_call_company_resolver_or_event_storage() -> None:
                 "app.services.scout.discovery_scout_service.store_evidence_bundle",
                 return_value=[],
             ):
-                await _run_with_mocks(mock_db, seed_urls=["https://example.com"])
+                await _run_with_mocks(
+                    mock_db, workspace_id=TEST_WORKSPACE_ID, seed_urls=["https://example.com"]
+                )
             mock_store.assert_not_called()
             mock_resolve.assert_not_called()
 
@@ -143,6 +157,7 @@ async def test_denylist_blocks_urls() -> None:
     ):
         run_id, bundles, metadata = await _run_with_mocks(
             mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
             seed_urls=["https://blocked.evil/path"],
             allowlist=[],  # empty allowlist = all allowed except denylist
             denylist=["blocked.evil"],
@@ -160,6 +175,7 @@ async def test_page_fetch_limit_enforced() -> None:
     ):
         run_id, _, metadata = await _run_with_mocks(
             mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
             seed_urls=[
                 "https://a.com/1",
                 "https://a.com/2",
@@ -195,7 +211,9 @@ async def test_bundle_with_empty_evidence_and_non_empty_why_now_rejected() -> No
         "app.services.scout.discovery_scout_service.store_evidence_bundle",
         return_value=[],
     ):
-        run_id, bundles, metadata = await _run_with_mocks(mock_db, llm_response=bad_json)
+        run_id, bundles, metadata = await _run_with_mocks(
+            mock_db, workspace_id=TEST_WORKSPACE_ID, llm_response=bad_json
+        )
     assert len(bundles) == 0
 
 
@@ -207,7 +225,9 @@ async def test_bundle_with_evidence_and_why_now_accepted() -> None:
         "app.services.scout.discovery_scout_service.store_evidence_bundle",
         return_value=[],
     ):
-        run_id, bundles, _ = await _run_with_mocks(mock_db, llm_response=_valid_llm_bundles_json())
+        run_id, bundles, _ = await _run_with_mocks(
+            mock_db, workspace_id=TEST_WORKSPACE_ID, llm_response=_valid_llm_bundles_json()
+        )
     assert len(bundles) == 1
     assert bundles[0].why_now_hypothesis
     assert len(bundles[0].evidence) >= 1
@@ -221,7 +241,9 @@ async def test_empty_seed_urls_yields_zero_fetches() -> None:
         "app.services.scout.discovery_scout_service.store_evidence_bundle",
         return_value=[],
     ):
-        run_id, bundles, metadata = await _run_with_mocks(mock_db, seed_urls=[])
+        run_id, bundles, metadata = await _run_with_mocks(
+            mock_db, workspace_id=TEST_WORKSPACE_ID, seed_urls=[]
+        )
     assert metadata.page_fetch_count == 0
 
 
@@ -233,7 +255,7 @@ async def test_output_schema_has_no_pack_specific_fields() -> None:
         "app.services.scout.discovery_scout_service.store_evidence_bundle",
         return_value=[],
     ):
-        run_id, bundles, _ = await _run_with_mocks(mock_db)
+        run_id, bundles, _ = await _run_with_mocks(mock_db, workspace_id=TEST_WORKSPACE_ID)
     assert len(bundles) == 1
     b = bundles[0]
     assert hasattr(b, "candidate_company_name")
@@ -268,6 +290,7 @@ async def test_scout_run_with_extractor_disabled_calls_store_with_structured_pay
     ):
         await _run_with_mocks(
             mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
             seed_urls=["https://example.com/one"],
             run_extractor=False,
         )
@@ -291,6 +314,7 @@ async def test_scout_run_with_extractor_enabled_calls_store_with_structured_payl
     ):
         run_id, bundles, _ = await _run_with_mocks(
             mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
             seed_urls=["https://example.com"],
             run_extractor=True,
         )
@@ -326,6 +350,7 @@ async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_n
     ):
         await _run_with_mocks(
             mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
             llm_response=bad_json,
             seed_urls=[],
             run_extractor=True,
@@ -340,8 +365,16 @@ async def test_scout_run_with_extractor_on_stores_and_read_back_structured_paylo
     db: Session,
 ) -> None:
     """Integration: run with run_extractor=True persists ExtractionResult to store; read back matches."""
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Extractor WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
     run_id, bundles, _ = await _run_with_mocks(
         db,
+        workspace_id=ws.id,
         seed_urls=["https://example.com"],
         run_extractor=True,
     )

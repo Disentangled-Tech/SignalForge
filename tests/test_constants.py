@@ -9,6 +9,10 @@ secrets in test fixtures while satisfying Snyk Code security checks.
 from __future__ import annotations
 
 import os
+import uuid
+
+# Fixed UUID for schema tests that need a valid workspace_id (no DB)
+TEST_WORKSPACE_ID = uuid.UUID("11111111-1111-4111-8111-111111111111")
 
 # Passwords: load from env; fallback is a short placeholder (not a real credential)
 TEST_PASSWORD = os.environ.get("TEST_PASSWORD") or "x"
