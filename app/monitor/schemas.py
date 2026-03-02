@@ -1,4 +1,4 @@
-"""Monitor schemas: ChangeEvent (M3, Issue #280)."""
+"""Monitor schemas: ChangeEvent (M3, Issue #280). Used by diff detector, runner, and LLM interpretation (M5)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChangeEvent(BaseModel):
-    """Structured change event for a monitored page (before/after diff)."""
+    """Structured change event for a monitored page (before/after diff). Consumed by LLM interpretation (M5)."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

@@ -62,6 +62,11 @@ TEMPLATE_PLACEHOLDERS = {
         "TOP_RISKS",
         "MOST_LIKELY_NEXT_PROBLEM",
     },
+    "monitor_event_interpretation_v1": {
+        "CORE_EVENT_TYPES",
+        "PAGE_URL",
+        "DIFF_SUMMARY",
+    },
 }
 
 ALL_TEMPLATES = list(TEMPLATE_PLACEHOLDERS.keys())
