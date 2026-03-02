@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import secrets
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -517,6 +517,60 @@ async def list_evidence_bundles_for_workspace(
         "bundles": [b.model_dump(mode="json") for b in bundles],
         "count": len(bundles),
     }
+
+
+@router.get("/evidence/quarantine")
+async def list_evidence_quarantine(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    limit: int = Query(100, ge=1, le=500, description="Max entries to return"),
+    offset: int = Query(0, ge=0, description="Skip this many entries"),
+    reason_substring: str | None = Query(
+        None,
+        description="Filter by reason (case-insensitive substring)",
+    ),
+    since: datetime | None = Query(
+        None,
+        description="Return only entries created on or after this time (ISO 8601)",
+    ),
+):
+    """List quarantined evidence entries (M4, Issue #278). Requires X-Internal-Token.
+
+    Payload can contain run context, bundle content, company names, and snippets;
+    intended only for internal/cron use.
+    """
+    from app.evidence.quarantine_repository import list_quarantine
+
+    entries = list_quarantine(
+        db,
+        limit=limit,
+        offset=offset,
+        reason_substring=reason_substring,
+        since=since,
+    )
+    return {
+        "entries": [e.model_dump(mode="json") for e in entries],
+        "count": len(entries),
+    }
+
+
+@router.get("/evidence/quarantine/{quarantine_id}")
+async def get_evidence_quarantine(
+    quarantine_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+):
+    """Get one quarantined evidence entry by id (M4, Issue #278). Returns 404 if not found. Requires X-Internal-Token.
+
+    Payload can contain run context, bundle content, company names, and snippets;
+    intended only for internal/cron use.
+    """
+    from app.evidence.quarantine_repository import get_quarantine
+
+    entry = get_quarantine(db, quarantine_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Quarantine entry not found")
+    return entry.model_dump(mode="json")
 
 
 @router.post("/run_bias_audit")
