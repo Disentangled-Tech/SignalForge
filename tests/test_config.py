@@ -76,3 +76,21 @@ def test_llm_model_legacy_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
         assert settings.llm_model_outreach == "gpt-4-turbo"
     finally:
         get_settings.cache_clear()
+
+
+def test_anthropic_api_key_from_env_or_llm_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """anthropic_api_key loads from ANTHROPIC_API_KEY, or falls back to LLM_API_KEY."""
+    get_settings.cache_clear()
+    try:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("LLM_API_KEY", "sk-openai")
+        settings = get_settings()
+        assert hasattr(settings, "anthropic_api_key")
+        assert settings.anthropic_api_key == "sk-openai"
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret")
+        get_settings.cache_clear()
+        settings = get_settings()
+        assert settings.anthropic_api_key == "sk-ant-secret"
+    finally:
+        get_settings.cache_clear()

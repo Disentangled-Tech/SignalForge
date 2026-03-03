@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.llm.router import clear_provider_cache
 from app.models.analysis_record import AnalysisRecord
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
@@ -932,3 +934,86 @@ class TestGenerateBriefing:
 
         assert result == []
         mock_select.assert_not_called()
+
+    @patch("app.services.briefing.get_pack_for_workspace", return_value=None)
+    @patch("app.services.briefing.get_default_pack_id", return_value=None)
+    @patch("app.llm.anthropic_provider.Anthropic")
+    @patch("app.config.get_settings")
+    @patch("app.services.briefing.get_resolved_settings")
+    @patch("app.services.briefing.generate_outreach")
+    @patch("app.services.briefing.resolve_prompt_content")
+    @patch("app.services.briefing.select_top_companies")
+    def test_generate_briefing_full_stack_with_anthropic_provider(
+        self,
+        mock_select,
+        mock_render,
+        mock_outreach,
+        mock_resolved,
+        mock_get_settings,
+        mock_anthropic_client,
+        *_args,
+    ):
+        """Full stack: real router returns AnthropicProvider when LLM_PROVIDER=anthropic; briefing uses it (mocked SDK)."""
+        from tests.test_constants import TEST_LLM_API_KEY
+
+        mock_resolved.return_value = _default_resolved()
+
+        # Settings with anthropic so router returns AnthropicProvider
+        settings = SimpleNamespace(
+            llm_provider="anthropic",
+            llm_api_key=TEST_LLM_API_KEY,
+            llm_model_reasoning="claude-3-5-sonnet",
+            llm_model_json="claude-3-5-haiku",
+            llm_model_outreach="claude-3-5-haiku",
+            llm_model_scout="claude-3-5-sonnet",
+            llm_timeout=60.0,
+            llm_max_retries=3,
+        )
+        mock_get_settings.return_value = settings
+
+        # Anthropic SDK: messages.create returns response with content block
+        mock_client_instance = MagicMock()
+        mock_anthropic_client.return_value = mock_client_instance
+        mock_client_instance.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=_VALID_BRIEFING_RESPONSE)],
+            input_tokens=10,
+            output_tokens=20,
+        )
+        mock_outreach.return_value = _VALID_OUTREACH_RESULT
+
+        company = _make_company()
+        analysis = _make_analysis()
+        mock_select.return_value = [company]
+        mock_render.return_value = "prompt"
+
+        db = MagicMock()
+        query_mock = db.query.return_value
+        query_mock.filter.return_value = query_mock
+        query_mock.order_by.return_value = query_mock
+        query_mock.first.side_effect = [None, analysis]
+
+        added = []
+
+        def capture_add(obj):
+            added.append(obj)
+
+        db.add.side_effect = capture_add
+
+        def set_id_on_refresh(obj):
+            if isinstance(obj, BriefingItem):
+                obj.id = 1
+
+        db.refresh.side_effect = set_id_on_refresh
+
+        clear_provider_cache()
+        result = generate_briefing(db)
+        clear_provider_cache()
+
+        assert len(result) == 1
+        mock_client_instance.messages.create.assert_called_once()
+        call_kwargs = mock_client_instance.messages.create.call_args.kwargs
+        assert call_kwargs["model"] == "claude-3-5-haiku"
+        assert "response_format" not in call_kwargs  # we inject JSON instruction in prompt
+        items = [a for a in added if isinstance(a, BriefingItem)]
+        assert len(items) == 1
+        assert items[0].why_now == "The company is scaling fast."
