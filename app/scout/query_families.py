@@ -1,8 +1,9 @@
 """Query family definitions and config loader for Discovery Scout (Issue #282).
 
-Pack-agnostic: family ids and template slots. If query_families.yaml is missing,
-in-code default (single 'rubric' family) is used so planner falls back to
-rubric-only query generation.
+Pack-agnostic: family ids and template slots. Query packs are config-based:
+edit query_families.yaml to add or change families/templates; no code change required.
+If query_families.yaml is missing, in-code default (single 'rubric' family) is used
+so planner falls back to rubric-only query generation.
 """
 
 from __future__ import annotations

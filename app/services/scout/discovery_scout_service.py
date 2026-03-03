@@ -25,7 +25,7 @@ from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.prompts.loader import render_prompt
 from app.schemas.scout import EvidenceBundle, ScoutRunMetadata
-from app.scout.query_planner import plan_queries
+from app.scout.query_planner import QueryPlanner
 from app.scout.sources import filter_allowed_sources
 from app.verification import verify_bundles
 
@@ -104,7 +104,13 @@ async def run(
         denylist = list(settings.scout_source_denylist)
 
     run_id = str(uuid.uuid4())
-    queries = plan_queries(icp_definition, core_rubric=None, pack_id=pack_id)
+    planner = QueryPlanner()
+    queries, query_families = planner.plan_with_families(
+        icp_definition,
+        core_rubric=None,
+        pack_id=pack_id,
+        denylist=denylist,
+    )
 
     urls_to_fetch: list[str] = []
     if seed_urls:
@@ -154,6 +160,9 @@ async def run(
         "exclusion_rules": exclusion_rules,
         "pack_id": pack_id,
         "query_count": len(queries),
+        "queries": queries,
+        "query_families": query_families,
+        "bundles_count": len(validated),
         "page_fetch_count": len(urls_to_fetch),
     }
     scout_run = ScoutRun(

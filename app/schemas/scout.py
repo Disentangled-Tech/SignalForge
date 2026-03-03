@@ -106,17 +106,29 @@ class ScoutRunResult(BaseModel):
     metadata: ScoutRunMetadata
 
 
-# ── Scout analytics (GET /internal/scout_analytics) ───────────────────────────
+# ── Scout analytics (M5, Issue #282) ────────────────────────────────────────
 
 
-class ScoutAnalyticsResponse(BaseModel):
-    """Aggregate yield metrics from scout_runs for a workspace (read-only)."""
+class ScoutAnalyticsFamilyBreakdown(BaseModel):
+    """Per-family run count from config_snapshot.query_families."""
 
     model_config = ConfigDict(extra="forbid")
 
-    workspace_id: uuid.UUID
+    family_id: str = Field(..., min_length=1, max_length=64)
+    runs_count: int = Field(..., ge=0)
+
+
+class ScoutAnalyticsResponse(BaseModel):
+    """Aggregate yield metrics for GET /internal/scout_analytics. Workspace-scoped."""
+
+    model_config = ConfigDict(extra="forbid")
+
     runs_count: int = Field(..., ge=0, description="Number of scout runs in scope")
     total_bundles: int = Field(..., ge=0, description="Total evidence bundles across those runs")
+    by_family: list[ScoutAnalyticsFamilyBreakdown] = Field(
+        default_factory=list,
+        description="Optional breakdown by query family (from config_snapshot.query_families)",
+    )
 
 
 def evidence_bundle_json_schema() -> dict[str, Any]:

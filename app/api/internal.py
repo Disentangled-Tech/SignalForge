@@ -558,57 +558,37 @@ async def run_monitor_endpoint(
 def scout_analytics_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
-    workspace_id: str = Query(..., description="Workspace ID (required for tenant scoping)"),
+    workspace_id: str = Query(
+        ...,
+        min_length=1,
+        description="Workspace ID (required for tenant scoping)",
+    ),
     since: date | None = Query(
         None,
-        description="Optional date (YYYY-MM-DD): only runs started on or after this date (UTC)",
+        description="Return only runs started on or after this date (YYYY-MM-DD, UTC)",
     ),
 ) -> ScoutAnalyticsResponse:
-    """Return aggregate scout yield metrics for a workspace (read-only).
+    """Return aggregate scout yield metrics for a workspace (M5, Issue #282).
 
-    Reads from scout_runs filtered by workspace_id; optionally filter by started_at >= since
-    (since is interpreted as start of day UTC). Enforces workspace scoping: no data from
-    other workspaces is returned.
+    Read-only. Reads from scout_runs and scout_evidence_bundles filtered by
+    workspace_id; optional since filters by run started_at. Response includes
+    runs_count, total_bundles, and optional by_family from config_snapshot.
+    Requires X-Internal-Token.
     """
-    from sqlalchemy import func
-
-    from app.models.scout_evidence_bundle import ScoutEvidenceBundle
-    from app.models.scout_run import ScoutRun
-
-    if not workspace_id or not workspace_id.strip():
-        raise HTTPException(status_code=422, detail="workspace_id is required")
     validate_uuid_param_or_422(workspace_id, "workspace_id")
-    ws_uuid = uuid.UUID(workspace_id.strip())
+    from uuid import UUID
 
-    q = db.query(ScoutRun).filter(ScoutRun.workspace_id == ws_uuid)
-    if since is not None:
-        # Include runs started on or after start of day (since) in UTC (timezone.utc for 3.10 compat)
-        q = q.filter(
-            ScoutRun.started_at
-            >= datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)  # noqa: UP017
-        )
-    runs = q.all()
-    run_ids = [r.run_id for r in runs]
-    runs_count = len(run_ids)
+    from app.services.scout.scout_analytics import get_scout_analytics
 
-    if not run_ids:
-        return ScoutAnalyticsResponse(
-            workspace_id=ws_uuid,
-            runs_count=0,
-            total_bundles=0,
-        )
-
-    total_bundles = (
-        db.query(func.count(ScoutEvidenceBundle.id))
-        .filter(ScoutEvidenceBundle.scout_run_id.in_(run_ids))
-        .scalar()
-        or 0
-    )
-    return ScoutAnalyticsResponse(
-        workspace_id=ws_uuid,
-        runs_count=runs_count,
-        total_bundles=total_bundles,
-    )
+    try:
+        ws_uuid = UUID(workspace_id.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid workspace_id: must be a valid UUID",
+        ) from None
+    result = get_scout_analytics(db, workspace_id=ws_uuid, since=since)
+    return result
 
 
 @router.post("/run_scout")

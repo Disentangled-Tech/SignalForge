@@ -352,7 +352,6 @@ def test_scout_analytics_returns_only_requested_workspace_data(
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["workspace_id"] == str(ws_a.id)
     assert data["runs_count"] == 1
     assert data["total_bundles"] == 1
 
@@ -364,7 +363,6 @@ def test_scout_analytics_returns_only_requested_workspace_data(
     )
     assert response_b.status_code == 200
     data_b = response_b.json()
-    assert data_b["workspace_id"] == str(ws_b.id)
     assert data_b["runs_count"] == 1
     assert data_b["total_bundles"] == 2
 
