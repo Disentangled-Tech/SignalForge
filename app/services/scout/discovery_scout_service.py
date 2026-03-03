@@ -104,7 +104,12 @@ async def run(
         denylist = list(settings.scout_source_denylist)
 
     run_id = str(uuid.uuid4())
-    queries = plan_queries(icp_definition, core_rubric=None, pack_id=pack_id)
+    queries = plan_queries(
+        icp_definition,
+        core_rubric=None,
+        pack_id=pack_id,
+        denylist=denylist,
+    )
 
     urls_to_fetch: list[str] = []
     if seed_urls:
