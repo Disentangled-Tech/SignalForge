@@ -330,3 +330,45 @@ def test_load_query_families_config_entry_with_non_list_templates_treated_as_emp
     config = load_query_families_config(path=yaml_path)
     assert len(config) == 1
     assert config[0]["templates"] == []
+
+
+# ── M4: Config-based query packs — YAML used for template expansion when present ─
+
+
+def test_config_based_query_pack_yaml_present_templates_expanded(tmp_path: Path) -> None:
+    """When YAML is present, template expansion uses config: {icp} replaced, family from config."""
+    yaml_path = tmp_path / "query_families.yaml"
+    yaml_path.write_text(
+        """
+- id: hiring
+  label: Hiring
+  templates:
+    - "{icp} hiring"
+    - "hiring {icp}"
+""",
+        encoding="utf-8",
+    )
+    with patch("app.scout.query_families._QUERY_FAMILIES_PATH", yaml_path):
+        planner = QueryPlanner(max_queries=10)
+        queries, families = planner.plan_with_families(
+            icp="SaaS",
+            core_rubric=_minimal_core_rubric(),
+        )
+    assert "SaaS hiring" in queries
+    assert "hiring SaaS" in queries
+    assert "hiring" in families
+    idx = queries.index("SaaS hiring")
+    assert families[idx] == "hiring"
+
+
+def test_config_based_query_pack_yaml_missing_no_config_families() -> None:
+    """When YAML is missing, only rubric family appears (no config-derived families)."""
+    with patch(
+        "app.scout.query_families._QUERY_FAMILIES_PATH", Path("/nonexistent/query_families.yaml")
+    ):
+        planner = QueryPlanner(max_queries=20)
+        _, families = planner.plan_with_families(
+            icp="Any ICP",
+            core_rubric=_minimal_core_rubric(),
+        )
+    assert all(f == DEFAULT_FAMILY_ID for f in families)
