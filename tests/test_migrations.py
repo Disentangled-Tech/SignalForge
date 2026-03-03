@@ -303,3 +303,85 @@ def test_esl_decision_columns_backfill_preserves_suppress_from_explain(
             )
             conn.commit()
         _run_alembic_env("upgrade", "head", timeout=90)
+
+
+@pytest.mark.integration
+def test_migration_20260238_scout_bundle_run_id_uuid_up_down_and_orphan_cleanup(
+    _ensure_migrations: None,
+) -> None:
+    """Migration 20260238: upgrade/downgrade cycle and downgrade deletes orphan bundles.
+
+    Ensures downgrade is reversible: orphans (bundles whose run no longer exists)
+    are deleted before backfilling Integer column so NOT NULL is safe.
+    """
+    # Ensure we're at head
+    result = _run_alembic_env("upgrade", "head", timeout=90)
+    assert result.returncode == 0, f"upgrade head failed: {result.stderr}"
+
+    current = _run_alembic_env("current")
+    if "20260238" not in (current.stdout or "") and "head" not in (current.stdout or "").lower():
+        pytest.skip("Head does not include 20260238")
+
+    # Downgrade to just before 20260238
+    result = _run_alembic_env("downgrade", "20260236_evidence_store", timeout=90)
+    assert result.returncode == 0, f"downgrade to 20260236 failed: {result.stderr}"
+
+    # Upgrade to 20260238 (scout_run_id becomes UUID)
+    result = _run_alembic_env("upgrade", "20260238_scout_bundle_run_uuid", timeout=90)
+    assert result.returncode == 0, f"upgrade to 20260238 failed: {result.stderr}"
+
+    with engine.connect() as conn:
+        r = conn.execute(
+            text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'scout_evidence_bundles' "
+                "AND column_name = 'scout_run_id'"
+            )
+        )
+        row = r.fetchone()
+        assert row is not None and row[0] == "uuid", "scout_run_id should be UUID after upgrade"
+
+    # Create an orphan: drop FK, insert bundle with non-existent run_id, then downgrade
+    orphan_run_id = str(uuid.uuid4())
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE scout_evidence_bundles "
+                "DROP CONSTRAINT IF EXISTS scout_evidence_bundles_scout_run_id_fkey"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO scout_evidence_bundles "
+                "(scout_run_id, candidate_company_name, company_website, why_now_hypothesis, "
+                "evidence, missing_information, created_at) "
+                "VALUES (:rid, 'Orphan Co', 'https://orphan.example.com', '', '[]'::jsonb, '[]'::jsonb, now())"
+            ),
+            {"rid": orphan_run_id},
+        )
+        conn.commit()
+
+    # Downgrade must delete orphan and succeed (clean, reversible)
+    result = _run_alembic_env("downgrade", "20260236_evidence_store", timeout=90)
+    assert result.returncode == 0, f"downgrade with orphan failed: {result.stderr}"
+
+    with engine.connect() as conn:
+        count = conn.execute(
+            text("SELECT COUNT(*) FROM scout_evidence_bundles")
+        ).scalar()
+        assert count == 0, "Orphan bundle must be deleted by downgrade"
+        r = conn.execute(
+            text(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'scout_evidence_bundles' "
+                "AND column_name = 'scout_run_id'"
+            )
+        )
+        row = r.fetchone()
+        assert row is not None and row[0] == "integer", (
+            "scout_run_id should be integer after downgrade"
+        )
+
+    # Restore head
+    result = _run_alembic_env("upgrade", "head", timeout=90)
+    assert result.returncode == 0, f"upgrade to head failed: {result.stderr}"

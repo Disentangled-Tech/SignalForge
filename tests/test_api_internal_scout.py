@@ -168,3 +168,83 @@ def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
         json={"icp_definition": "B2B SaaS", "page_fetch_limit": -1},
     )
     assert r4.status_code == 422
+
+
+# ── GET /internal/scout_runs (workspace-scoped list) ─────────────────────────
+
+
+def test_list_scout_runs_missing_workspace_id_returns_422(client: TestClient) -> None:
+    """GET /internal/scout_runs without workspace_id returns 422."""
+    response = client.get(
+        "/internal/scout_runs",
+        headers={"X-Internal-Token": VALID_TOKEN},
+    )
+    assert response.status_code == 422
+
+
+def test_list_scout_runs_wrong_token_returns_403(client: TestClient) -> None:
+    """GET /internal/scout_runs with wrong token returns 403."""
+    response = client.get(
+        "/internal/scout_runs",
+        headers={"X-Internal-Token": "wrong-token"},
+        params={"workspace_id": "a1b2c3d4-e5f6-7890-abcd-000000000001"},
+    )
+    assert response.status_code == 403
+
+
+def test_list_scout_runs_requires_workspace_id_for_tenant_scoping(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """GET /internal/scout_runs returns only runs for the given workspace_id (no cross-tenant)."""
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from app.models import ScoutRun, Workspace
+
+    ws_a = Workspace(name="Workspace A")
+    ws_b = Workspace(name="Workspace B")
+    db.add(ws_a)
+    db.add(ws_b)
+    db.flush()
+
+    run_a = ScoutRun(
+        run_id=uuid4(),
+        started_at=datetime.now(UTC),
+        model_version="test",
+        page_fetch_count=0,
+        status="completed",
+        workspace_id=ws_a.id,
+    )
+    run_b = ScoutRun(
+        run_id=uuid4(),
+        started_at=datetime.now(UTC),
+        model_version="test",
+        page_fetch_count=0,
+        status="completed",
+        workspace_id=ws_b.id,
+    )
+    db.add(run_a)
+    db.add(run_b)
+    db.commit()
+
+    response = client_with_db.get(
+        "/internal/scout_runs",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": str(ws_a.id)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["workspace_id"] == str(ws_a.id)
+    assert len(data["runs"]) == 1
+    assert data["runs"][0]["run_id"] == str(run_a.run_id)
+    assert data["runs"][0]["status"] == "completed"
+
+    response_b = client_with_db.get(
+        "/internal/scout_runs",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": str(ws_b.id)},
+    )
+    assert response_b.status_code == 200
+    assert len(response_b.json()["runs"]) == 1
+    assert response_b.json()["runs"][0]["run_id"] == str(run_b.run_id)

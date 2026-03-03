@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.evidence.store import store_evidence_bundle
+from app.evidence.store import list_scout_bundle_ids_for_workspace, store_evidence_bundle
 from app.models import (
     EvidenceBundle as EvidenceBundleORM,
 )
@@ -307,3 +308,61 @@ def test_store_evidence_bundle_pack_id_and_raw_model_output_stored(
     assert row is not None
     assert row.pack_id == fractional_cto_pack_id
     assert row.raw_model_output == raw_output
+
+
+def test_list_scout_bundle_ids_for_workspace_returns_only_bundles_in_workspace(
+    db: Session,
+) -> None:
+    """list_scout_bundle_ids_for_workspace scopes by workspace_id (no cross-tenant leakage)."""
+    from app.models.scout_evidence_bundle import ScoutEvidenceBundle
+    from app.models.scout_run import ScoutRun
+    from app.models.workspace import Workspace
+
+    ws_a = Workspace(name="Workspace A")
+    ws_b = Workspace(name="Workspace B")
+    db.add_all([ws_a, ws_b])
+    db.flush()
+
+    run_id_a = uuid.uuid4()
+    run_id_b = uuid.uuid4()
+    run_a = ScoutRun(
+        run_id=run_id_a,
+        workspace_id=ws_a.id,
+        model_version="test-v1",
+        page_fetch_count=0,
+        status="completed",
+    )
+    run_b = ScoutRun(
+        run_id=run_id_b,
+        workspace_id=ws_b.id,
+        model_version="test-v1",
+        page_fetch_count=0,
+        status="completed",
+    )
+    db.add_all([run_a, run_b])
+    db.flush()
+
+    bundle_a = ScoutEvidenceBundle(
+        scout_run_id=run_id_a,
+        candidate_company_name="Co A",
+        company_website="https://coa.example.com",
+        why_now_hypothesis="",
+        evidence=[],
+        missing_information=[],
+    )
+    bundle_b = ScoutEvidenceBundle(
+        scout_run_id=run_id_b,
+        candidate_company_name="Co B",
+        company_website="https://cob.example.com",
+        why_now_hypothesis="",
+        evidence=[],
+        missing_information=[],
+    )
+    db.add_all([bundle_a, bundle_b])
+    db.commit()
+
+    ids_a = list_scout_bundle_ids_for_workspace(db, ws_a.id)
+    ids_b = list_scout_bundle_ids_for_workspace(db, ws_b.id)
+
+    assert ids_a == [bundle_a.id]
+    assert ids_b == [bundle_b.id]
