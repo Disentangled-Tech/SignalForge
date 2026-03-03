@@ -18,7 +18,7 @@ from app.api.deps import validate_uuid_param_or_422
 from app.config import get_settings
 from app.db.session import get_db
 from app.schemas.evidence import StoreEvidenceRequest
-from app.schemas.scout import RunScoutRequest
+from app.schemas.scout import RunScoutRequest, ScoutAnalyticsResponse
 from app.schemas.seeder import SeedFromBundlesRequest
 
 logger = logging.getLogger(__name__)
@@ -552,6 +552,43 @@ async def run_monitor_endpoint(
             "companies_processed": 0,
             "error": str(exc),
         }
+
+
+@router.get("/scout_analytics")
+def scout_analytics_endpoint(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    workspace_id: str = Query(
+        ...,
+        min_length=1,
+        description="Workspace ID (required for tenant scoping)",
+    ),
+    since: date | None = Query(
+        None,
+        description="Return only runs started on or after this date (YYYY-MM-DD)",
+    ),
+) -> ScoutAnalyticsResponse:
+    """Return aggregate scout yield metrics for a workspace (M5, Issue #282).
+
+    Read-only. Reads from scout_runs and scout_evidence_bundles filtered by
+    workspace_id; optional since filters by run started_at. Response includes
+    runs_count, total_bundles, and optional by_family from config_snapshot.
+    Requires X-Internal-Token.
+    """
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    from uuid import UUID
+
+    from app.services.scout.scout_analytics import get_scout_analytics
+
+    try:
+        ws_uuid = UUID(workspace_id.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid workspace_id: must be a valid UUID",
+        ) from None
+    result = get_scout_analytics(db, workspace_id=ws_uuid, since=since)
+    return result
 
 
 @router.post("/run_scout")
