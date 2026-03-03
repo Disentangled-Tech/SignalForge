@@ -63,7 +63,7 @@ When enabled (e.g. via config or run option), the Scout run can classify evidenc
 - **Input:** Raw content (e.g. evidence text, diff summary) plus optional evidence items for source_refs.
 - **Output:** A list of **Core Event candidates** only; each `event_type` must be from the [core taxonomy](app/core_taxonomy/taxonomy.yaml). No new event types are invented—validation uses `is_valid_core_event_type` and drops any unknown type.
 - **Pack-agnostic:** Pack selection does not alter interpretation result; the prompt and validation use the core taxonomy only. See Architecture Contract §4 (LLM Boundary Rules).
-- **Reuse:** The same interpretation contract is shared by Scout (evidence → events) and the Diff-Based Monitor (ChangeEvent → events). See [event-interpretation.md](event-interpretation.md).
+- **Reuse:** The same interpretation contract is shared by Scout (evidence → events) and the Diff-Based Monitor (ChangeEvent → events). See [event-interpretation.md](event-interpretation.md) and [ADR-011](../rules/ADR-011-LLM-Event-Interpretation.md).
 
 ## Optional Verification Gate (Issue #278)
 

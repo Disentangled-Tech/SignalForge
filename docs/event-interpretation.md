@@ -46,3 +46,7 @@ Calibration tests (`tests/test_interpretation_calibration.py`) ensure:
 - With fixed input and mock LLM, the set of returned event types is deterministic and a subset of the taxonomy.
 
 With a real LLM, some variance across reruns is acceptable; the important invariant is that **every** returned event type remains in the core taxonomy.
+
+## References
+
+- [ADR-011](../rules/ADR-011-LLM-Event-Interpretation.md), [discovery_scout.md](discovery_scout.md), [monitor.md](monitor.md), Architecture Contract §4.

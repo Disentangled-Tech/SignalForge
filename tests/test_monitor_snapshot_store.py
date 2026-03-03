@@ -33,7 +33,9 @@ class TestSaveAndGetSnapshot:
         assert snap.source_type == "blog"
 
     def test_get_latest_none_when_no_snapshot(self, db: Session, company_with_website: Company):
-        assert get_latest_snapshot(db, company_with_website.id, "https://other.example.com/") is None
+        assert (
+            get_latest_snapshot(db, company_with_website.id, "https://other.example.com/") is None
+        )
 
     def test_save_updates_existing_latest_wins(self, db: Session, company_with_website: Company):
         url = "https://monitor.example.com/careers"

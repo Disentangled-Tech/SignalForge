@@ -16,22 +16,22 @@ from app.schemas.company import CompanyRead
 def _make_company_read(**overrides) -> CompanyRead:
     """Create a CompanyRead for script output assertions."""
     now = datetime.now(UTC)
-    defaults = dict(
-        id=1,
-        company_name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        founder_linkedin_url=None,
-        company_linkedin_url=None,
-        notes=None,
-        source="manual",
-        target_profile_match=None,
-        cto_need_score=None,
-        current_stage=None,
-        created_at=now,
-        updated_at=now,
-        last_scan_at=None,
-    )
+    defaults = {
+        "id": 1,
+        "company_name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "founder_linkedin_url": None,
+        "company_linkedin_url": None,
+        "notes": None,
+        "source": "manual",
+        "target_profile_match": None,
+        "cto_need_score": None,
+        "current_stage": None,
+        "created_at": now,
+        "updated_at": now,
+        "last_scan_at": None,
+    }
     defaults.update(overrides)
     return CompanyRead(**defaults)
 

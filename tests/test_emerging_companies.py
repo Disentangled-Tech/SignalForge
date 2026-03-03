@@ -107,7 +107,7 @@ def test_outreach_score_formula_matches_ranking(db: Session) -> None:
     # TRS 50, 80, 90 with ESL 0.5, 0.75, 0.9 -> OutreachScore 25, 60, 81
     # Distinct scores ensure deterministic ordering
     trs_esl_pairs = [(50, 0.5), (80, 0.75), (90, 0.9)]
-    for c, (trs, esl) in zip(companies, trs_esl_pairs):
+    for c, (trs, esl) in zip(companies, trs_esl_pairs, strict=True):
         rs = ReadinessSnapshot(
             company_id=c.id,
             as_of=as_of,

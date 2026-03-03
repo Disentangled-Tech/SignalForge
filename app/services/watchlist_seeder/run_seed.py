@@ -67,8 +67,7 @@ def run_watchlist_seed(
         score_result = {"status": "failed", "error": str(exc)}
 
     completed = (
-        derive_result.get("status") == "completed"
-        and score_result.get("status") == "completed"
+        derive_result.get("status") == "completed" and score_result.get("status") == "completed"
     )
     status = "completed" if completed and error_msg is None else "failed"
     return {

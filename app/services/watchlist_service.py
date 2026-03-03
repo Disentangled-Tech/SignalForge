@@ -35,17 +35,13 @@ def add_to_watchlist(
         return None
 
     existing_active = (
-        db.query(Watchlist)
-        .filter(Watchlist.company_id == company_id, Watchlist.is_active == True)
-        .first()
+        db.query(Watchlist).filter(Watchlist.company_id == company_id, Watchlist.is_active).first()
     )
     if existing_active:
         raise WatchlistConflictError("Company is already on the watchlist")
 
     existing_inactive = (
-        db.query(Watchlist)
-        .filter(Watchlist.company_id == company_id, Watchlist.is_active == False)
-        .first()
+        db.query(Watchlist).filter(Watchlist.company_id == company_id, ~Watchlist.is_active).first()
     )
     if existing_inactive:
         existing_inactive.is_active = True
@@ -67,9 +63,7 @@ def remove_from_watchlist(db: Session, company_id: int) -> bool:
     Returns True if an active entry was found and removed, False otherwise.
     """
     entry = (
-        db.query(Watchlist)
-        .filter(Watchlist.company_id == company_id, Watchlist.is_active == True)
-        .first()
+        db.query(Watchlist).filter(Watchlist.company_id == company_id, Watchlist.is_active).first()
     )
     if not entry:
         return False
@@ -90,7 +84,7 @@ def list_watchlist(db: Session, as_of: date | None = None) -> list[WatchlistItem
 
     entries = (
         db.query(Watchlist)
-        .filter(Watchlist.is_active == True)
+        .filter(Watchlist.is_active)
         .join(Company, Watchlist.company_id == Company.id)
         .order_by(Watchlist.added_at.desc())
         .all()

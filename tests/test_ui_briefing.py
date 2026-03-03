@@ -75,7 +75,6 @@ def test_briefing_renders_emerging_companies_section(briefing_ui_client: TestCli
     resp = briefing_ui_client.get("/briefing")
     assert resp.status_code == 200
 
-    soup = BeautifulSoup(resp.text, "html.parser")
     assert "Emerging UI Co" in resp.text or "emerging" in resp.text.lower()
 
 
