@@ -106,3 +106,22 @@ def test_anthropic_api_key_fallback_to_llm_api_key(monkeypatch: pytest.MonkeyPat
         assert settings.anthropic_api_key == "sk-common-key"
     finally:
         get_settings.cache_clear()
+
+
+def test_anthropic_provider_claude_model_names_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When LLM_PROVIDER=anthropic and role env vars are set, settings load Claude model names."""
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("LLM_MODEL_REASONING", "claude-3-5-sonnet-20241022")
+    monkeypatch.setenv("LLM_MODEL_JSON", "claude-3-5-haiku-20241022")
+    monkeypatch.setenv("LLM_MODEL_OUTREACH", "claude-3-5-haiku-20241022")
+    monkeypatch.setenv("LLM_MODEL_SCOUT", "claude-sonnet-4-20250514")
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.llm_provider == "anthropic"
+        assert settings.llm_model_reasoning == "claude-3-5-sonnet-20241022"
+        assert settings.llm_model_json == "claude-3-5-haiku-20241022"
+        assert settings.llm_model_outreach == "claude-3-5-haiku-20241022"
+        assert settings.llm_model_scout == "claude-sonnet-4-20250514"
+    finally:
+        get_settings.cache_clear()

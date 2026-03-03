@@ -10,6 +10,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from anthropic import (
+    APITimeoutError as AnthropicAPITimeoutError,
+)
+from anthropic import (
+    RateLimitError as AnthropicRateLimitError,
+)
 from openai import APITimeoutError, RateLimitError
 
 from app.config import Settings
@@ -226,7 +232,9 @@ class TestRouter:
         """When llm_provider=anthropic and API key is set, returns AnthropicProvider."""
         with patch("app.llm.anthropic_provider.Anthropic"):
             provider = get_llm_provider(
-                settings=_make_settings(llm_provider="anthropic", llm_model_reasoning="claude-3-5-sonnet")
+                settings=_make_settings(
+                    llm_provider="anthropic", llm_model_reasoning="claude-3-5-sonnet"
+                )
             )
         assert isinstance(provider, AnthropicProvider)
         assert provider.model == "claude-3-5-sonnet"
@@ -237,9 +245,7 @@ class TestRouter:
             ValueError,
             match="LLM_API_KEY or ANTHROPIC_API_KEY required for Anthropic provider",
         ):
-            get_llm_provider(
-                settings=_make_settings(llm_provider="anthropic", llm_api_key=None)
-            )
+            get_llm_provider(settings=_make_settings(llm_provider="anthropic", llm_api_key=None))
 
     def test_anthropic_caches_by_role(self):
         """Anthropic provider is cached per role (anthropic:role)."""
@@ -294,6 +300,103 @@ class TestAnthropicProviderComplete:
         call_kwargs = mock_client.messages.create.call_args.kwargs
         assert call_kwargs["system"] == "Be brief"
 
+    def test_complete_passes_temperature_max_tokens_response_format(self):
+        """AnthropicProvider passes temperature, max_tokens and appends JSON instruction when response_format is json_object."""
+        with patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic:
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="{}")],
+                input_tokens=0,
+                output_tokens=0,
+            )
+            provider = AnthropicProvider(api_key="k", model="claude-3-5-haiku")
+            provider.complete(
+                "json please",
+                temperature=0.0,
+                max_tokens=100,
+                response_format={"type": "json_object"},
+            )
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.0
+        assert call_kwargs["max_tokens"] == 100
+        messages = call_kwargs["messages"]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert "json please" in messages[0]["content"]
+        assert "valid JSON only" in messages[0]["content"] or "JSON only" in messages[0]["content"]
+
+    def test_complete_defaults_max_tokens_when_omitted(self):
+        """When max_tokens not in kwargs, AnthropicProvider uses default 4096."""
+        with patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic:
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="ok")],
+                input_tokens=0,
+                output_tokens=0,
+            )
+            provider = AnthropicProvider(api_key="k")
+            provider.complete("hello")
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 4096
+
+
+class TestAnthropicProviderRetry:
+    """AnthropicProvider retries on rate-limit and timeout (mocked SDK)."""
+
+    def test_retry_on_rate_limit(self):
+        with (
+            patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic,
+            patch("app.llm.anthropic_provider.time") as mock_time,
+        ):
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_time.monotonic.return_value = 0.0
+            rate_err = AnthropicRateLimitError(
+                message="rate limited",
+                response=MagicMock(),
+                body=None,
+            )
+            mock_client.messages.create.side_effect = [
+                rate_err,
+                rate_err,
+                SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text="finally")],
+                    input_tokens=0,
+                    output_tokens=0,
+                ),
+            ]
+            provider = AnthropicProvider(api_key="k", max_retries=3)
+            result = provider.complete("test")
+        assert result == "finally"
+        assert mock_client.messages.create.call_count == 3
+        assert mock_time.sleep.call_count == 2
+
+    def test_retry_on_timeout(self):
+        with (
+            patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic,
+            patch("app.llm.anthropic_provider.time") as mock_time,
+        ):
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_time.monotonic.return_value = 0.0
+            timeout_err = AnthropicAPITimeoutError(request=MagicMock())
+            mock_client.messages.create.side_effect = [
+                timeout_err,
+                timeout_err,
+                SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text="success")],
+                    input_tokens=0,
+                    output_tokens=0,
+                ),
+            ]
+            provider = AnthropicProvider(api_key="k", max_retries=3)
+            result = provider.complete("test")
+        assert result == "success"
+        assert mock_client.messages.create.call_count == 3
+        assert mock_time.sleep.call_count == 2
+
 
 class TestProviderRetryOnTimeout:
     def test_provider_retries_on_timeout(self):
@@ -342,6 +445,43 @@ class TestPromptLogging:
             MockOpenAI.return_value = mock_client
             mock_client.chat.completions.create.return_value = _make_mock_response("ok")
             provider = OpenAIProvider(api_key="k")
+            with caplog.at_level("DEBUG"):
+                provider.complete(long_prompt)
+        assert long_prompt in caplog.text
+
+
+class TestAnthropicPromptLogging:
+    """AnthropicProvider logs prompt preview and token usage at INFO, full prompt at DEBUG."""
+
+    def test_prompt_logged_at_info_with_preview(self, caplog):
+        """INFO log contains prompt_preview and token usage."""
+        with patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic:
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="hi")],
+                input_tokens=50,
+                output_tokens=10,
+            )
+            provider = AnthropicProvider(api_key="k")
+            with caplog.at_level("INFO"):
+                provider.complete("Hello world")
+        assert "prompt_preview" in caplog.text
+        assert "tokens_in=50" in caplog.text or "tokens_in= 50" in caplog.text
+        assert "tokens_out=10" in caplog.text or "tokens_out= 10" in caplog.text
+
+    def test_full_prompt_logged_at_debug(self, caplog):
+        """DEBUG log contains full prompt when DEBUG enabled."""
+        long_prompt = "y" * 200
+        with patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic:
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="ok")],
+                input_tokens=0,
+                output_tokens=0,
+            )
+            provider = AnthropicProvider(api_key="k")
             with caplog.at_level("DEBUG"):
                 provider.complete(long_prompt)
         assert long_prompt in caplog.text
