@@ -129,6 +129,34 @@ async def test_run_returns_valid_bundles_and_persists(db: Session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_config_snapshot_contains_queries_families_and_bundles_count(db: Session) -> None:
+    """M3: config_snapshot after run contains queries, query_families, and run-level bundles_count."""
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Scout Config Snapshot WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
+    run_id, bundles, _ = await _run_with_mocks(
+        db, workspace_id=ws.id, seed_urls=["https://allowed.com/a"]
+    )
+    row = db.query(ScoutRun).filter(ScoutRun.run_id == uuid.UUID(run_id)).first()
+    assert row is not None
+    snap = row.config_snapshot
+    assert snap is not None
+    assert "queries" in snap
+    assert "query_families" in snap
+    assert "bundles_count" in snap
+    assert "query_count" in snap
+    assert isinstance(snap["queries"], list)
+    assert isinstance(snap["query_families"], list)
+    assert len(snap["queries"]) == snap["query_count"]
+    assert len(snap["query_families"]) == len(snap["queries"])
+    assert snap["bundles_count"] == len(bundles)
+
+
+@pytest.mark.asyncio
 async def test_run_does_not_call_company_resolver_or_event_storage() -> None:
     """DiscoveryScoutService.run() must not call resolve_or_create_company or store_signal_event."""
     mock_db = _mock_db_session()

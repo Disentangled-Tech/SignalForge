@@ -1,7 +1,9 @@
-"""Tests for POST /internal/run_scout — token auth, response shape, scout_runs row created."""
+"""Tests for POST /internal/run_scout and GET /internal/scout_analytics."""
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -243,3 +245,204 @@ def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
         },
     )
     assert r4.status_code == 422
+
+
+# ── GET /internal/scout_analytics ─────────────────────────────────────────────
+
+
+def test_scout_analytics_missing_token_returns_422(client: TestClient) -> None:
+    """GET /internal/scout_analytics without X-Internal-Token returns 422 (missing required header)."""
+    response = client.get(
+        "/internal/scout_analytics",
+        params={"workspace_id": str(TEST_WORKSPACE_ID)},
+    )
+    assert response.status_code == 422
+
+
+def test_scout_analytics_invalid_workspace_id_returns_422(
+    client: TestClient,
+) -> None:
+    """GET /internal/scout_analytics with invalid workspace_id returns 422."""
+    response = client.get(
+        "/internal/scout_analytics",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": "not-a-uuid"},
+    )
+    assert response.status_code == 422
+
+
+def test_scout_analytics_empty_workspace_id_returns_422(client: TestClient) -> None:
+    """GET /internal/scout_analytics with empty workspace_id returns 422."""
+    response = client.get(
+        "/internal/scout_analytics",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": ""},
+    )
+    assert response.status_code == 422
+
+
+def test_scout_analytics_returns_only_requested_workspace_data(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """Scout analytics filters by workspace_id; no data from other workspaces."""
+    from app.models.workspace import Workspace
+
+    ws_a = Workspace(name="Workspace A")
+    ws_b = Workspace(name="Workspace B")
+    db.add(ws_a)
+    db.add(ws_b)
+    db.commit()
+    db.refresh(ws_a)
+    db.refresh(ws_b)
+
+    # Run 1: workspace A, 1 bundle
+    run_a = ScoutRun(
+        run_id=uuid.uuid4(),
+        workspace_id=ws_a.id,
+        started_at=datetime.now(UTC),
+        model_version="test",
+        page_fetch_count=0,
+        config_snapshot={"query_count": 5},
+        status="completed",
+    )
+    db.add(run_a)
+    db.flush()
+    db.add(
+        ScoutEvidenceBundle(
+            scout_run_id=run_a.run_id,
+            candidate_company_name="Co A",
+            company_website="https://a.example.com",
+            why_now_hypothesis="",
+            evidence=[],
+            missing_information=[],
+        )
+    )
+
+    # Run 2: workspace B, 2 bundles
+    run_b = ScoutRun(
+        run_id=uuid.uuid4(),
+        workspace_id=ws_b.id,
+        started_at=datetime.now(UTC),
+        model_version="test",
+        page_fetch_count=0,
+        config_snapshot={"query_count": 10},
+        status="completed",
+    )
+    db.add(run_b)
+    db.flush()
+    for i in range(2):
+        db.add(
+            ScoutEvidenceBundle(
+                scout_run_id=run_b.run_id,
+                candidate_company_name=f"Co B{i}",
+                company_website=f"https://b{i}.example.com",
+                why_now_hypothesis="",
+                evidence=[],
+                missing_information=[],
+            )
+        )
+    db.commit()
+
+    # Request analytics for workspace A only
+    response = client_with_db.get(
+        "/internal/scout_analytics",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": str(ws_a.id)},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["runs_count"] == 1
+    assert data["total_bundles"] == 1
+
+    # Request analytics for workspace B only
+    response_b = client_with_db.get(
+        "/internal/scout_analytics",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": str(ws_b.id)},
+    )
+    assert response_b.status_code == 200
+    data_b = response_b.json()
+    assert data_b["runs_count"] == 1
+    assert data_b["total_bundles"] == 2
+
+
+def test_scout_analytics_since_filters_runs(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """GET /internal/scout_analytics with since returns only runs started on or after that date (UTC)."""
+    from app.models.workspace import Workspace
+
+    ws = Workspace(name="Since Test WS")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
+    # Run before since date (2025-01-01 00:00 UTC)
+    run_old = ScoutRun(
+        run_id=uuid.uuid4(),
+        workspace_id=ws.id,
+        started_at=datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC),
+        model_version="test",
+        page_fetch_count=0,
+        config_snapshot={},
+        status="completed",
+    )
+    db.add(run_old)
+    db.flush()
+    db.add(
+        ScoutEvidenceBundle(
+            scout_run_id=run_old.run_id,
+            candidate_company_name="Old",
+            company_website="https://old.example.com",
+            why_now_hypothesis="",
+            evidence=[],
+            missing_information=[],
+        )
+    )
+
+    # Run on since date (2025-01-02 12:00 UTC)
+    run_new = ScoutRun(
+        run_id=uuid.uuid4(),
+        workspace_id=ws.id,
+        started_at=datetime(2025, 1, 2, 12, 0, 0, tzinfo=UTC),
+        model_version="test",
+        page_fetch_count=0,
+        config_snapshot={},
+        status="completed",
+    )
+    db.add(run_new)
+    db.flush()
+    db.add(
+        ScoutEvidenceBundle(
+            scout_run_id=run_new.run_id,
+            candidate_company_name="New",
+            company_website="https://new.example.com",
+            why_now_hypothesis="",
+            evidence=[],
+            missing_information=[],
+        )
+    )
+    db.commit()
+
+    # Without since: both runs
+    r_all = client_with_db.get(
+        "/internal/scout_analytics",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": str(ws.id)},
+    )
+    assert r_all.status_code == 200
+    assert r_all.json()["runs_count"] == 2
+    assert r_all.json()["total_bundles"] == 2
+
+    # With since=2025-01-02: only run_new (start of day 2025-01-02 UTC)
+    r_since = client_with_db.get(
+        "/internal/scout_analytics",
+        headers={"X-Internal-Token": VALID_TOKEN},
+        params={"workspace_id": str(ws.id), "since": "2025-01-02"},
+    )
+    assert r_since.status_code == 200
+    data = r_since.json()
+    assert data["runs_count"] == 1
+    assert data["total_bundles"] == 1

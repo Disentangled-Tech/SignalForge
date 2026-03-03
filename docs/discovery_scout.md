@@ -4,7 +4,7 @@ The **Discovery Scout** is an LLM-powered flow that produces **Evidence Bundles 
 
 ## What the Scout Does
 
-1. **Query planning** — Uses ICP definition, core readiness signal rubric (from core taxonomy), and optional pack emphasis to produce diversified search queries.
+1. **Query planning** — Uses ICP definition, core readiness signal rubric (from core taxonomy), and optional pack emphasis to produce diversified search queries. See [Query planning (Issue #282)](#query-planning-issue-282) for families, rotation, and config.
 2. **Source filtering** — Applies allowlist/denylist **before** fetching; denylist takes precedence.
 3. **Page fetch** — Fetches pages from allowed sources only, with a configurable page limit.
 4. **LLM extraction** — Calls the LLM with a prompt that requests structured **Evidence Bundle** output (citations, hypothesis, missing information).
@@ -45,8 +45,40 @@ No `signal_id`, `event_type`, or pack-specific fields. JSON schema is available 
 
 ## How to Run
 
-- **Internal endpoint (when implemented):** `POST /internal/run_scout` (or `/internal/run_discovery_scout`) with body: ICP, exclusion rules, optional `pack_id`, optional `page_fetch_limit`. Requires `X-Internal-Token` header.
+- **Internal endpoint:** `POST /internal/run_scout` with body: `icp_definition`, `workspace_id` (required), optional `exclusion_rules`, `pack_id`, `page_fetch_limit`. Requires `X-Internal-Token` header.
 - **Config:** Set `SCOUT_SOURCE_ALLOWLIST` and/or `SCOUT_SOURCE_DENYLIST` (comma-separated domains) in environment or via `app/config.py` to restrict which sources are fetched.
+
+## Query planning (Issue #282)
+
+The Query Planner produces a diversified list of search query strings from ICP, core taxonomy (signal rubric), and optional pack emphasis. It is **pack-agnostic** for structure: family definitions and template config live in core (`app/scout/`); pack `scout_emphasis` only adds optional keywords.
+
+- **Query families:** Template families (e.g. Hiring, Launch, Geography, Role-based, Niche) are defined in `app/scout/query_families.yaml` (or in-code default when the file is missing). Each family has an `id`, `label`, and optional `templates` list; `{icp}` in a template is replaced with the ICP string at plan time.
+- **Rotation:** The planner interleaves queries by family (round-robin) so the returned list is diversified. When `query_families.yaml` is absent, all rubric-derived queries use the single default family (`rubric`).
+- **Config-based templates:** Loading from `query_families.yaml` allows adding or changing query “packs” without code changes; pack `pack_id` still only provides optional `scout_emphasis` hints in the pack manifest.
+- **Denylist at plan time:** Source denylist is always applied when filtering which URLs to fetch (`app/scout/sources.py` — `filter_allowed_sources`). The planner may also accept an optional `denylist` so it does not generate queries that explicitly target denylisted domains (e.g. `site:blocked.com`); URL-level filtering remains the authority for fetched URLs.
+- **API:** `plan_queries(icp, core_rubric=None, pack_id=None, max_queries=30)` returns `list[str]`. For family tags, use `QueryPlanner.plan_with_families()` which returns `(queries, families)` (same-length lists). See [query-planner.md](query-planner.md) for details.
+
+## Config snapshot shape
+
+Each scout run stores a **config_snapshot** (JSONB) on `scout_runs`. Keys are additive; existing consumers that only read `query_count` continue to work.
+
+| Key | Description |
+| --- | ----------- |
+| `icp_definition` | Truncated ICP text (e.g. first 500 chars). |
+| `exclusion_rules` | Optional exclusion rules text. |
+| `pack_id` | Optional pack id used for query emphasis. |
+| `query_count` | Number of planned queries. |
+| `page_fetch_count` | Number of URLs actually fetched. |
+| `queries` | (Optional) List of planned query strings; present when the service uses family-aware planning. |
+| `query_families` | (Optional) List of family ids aligned with `queries`; same length as `queries`. |
+| `bundles_count` / `candidates_count` | (Optional) Run-level yield: count of validated (and optionally stored) evidence bundles. |
+
+## Analytics endpoint
+
+A read-only **scout analytics** endpoint provides aggregate yield metrics from scout runs, workspace-scoped:
+
+- **Endpoint:** `GET /internal/scout_analytics`. Requires `X-Internal-Token`. Query params: `workspace_id` (required, non-empty), optional `since` (date, YYYY-MM-DD) to include only runs started on or after that date (interpreted as start of day UTC).
+- **Response:** `workspace_id`, `runs_count`, `total_bundles`. Read-only from `scout_runs` and `scout_evidence_bundles` filtered by `workspace_id`; no data from other workspaces is returned.
 
 ## Optional Extractor (M4, Issue #277)
 
@@ -79,7 +111,8 @@ When enabled, the Scout run validates each evidence bundle (and optional structu
 | ---- | -------- |
 | Schemas | `app/schemas/scout.py` — `EvidenceBundle`, `EvidenceItem`, `ScoutRunInput`, `RunScoutRequest`, `ScoutRunResult`, `ScoutRunMetadata`, `evidence_bundle_json_schema()` |
 | Source filter | `app/scout/sources.py` — `is_source_allowed()`, `filter_allowed_sources()` |
-| Query planner | `app/scout/query_planner.py` — `QueryPlanner`, `plan_queries()` |
+| Query planner | `app/scout/query_planner.py` — `QueryPlanner`, `plan_queries()`, `plan_with_families()` |
+| Query families | `app/scout/query_families.py` — family constants, `load_query_families_config()`; `app/scout/query_families.yaml` (optional) |
 | Config | `app/config.py` — `scout_source_allowlist`, `scout_source_denylist`, `scout_run_extractor`, `scout_verification_gate_enabled` |
 | Event interpretation | `app/interpretation/` (schemas), `app/monitor/interpretation.py` (ChangeEvent → CoreEventCandidate); see [event-interpretation.md](event-interpretation.md) |
 
@@ -112,6 +145,8 @@ Scout runs are associated with a tenant via **workspace_id** on `scout_runs`. Un
 - Do not expose `raw_llm_output` (or other scout fields) without enforcing workspace scoping and the same auth/audit as for similar data.
 
 See [pipeline.md](pipeline.md) for the main pipeline; Scout is documented there as a separate flow.
+
+**Note:** Cross-doc links in this file (e.g. [query-planner.md](query-planner.md), [evidence-store.md](evidence-store.md)) are relative to the `docs/` directory.
 
 ## ADR / Architecture Contract
 

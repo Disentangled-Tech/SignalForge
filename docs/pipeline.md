@@ -125,12 +125,13 @@ The **LLM Discovery Scout** is a **separate flow** outside the ingest → derive
 
 | Aspect   | Description |
 | -------- | ----------- |
-| **Entry** | `POST /internal/run_scout` (or `/internal/run_discovery_scout`) when implemented — requires `X-Internal-Token`. |
-| **Data model** | Query Planner → allowed sources only → fetch (page limit) → LLM → Evidence Bundles only. |
+| **Entry** | `POST /internal/run_scout` — requires `X-Internal-Token`. |
+| **Data model** | Query Planner (families, rotation, optional `query_families.yaml`) → allowed sources only → fetch (page limit) → LLM → Evidence Bundles only. |
 | **Output** | `scout_runs` + `scout_evidence_bundles`; no writes to `companies`, `signal_events`, or `signal_instances`. |
 | **Purpose** | Candidate discovery and evidence collection; optional pack_id is for query emphasis hints only, not derivation or storage. |
+| **Analytics** | `GET /internal/scout_analytics` (workspace-scoped) returns aggregate yield metrics (runs_count, total_bundles) from `scout_runs`. |
 
-See [discovery_scout.md](discovery_scout.md) for inputs, output schema, allowlist/denylist config, and what Scout does not do.
+See [discovery_scout.md](discovery_scout.md) for query families, config snapshot shape, allowlist/denylist, and [query-planner.md](query-planner.md) for planner details.
 
 ## Diff-Based Monitor (separate flow)
 
