@@ -21,6 +21,7 @@ def test_settings_has_required_attributes() -> None:
     assert hasattr(settings, "secret_key")
     assert hasattr(settings, "internal_job_token")
     assert hasattr(settings, "llm_provider")
+    assert hasattr(settings, "anthropic_api_key")
     assert settings.app_name == "SignalForge"
 
 
@@ -74,5 +75,34 @@ def test_llm_model_legacy_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
         assert settings.llm_model_reasoning == "gpt-4-turbo"
         assert settings.llm_model_json == "gpt-4-turbo"
         assert settings.llm_model_outreach == "gpt-4-turbo"
+    finally:
+        get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Anthropic API key (M2: optional ANTHROPIC_API_KEY, fallback to LLM_API_KEY)
+# ---------------------------------------------------------------------------
+
+
+def test_anthropic_api_key_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When ANTHROPIC_API_KEY is set, settings.anthropic_api_key is that value."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("LLM_API_KEY", "sk-openai")
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.anthropic_api_key == "sk-ant-test"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_anthropic_api_key_fallback_to_llm_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When ANTHROPIC_API_KEY is unset, anthropic_api_key falls back to LLM_API_KEY."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_API_KEY", "sk-common-key")
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.anthropic_api_key == "sk-common-key"
     finally:
         get_settings.cache_clear()

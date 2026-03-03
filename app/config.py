@@ -34,8 +34,11 @@ class Settings:
     internal_job_token: str = ""  # Required for /internal/* endpoints
 
     # LLM
+    # When llm_provider == "anthropic", the app uses Claude model names (e.g. claude-3-5-sonnet,
+    # claude-3-5-haiku) via the same role env vars (LLM_MODEL_REASONING, LLM_MODEL_JSON, etc.).
     llm_provider: str = "openai"
     llm_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None  # ANTHROPIC_API_KEY or fallback to llm_api_key
     llm_model: str = "gpt-4o-mini"
     # Model roles (issue #15): reasoning=analysis, json=cheap, outreach=conversational
     llm_model_reasoning: str = "gpt-4o"
@@ -111,6 +114,7 @@ class Settings:
 
         self.llm_provider = os.getenv("LLM_PROVIDER", self.llm_provider)
         self.llm_api_key = os.getenv("LLM_API_KEY")
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") or self.llm_api_key
         self.llm_model = os.getenv("LLM_MODEL", self.llm_model)
         # Role-specific models; legacy: LLM_MODEL used for all if role vars unset
         legacy_model = os.getenv("LLM_MODEL")
