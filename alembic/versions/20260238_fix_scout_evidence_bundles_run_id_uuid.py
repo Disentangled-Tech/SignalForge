@@ -7,6 +7,7 @@ Create Date: 2026-02-28
 Branch 20260228 created scout_evidence_bundles with scout_run_id INTEGER FK to
 scout_runs.id; the ORM (ScoutEvidenceBundle) expects UUID FK to scout_runs.run_id.
 This migration aligns the schema with the ORM so run_scout and tests pass.
+Downgrade: deletes orphan bundles (run no longer exists) before backfill for clean reversible downgrade.
 """
 
 from collections.abc import Sequence
@@ -106,17 +107,18 @@ def downgrade() -> None:
         "scout_evidence_bundles",
         sa.Column("scout_run_id_int", sa.Integer(), nullable=True),
     )
-    # Remove orphans so nullable=False is safe: bundles whose scout_run was deleted.
-    op.execute(
+    # Delete orphan bundles (run no longer exists) so UPDATE can backfill all rows
+    # and we can safely set NOT NULL. Ensures clean, reversible downgrade.
+    conn.execute(
         sa.text(
-            "DELETE FROM scout_evidence_bundles WHERE scout_run_id NOT IN "
-            "(SELECT run_id FROM scout_runs)"
+            "DELETE FROM scout_evidence_bundles sb WHERE NOT EXISTS "
+            "(SELECT 1 FROM scout_runs sr WHERE sr.run_id = sb.scout_run_id)"
         )
     )
-    op.execute(
+    conn.execute(
         sa.text(
-            "UPDATE scout_evidence_bundles SET scout_run_id_int = "
-            "(SELECT id FROM scout_runs WHERE scout_runs.run_id = scout_evidence_bundles.scout_run_id)"
+            "UPDATE scout_evidence_bundles sb SET scout_run_id_int = sr.id "
+            "FROM scout_runs sr WHERE sr.run_id = sb.scout_run_id"
         )
     )
     op.drop_column("scout_evidence_bundles", "scout_run_id")
