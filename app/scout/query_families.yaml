@@ -1,0 +1,37 @@
+# Query family templates for Discovery Scout (Issue #282).
+# Pack-agnostic; {icp} is replaced with the ICP string at plan time.
+# If this file is missing, the planner uses in-code default (rubric-only).
+#
+# Schema: list of { id, label, templates: [strings] }
+
+- id: hiring
+  label: Hiring
+  templates:
+    - "{icp} hiring"
+    - "hiring {icp}"
+    - "{icp} job posted"
+
+- id: launch
+  label: Launch
+  templates:
+    - "{icp} launch"
+    - "{icp} product launch"
+    - "launch {icp}"
+
+- id: geography
+  label: Geography
+  templates:
+    - "{icp} location"
+    - "{icp} based"
+
+- id: role_emphasis
+  label: Role emphasis
+  templates:
+    - "{icp} CTO"
+    - "{icp} technical leadership"
+
+- id: niche
+  label: Niche
+  templates:
+    - "{icp} startup"
+    - "{icp} B2B"
