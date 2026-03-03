@@ -68,7 +68,10 @@ def test_scout_run_and_bundle_persist_and_read_back(db: Session) -> None:
     assert read_run.latency_ms == 500
     assert read_run.page_fetch_count == 3
     assert read_run.status == "completed"
-    assert read_run.config_snapshot == {"icp": "B2B SaaS", "query_count": 5}
+    # Assert expected keys; config_snapshot may have additional keys (queries, query_families, bundles_count)
+    assert read_run.config_snapshot is not None
+    assert read_run.config_snapshot.get("icp") == "B2B SaaS"
+    assert read_run.config_snapshot.get("query_count") == 5
 
     read_bundles = (
         db.query(ScoutEvidenceBundle)
@@ -83,6 +86,36 @@ def test_scout_run_and_bundle_persist_and_read_back(db: Session) -> None:
     assert len(rb.evidence) == 1
     assert rb.evidence[0]["url"] == "https://example.com/news"
     assert rb.missing_information == ["exact headcount"]
+
+
+@pytest.mark.integration
+def test_scout_config_snapshot_optional_keys_preserved(db: Session) -> None:
+    """config_snapshot with optional keys (queries, query_families, bundles_count) round-trips."""
+    run_id = uuid.uuid4()
+    snapshot = {
+        "icp_definition": "B2B SaaS",
+        "query_count": 3,
+        "queries": ["query one", "query two"],
+        "query_families": ["hiring", "launch"],
+        "bundles_count": 2,
+    }
+    run = ScoutRun(
+        run_id=run_id,
+        started_at=datetime.now(UTC),
+        model_version="test",
+        page_fetch_count=0,
+        config_snapshot=snapshot,
+        status="completed",
+    )
+    db.add(run)
+    db.commit()
+
+    read_run = db.query(ScoutRun).filter(ScoutRun.run_id == run_id).one()
+    assert read_run.config_snapshot is not None
+    assert read_run.config_snapshot.get("query_count") == 3
+    assert read_run.config_snapshot.get("queries") == ["query one", "query two"]
+    assert read_run.config_snapshot.get("query_families") == ["hiring", "launch"]
+    assert read_run.config_snapshot.get("bundles_count") == 2
 
 
 @pytest.mark.integration

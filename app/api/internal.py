@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import secrets
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -554,7 +554,7 @@ async def run_monitor_endpoint(
         }
 
 
-@router.get("/scout_analytics")
+@router.get("/scout_analytics", response_model=ScoutAnalyticsResponse)
 def scout_analytics_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
@@ -565,7 +565,7 @@ def scout_analytics_endpoint(
     ),
     since: date | None = Query(
         None,
-        description="Return only runs started on or after this date (YYYY-MM-DD)",
+        description="Return only runs started on or after this date (YYYY-MM-DD, UTC)",
     ),
 ) -> ScoutAnalyticsResponse:
     """Return aggregate scout yield metrics for a workspace (M5, Issue #282).
