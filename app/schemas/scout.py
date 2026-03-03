@@ -106,6 +106,26 @@ class ScoutRunResult(BaseModel):
     metadata: ScoutRunMetadata
 
 
+class ScoutRunListItem(BaseModel):
+    """One scout run in list response (workspace-scoped)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(..., description="Scout run UUID")
+    started_at: datetime = Field(..., description="Run start time")
+    status: str = Field(..., max_length=32)
+    bundles_count: int = Field(0, ge=0, description="Number of evidence bundles for this run")
+
+
+class ScoutRunListResponse(BaseModel):
+    """Response for GET /internal/scout_runs. Always scoped by workspace_id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(..., description="Workspace ID used for filtering (tenant boundary)")
+    runs: list[ScoutRunListItem] = Field(default_factory=list)
+
+
 # ── Scout analytics (M5, Issue #282) ────────────────────────────────────────
 
 

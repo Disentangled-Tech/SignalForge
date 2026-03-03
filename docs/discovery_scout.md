@@ -136,6 +136,7 @@ Indexes support list/filter by workspace and time/status: `(workspace_id, starte
 Scout runs are associated with a tenant via **workspace_id** on `scout_runs`. Until an API or UI exposes scout data:
 
 - **Any future API or UI that lists or filters scout runs or evidence bundles must enforce workspace scoping:** require a valid workspace context (e.g. from auth or query param) and filter all queries with `WHERE workspace_id = :current_workspace_id`. Do not expose unscoped “list all scout runs” endpoints; that would allow cross-tenant data leakage.
+- **Evidence read path:** Any API that returns or lists evidence bundles (e.g. by run, by bundle id) must scope by workspace—e.g. join through `scout_runs.workspace_id` or filter so only bundles whose scout run belongs to the current workspace are visible. See `app.evidence.store` and `app.evidence` package docstrings.
 - The internal scout endpoint `POST /internal/run_scout` **requires** `workspace_id` in the request body; it is stored on `scout_runs` so runs are always tenant-scoped.
 
 ## Sensitive data and access control

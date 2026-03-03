@@ -18,7 +18,12 @@ from app.api.deps import validate_uuid_param_or_422
 from app.config import get_settings
 from app.db.session import get_db
 from app.schemas.evidence import StoreEvidenceRequest
-from app.schemas.scout import RunScoutRequest, ScoutAnalyticsResponse
+from app.schemas.scout import (
+    RunScoutRequest,
+    ScoutAnalyticsResponse,
+    ScoutRunListItem,
+    ScoutRunListResponse,
+)
 from app.schemas.seeder import SeedFromBundlesRequest
 
 logger = logging.getLogger(__name__)
@@ -624,6 +629,40 @@ async def run_scout_endpoint(
     except Exception as exc:
         logger.exception("Internal run_scout failed")
         return {"status": "failed", "run_id": "", "bundles_count": 0, "error": str(exc)}
+
+
+@router.get("/scout_runs", response_model=ScoutRunListResponse)
+async def list_scout_runs(
+    db: Session = Depends(get_db),
+    _token: None = Depends(_require_internal_token),
+    workspace_id: str = Query(..., description="Workspace ID (required). Lists only runs for this tenant."),
+):
+    """List scout runs for a workspace. workspace_id is required for tenant scoping.
+
+    Returns runs ordered by started_at descending. No cross-tenant data.
+    """
+    from uuid import UUID
+
+    from app.models.scout_run import ScoutRun
+
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    ws_uuid = UUID(workspace_id.strip())
+    runs = (
+        db.query(ScoutRun)
+        .filter(ScoutRun.workspace_id == ws_uuid)
+        .order_by(ScoutRun.started_at.desc())
+        .all()
+    )
+    items = [
+        ScoutRunListItem(
+            run_id=str(r.run_id),
+            started_at=r.started_at,
+            status=r.status,
+            bundles_count=len(r.bundles),
+        )
+        for r in runs
+    ]
+    return ScoutRunListResponse(workspace_id=workspace_id.strip(), runs=items)
 
 
 @router.post("/evidence/store")

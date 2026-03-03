@@ -1,9 +1,16 @@
-"""Evidence Store write path (M3, Issue #276). Insert-only; versioning; source dedupe; claims; quarantine (M5)."""
+"""Evidence Store write path (M3, Issue #276). Insert-only; versioning; source dedupe; claims; quarantine (M5).
+
+Read path / API scoping: When exposing evidence bundles via any read API (list, get by id, etc.),
+always scope by workspace to prevent cross-tenant leakage. Evidence written from Scout is associated
+with scout_runs.workspace_id; any list or filter of evidence must restrict to the current tenant
+via workspace_id (e.g. join through scout_runs or store workspace_id on evidence_bundles and filter).
+"""
 
 from __future__ import annotations
 
 import hashlib
 import uuid
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +21,8 @@ from app.models.evidence_bundle_source import EvidenceBundleSource
 from app.models.evidence_claim import EvidenceClaim
 from app.models.evidence_quarantine import EvidenceQuarantine
 from app.models.evidence_source import EvidenceSource
+from app.models.scout_evidence_bundle import ScoutEvidenceBundle as ScoutEvidenceBundleORM
+from app.models.scout_run import ScoutRun
 from app.schemas.evidence import EvidenceBundleRecord
 from app.schemas.scout import EvidenceBundle as ScoutEvidenceBundle
 
@@ -217,3 +226,19 @@ def store_evidence_bundle(
             raise
 
     return records
+
+
+def list_scout_bundle_ids_for_workspace(db: Session, workspace_id: UUID) -> list[int]:
+    """List scout evidence bundle IDs that belong to the given workspace.
+
+    Scopes via scout_runs.workspace_id so only bundles whose run is in the workspace
+    are returned. Use this pattern (or an equivalent join on workspace_id) for any
+    evidence read API to enforce tenant isolation.
+    """
+    rows = (
+        db.query(ScoutEvidenceBundleORM.id)
+        .join(ScoutRun, ScoutEvidenceBundleORM.scout_run_id == ScoutRun.run_id)
+        .filter(ScoutRun.workspace_id == workspace_id)
+        .all()
+    )
+    return [r[0] for r in rows]
