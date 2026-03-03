@@ -33,10 +33,9 @@ class Settings:
     secret_key: str = ""
     internal_job_token: str = ""  # Required for /internal/* endpoints
 
-    # LLM
-    # When llm_provider == "anthropic", the app uses Claude model names (e.g. claude-3-5-sonnet,
-    # claude-3-5-haiku) via the same role env vars (LLM_MODEL_REASONING, LLM_MODEL_JSON, etc.).
-    llm_provider: str = "openai"
+    # LLM (Anthropic / Claude only)
+    # Role env vars (LLM_MODEL_REASONING, LLM_MODEL_JSON, etc.) use Claude model names.
+    llm_provider: str = "anthropic"
     llm_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None  # ANTHROPIC_API_KEY or fallback to llm_api_key
     llm_model: str = "gpt-4o-mini"

@@ -13,6 +13,7 @@ import pytest
 from openai import APITimeoutError, RateLimitError
 
 from app.config import Settings
+from app.llm.anthropic_provider import AnthropicProvider
 from app.llm.openai_provider import OpenAIProvider
 from app.llm.router import ModelRole, clear_provider_cache, get_llm_provider
 
@@ -178,8 +179,11 @@ class TestRouter:
         assert p1 is p2
 
     def test_raises_for_unknown_provider(self):
-        with pytest.raises(ValueError, match="Unknown LLM provider"):
-            get_llm_provider(settings=_make_settings(llm_provider="anthropic"))
+        with pytest.raises(
+            ValueError,
+            match=r"Unknown LLM provider.*Supported providers: openai, anthropic",
+        ):
+            get_llm_provider(settings=_make_settings(llm_provider="azure"))
 
     def test_raises_when_api_key_missing(self):
         with pytest.raises(ValueError, match="LLM_API_KEY is required"):
@@ -217,6 +221,78 @@ class TestRouter:
             s = _make_settings(llm_model_reasoning="gpt-4o")
             provider = get_llm_provider(settings=s)
         assert provider.model == "gpt-4o"
+
+    def test_returns_anthropic_provider_when_configured(self):
+        """When llm_provider=anthropic and API key is set, returns AnthropicProvider."""
+        with patch("app.llm.anthropic_provider.Anthropic"):
+            provider = get_llm_provider(
+                settings=_make_settings(llm_provider="anthropic", llm_model_reasoning="claude-3-5-sonnet")
+            )
+        assert isinstance(provider, AnthropicProvider)
+        assert provider.model == "claude-3-5-sonnet"
+
+    def test_raises_when_anthropic_and_api_key_missing(self):
+        """When llm_provider=anthropic and no API key, raises with clear message."""
+        with pytest.raises(
+            ValueError,
+            match="LLM_API_KEY or ANTHROPIC_API_KEY required for Anthropic provider",
+        ):
+            get_llm_provider(
+                settings=_make_settings(llm_provider="anthropic", llm_api_key=None)
+            )
+
+    def test_anthropic_caches_by_role(self):
+        """Anthropic provider is cached per role (anthropic:role)."""
+        with patch("app.llm.anthropic_provider.Anthropic"):
+            s = _make_settings(llm_provider="anthropic")
+            p1 = get_llm_provider(role=ModelRole.REASONING, settings=s)
+            p2 = get_llm_provider(role=ModelRole.REASONING, settings=s)
+        assert p1 is p2
+
+
+class TestAnthropicProviderInit:
+    def test_stores_model_timeout_retries(self):
+        with patch("app.llm.anthropic_provider.Anthropic"):
+            provider = AnthropicProvider(
+                api_key="k", model="claude-3-5-haiku", timeout=30.0, max_retries=5
+            )
+        assert provider.model == "claude-3-5-haiku"
+        assert provider.timeout == 30.0
+        assert provider.max_retries == 5
+
+
+class TestAnthropicProviderComplete:
+    def test_complete_returns_text_from_content_block(self):
+        """complete() extracts text from first text block in response.content."""
+        with patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic:
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="Hello from Claude")],
+                input_tokens=10,
+                output_tokens=5,
+            )
+            provider = AnthropicProvider(api_key="k")
+            result = provider.complete("Hi")
+        assert result == "Hello from Claude"
+        mock_client.messages.create.assert_called_once()
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        assert call_kwargs["messages"] == [{"role": "user", "content": "Hi"}]
+
+    def test_complete_with_system_prompt(self):
+        with patch("app.llm.anthropic_provider.Anthropic") as MockAnthropic:
+            mock_client = MagicMock()
+            MockAnthropic.return_value = mock_client
+            mock_client.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="ok")],
+                input_tokens=0,
+                output_tokens=0,
+            )
+            provider = AnthropicProvider(api_key="k")
+            provider.complete("q", system_prompt="Be brief")
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["system"] == "Be brief"
 
 
 class TestProviderRetryOnTimeout:

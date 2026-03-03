@@ -3,6 +3,9 @@ OpenAI LLM provider implementation.
 
 Uses the openai Python SDK (>=1.0.0) with synchronous client.
 Supports retry with exponential backoff for rate-limit, timeout, and connection errors.
+
+Security: API keys are never logged; only model, prompt preview, token counts, and
+latency are logged at INFO/DEBUG.
 """
 
 from __future__ import annotations

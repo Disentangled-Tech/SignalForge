@@ -21,7 +21,7 @@ SignalForge is a single-user intelligence assistant that monitors startup compan
 - **Database:** PostgreSQL, SQLAlchemy 2.x ORM, Alembic migrations, psycopg3
 - **Validation:** Pydantic 2.x
 - **Templates:** Jinja2 (server-rendered, no SPA)
-- **LLM:** Provider-agnostic abstraction (`app/llm/`), defaults to OpenAI
+- **LLM:** Anthropic (Claude) only; abstraction in `app/llm/`
 - **HTTP client:** httpx (async)
 - **HTML parsing:** BeautifulSoup4
 - **Config:** PyYAML, python-dotenv
@@ -53,11 +53,17 @@ Server runs at `http://localhost:8000`.
 DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/signalforge_dev
 SECRET_KEY=...
 INTERNAL_JOB_TOKEN=...
-LLM_PROVIDER=openai
-LLM_API_KEY=sk-...
-LLM_MODEL=gpt-4o-mini
-LLM_MODEL_REASONING=gpt-4o
+LLM_PROVIDER=anthropic
+LLM_API_KEY=sk-ant-...
+# Or: ANTHROPIC_API_KEY=sk-ant-...
+LLM_MODEL=claude-3-5-haiku-20241022
+LLM_MODEL_REASONING=claude-sonnet-4-20250514
+LLM_MODEL_JSON=claude-3-5-haiku-20241022
+LLM_MODEL_OUTREACH=claude-3-5-haiku-20241022
+LLM_MODEL_SCOUT=claude-sonnet-4-20250514
 ```
+
+Recommended model-per-role: use a capable model (e.g. Claude Sonnet) for `LLM_MODEL_REASONING` and `LLM_MODEL_SCOUT`, and a faster/cheaper model (e.g. Claude Haiku) for `LLM_MODEL_JSON` and `LLM_MODEL_OUTREACH`. See `.env.example` for full examples.
 
 ---
 

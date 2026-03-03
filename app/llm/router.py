@@ -3,6 +3,8 @@ LLM provider router / factory.
 
 Returns the correct LLMProvider implementation based on application settings.
 Provider instances are cached per (provider_name, role) to reuse connections.
+
+Security: API keys are never logged; only provider name, role, and model are logged.
 """
 
 from __future__ import annotations
@@ -81,8 +83,33 @@ def get_llm_provider(
             timeout=settings.llm_timeout,
             max_retries=settings.llm_max_retries,
         )
+    elif provider_name == "anthropic":
+        anthropic_api_key = getattr(settings, "anthropic_api_key", None) or settings.llm_api_key
+        if not anthropic_api_key:
+            raise ValueError(
+                "LLM_API_KEY or ANTHROPIC_API_KEY required for Anthropic provider. "
+                "Set one in your environment or .env file."
+            )
+
+        from app.llm.anthropic_provider import AnthropicProvider
+
+        model = {
+            ModelRole.REASONING: settings.llm_model_reasoning,
+            ModelRole.JSON: settings.llm_model_json,
+            ModelRole.OUTREACH: settings.llm_model_outreach,
+            ModelRole.SCOUT: settings.llm_model_scout,
+        }[role]
+
+        provider = AnthropicProvider(
+            api_key=anthropic_api_key,
+            model=model,
+            timeout=settings.llm_timeout,
+            max_retries=settings.llm_max_retries,
+        )
     else:
-        raise ValueError(f"Unknown LLM provider: '{provider_name}'. Supported providers: openai")
+        raise ValueError(
+            f"Unknown LLM provider: '{provider_name}'. Supported providers: openai, anthropic"
+        )
 
     _provider_cache[cache_key] = provider
     logger.info("Created LLM provider: %s role=%s model=%s", provider_name, role.value, model)
