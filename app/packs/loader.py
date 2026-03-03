@@ -190,9 +190,7 @@ def load_pack(pack_id: str, version: str) -> Pack:
         with scoring_path.open() as f:
             scoring = yaml.safe_load(f) or {}
     else:
-        raise FileNotFoundError(
-            f"scoring.yaml or analysis_weights.yaml not found in {pack_dir}"
-        )
+        raise FileNotFoundError(f"scoring.yaml or analysis_weights.yaml not found in {pack_dir}")
 
     esl_rubric_path = pack_dir / "esl_rubric.yaml"
     esl_path = pack_dir / "esl_policy.yaml"
@@ -203,9 +201,7 @@ def load_pack(pack_id: str, version: str) -> Pack:
         with esl_path.open() as f:
             esl_policy = yaml.safe_load(f) or {}
     else:
-        raise FileNotFoundError(
-            f"esl_policy.yaml or esl_rubric.yaml not found in {pack_dir}"
-        )
+        raise FileNotFoundError(f"esl_policy.yaml or esl_rubric.yaml not found in {pack_dir}")
 
     derivers_path = pack_dir / "derivers.yaml"
     if derivers_path.exists():

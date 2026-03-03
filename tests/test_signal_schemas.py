@@ -19,8 +19,10 @@ from app.schemas.signals import (
 
 def _mock_pack(signal_ids: list[str]):
     """Pack mock with configurable taxonomy signal_ids for normalize tests."""
+
     class MockPack:
         taxonomy = {"signal_ids": signal_ids}
+
     return MockPack()
 
 
@@ -126,6 +128,7 @@ def test_normalize_without_pack_uses_legacy_event_types() -> None:
 
 def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
     """Core types (e.g. incorporation, repo_activity) are accepted even when pack taxonomy omits them."""
+
     # Mock pack that does NOT include incorporation or repo_activity
     class MockPack:
         taxonomy = {"signal_ids": ["funding_raised", "launch_major"]}
@@ -143,6 +146,8 @@ def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
         assert result is not None, f"Core type {core_type} should be accepted when pack omits it"
         event_data, _ = result
         assert event_data["event_type"] == core_type
+
+
 def test_normalize_accepts_repo_activity_without_pack() -> None:
     """normalize_raw_event(raw_repo_activity, pack=None) returns not None (Issue #244 Phase 1)."""
     raw = RawEvent(
@@ -152,21 +157,6 @@ def test_normalize_accepts_repo_activity_without_pack() -> None:
         event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
     )
     result = normalize_raw_event(raw, "github", pack=None)
-    assert result is not None
-    event_data, _ = result
-    assert event_data["event_type"] == "repo_activity"
-
-
-def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
-    """Pack without repo_activity in taxonomy still accepts it (core type always accepted)."""
-    pack = _mock_pack(["funding_raised", "launch_major"])
-    raw = RawEvent(
-        company_name="Acme",
-        domain="acme.com",
-        event_type_candidate="repo_activity",
-        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
-    )
-    result = normalize_raw_event(raw, "github", pack=pack)
     assert result is not None
     event_data, _ = result
     assert event_data["event_type"] == "repo_activity"

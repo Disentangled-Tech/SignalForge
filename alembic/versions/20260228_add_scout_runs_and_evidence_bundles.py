@@ -7,6 +7,7 @@ Create Date: 2026-02-28
 Discovery Scout Evidence-Only mode: additive only. No FK to companies or
 signal_events. scout_evidence_bundles references scout_runs only.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

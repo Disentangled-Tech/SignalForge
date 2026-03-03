@@ -69,7 +69,7 @@ Evidence is immutable and must:
 	•	Include quoted snippets
 	•	Be versioned against core taxonomy/derivers
 
-Evidence must never contain pack-specific logic.
+Evidence must never contain pack-specific logic. The Evidence Store (see docs/evidence-store.md) implements this: immutable bundles versioned against core taxonomy/derivers at write time; pack_id on bundles is analytics-only. The Verification Gate is pack-agnostic and runs before evidence is stored (and before any evidence-to-events step); see docs/evidence-store.md §6.2.
 
 ⸻
 
@@ -194,7 +194,7 @@ Packs with schema_version "2" (Pack v2) formalize this contract: they define onl
 
 LLMs operate in three places:
 	1.	Discovery Scout — a separate flow outside the ingest→derive→score pipeline; produces Evidence Bundles only (no signals, no domain-entity writes). See docs/discovery_scout.md and docs/pipeline.md.
-	2.	Extractor
+	2.	Extractor — emits only core-event types (validated against core taxonomy) and is source-backed (all fields/events mapped to source_refs). See app/extractor and docs/discovery_scout.md.
 	3.	Event Interpretation
 
 In all cases:

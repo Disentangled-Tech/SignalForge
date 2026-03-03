@@ -5,23 +5,22 @@ These tests mock the database to avoid requiring a running PostgreSQL.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_WRONG
 from app.models.user import User
 from app.services.auth import (
-    ALGORITHM,
     create_access_token,
     decode_access_token,
 )
-
+from tests.test_constants import TEST_PASSWORD, TEST_PASSWORD_WRONG
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_user(username: str = "admin", password: str | None = None) -> User:
     """Create a User instance with a hashed password (no DB)."""
@@ -68,6 +67,7 @@ class TestAccessToken:
 # ---------------------------------------------------------------------------
 # Integration tests: API endpoints (mocked DB)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_db_user():
@@ -238,4 +238,3 @@ def test_create_user_adds_to_default_workspace(db):
         .first()
     )
     assert uw is not None
-

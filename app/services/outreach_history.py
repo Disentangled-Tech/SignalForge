@@ -114,11 +114,7 @@ def create_outreach_record(
     if not result.allowed:
         raise OutreachCooldownBlockedError(result.reason or "Outreach blocked.")
 
-    ws_uuid = (
-        UUID(str(workspace_id))
-        if workspace_id is not None
-        else UUID(DEFAULT_WORKSPACE_ID)
-    )
+    ws_uuid = UUID(str(workspace_id)) if workspace_id is not None else UUID(DEFAULT_WORKSPACE_ID)
 
     record = OutreachHistory(
         company_id=company_id,
@@ -164,8 +160,7 @@ def get_draft_for_company(
         default_uuid = UUID(DEFAULT_WORKSPACE_ID)
         if ws_uuid == default_uuid:
             q = q.filter(
-                (BriefingItem.workspace_id == ws_uuid)
-                | (BriefingItem.workspace_id.is_(None))
+                (BriefingItem.workspace_id == ws_uuid) | (BriefingItem.workspace_id.is_(None))
             )
         else:
             q = q.filter(BriefingItem.workspace_id == ws_uuid)
@@ -197,8 +192,7 @@ def list_outreach_for_company(
         default_uuid = UUID(DEFAULT_WORKSPACE_ID)
         if ws_uuid == default_uuid:
             q = q.filter(
-                (OutreachHistory.workspace_id == ws_uuid)
-                | (OutreachHistory.workspace_id.is_(None))
+                (OutreachHistory.workspace_id == ws_uuid) | (OutreachHistory.workspace_id.is_(None))
             )
         else:
             q = q.filter(OutreachHistory.workspace_id == ws_uuid)
@@ -231,8 +225,7 @@ def update_outreach_outcome(
         default_uuid = UUID(DEFAULT_WORKSPACE_ID)
         if ws_uuid == default_uuid:
             q = q.filter(
-                (OutreachHistory.workspace_id == ws_uuid)
-                | (OutreachHistory.workspace_id.is_(None))
+                (OutreachHistory.workspace_id == ws_uuid) | (OutreachHistory.workspace_id.is_(None))
             )
         else:
             q = q.filter(OutreachHistory.workspace_id == ws_uuid)
@@ -278,8 +271,7 @@ def delete_outreach_record(
         default_uuid = UUID(DEFAULT_WORKSPACE_ID)
         if ws_uuid == default_uuid:
             q = q.filter(
-                (OutreachHistory.workspace_id == ws_uuid)
-                | (OutreachHistory.workspace_id.is_(None))
+                (OutreachHistory.workspace_id == ws_uuid) | (OutreachHistory.workspace_id.is_(None))
             )
         else:
             q = q.filter(OutreachHistory.workspace_id == ws_uuid)

@@ -79,9 +79,7 @@ def test_readiness_snapshot_explain_jsonb_persists(db: Session) -> None:
     assert snapshot.explain["top_events"][0]["contribution_points"] == 35
 
 
-def test_readiness_snapshot_unique_constraint(
-    db: Session, fractional_cto_pack_id
-) -> None:
+def test_readiness_snapshot_unique_constraint(db: Session, fractional_cto_pack_id) -> None:
     """Duplicate (company_id, as_of, pack_id) raises IntegrityError (Issue #189)."""
     company = Company(name="UniqueCo", website_url="https://unique.example.com")
     db.add(company)
@@ -132,9 +130,33 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
     as_of = date(2099, 12, 31)
     company_ids = [company1.id, company2.id, company3.id]
     snapshots = [
-        ReadinessSnapshot(company_id=company1.id, as_of=as_of, momentum=80, complexity=70, pressure=60, leadership_gap=50, composite=70),
-        ReadinessSnapshot(company_id=company2.id, as_of=as_of, momentum=60, complexity=50, pressure=40, leadership_gap=30, composite=50),
-        ReadinessSnapshot(company_id=company3.id, as_of=as_of, momentum=70, complexity=65, pressure=55, leadership_gap=45, composite=65),
+        ReadinessSnapshot(
+            company_id=company1.id,
+            as_of=as_of,
+            momentum=80,
+            complexity=70,
+            pressure=60,
+            leadership_gap=50,
+            composite=70,
+        ),
+        ReadinessSnapshot(
+            company_id=company2.id,
+            as_of=as_of,
+            momentum=60,
+            complexity=50,
+            pressure=40,
+            leadership_gap=30,
+            composite=50,
+        ),
+        ReadinessSnapshot(
+            company_id=company3.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=65,
+            pressure=55,
+            leadership_gap=45,
+            composite=65,
+        ),
     ]
     db.add_all(snapshots)
     db.commit()

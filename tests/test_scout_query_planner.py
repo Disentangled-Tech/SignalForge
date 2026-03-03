@@ -64,9 +64,9 @@ def test_plan_query_shapes_contain_icp_and_signal_related_phrases() -> None:
     assert any(icp_lower in q.lower() for q in queries)
     # At least one query should reflect rubric (e.g. funding, CTO, headcount)
     rubric_phrases = ["funding", "cto", "headcount", "role", "growth"]
-    assert any(
-        any(p in q.lower() for p in rubric_phrases) for q in queries
-    ), f"Expected some rubric-derived phrasing in {queries}"
+    assert any(any(p in q.lower() for p in rubric_phrases) for q in queries), (
+        f"Expected some rubric-derived phrasing in {queries}"
+    )
 
 
 def test_plan_with_pack_id_no_emphasis_unchanged_structure() -> None:
@@ -87,12 +87,14 @@ def test_plan_with_pack_id_no_emphasis_unchanged_structure() -> None:
 def test_optional_pack_id_adds_emphasis_not_structure(tmp_path: Path) -> None:
     """When pack has scout_emphasis, queries include those keywords; structure remains list[str]."""
     (tmp_path / "pack.json").write_text(
-        json.dumps({
-            "id": "test_scout_pack",
-            "version": "1",
-            "name": "Test",
-            "scout_emphasis": ["fractional CTO", "technical leadership"],
-        }),
+        json.dumps(
+            {
+                "id": "test_scout_pack",
+                "version": "1",
+                "name": "Test",
+                "scout_emphasis": ["fractional CTO", "technical leadership"],
+            }
+        ),
         encoding="utf-8",
     )
     planner = QueryPlanner()
@@ -129,3 +131,46 @@ def test_plan_no_duplicate_queries() -> None:
         core_rubric=_minimal_core_rubric(),
     )
     assert len(queries) == len(set(queries)), "Queries should be deduplicated"
+
+
+# ── M2: Denylist in planner ───────────────────────────────────────────────────
+
+
+def test_plan_queries_denylist_none_unchanged_behavior() -> None:
+    """plan_queries(..., denylist=None) has same result as no denylist (backward compatible)."""
+    rubric = _minimal_core_rubric()
+    without = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+    )
+    with_none = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+        denylist=None,
+    )
+    assert with_none == without
+
+
+def test_plan_queries_denylist_empty_unchanged_behavior() -> None:
+    """plan_queries(..., denylist=[]) has same result as denylist=None (no filtering)."""
+    rubric = _minimal_core_rubric()
+    with_none = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+        denylist=None,
+    )
+    with_empty = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+        denylist=[],
+    )
+    assert with_empty == with_none
+
+
+def test_plan_denylist_none_unchanged_behavior() -> None:
+    """QueryPlanner.plan(..., denylist=None) has same result as no denylist."""
+    planner = QueryPlanner()
+    rubric = _minimal_core_rubric()
+    without = planner.plan(icp="SaaS", core_rubric=rubric)
+    with_none = planner.plan(icp="SaaS", core_rubric=rubric, denylist=None)
+    assert with_none == without

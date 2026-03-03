@@ -7,6 +7,7 @@ Create Date: 2026-02-24
 Creates lead_feed table for incremental projection from ReadinessSnapshot +
 EngagementSnapshot. Unique per (workspace_id, pack_id, entity_id); replace on upsert.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa

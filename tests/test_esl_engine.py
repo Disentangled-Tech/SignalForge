@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
+
 import pytest
 
 from app.services.esl.esl_engine import (
@@ -18,7 +19,6 @@ from app.services.esl.esl_engine import (
     compute_svi,
     map_esl_to_recommendation,
 )
-
 
 # ── OutreachScore (existing) ──────────────────────────────────────────────
 
@@ -73,9 +73,7 @@ def test_stability_modifier_svi_spi_csi_combine() -> None:
     # All low stress → SM near 1
     assert compute_stability_modifier(0.0, 0.0, 1.0) > 0.9
     # High SVI → lower SM
-    assert compute_stability_modifier(1.0, 0.0, 1.0) < compute_stability_modifier(
-        0.0, 0.0, 1.0
-    )
+    assert compute_stability_modifier(1.0, 0.0, 1.0) < compute_stability_modifier(0.0, 0.0, 1.0)
 
 
 # ── CadenceModifier (Issue #106) ──────────────────────────────────────────
@@ -83,17 +81,16 @@ def test_stability_modifier_svi_spi_csi_combine() -> None:
 
 def test_cadence_modifier_cooldown_active() -> None:
     """Recent outreach (< 60 days) → CM=0."""
-    from datetime import timedelta
 
     as_of = date(2026, 2, 18)
-    last_outreach = datetime(2026, 2, 1, tzinfo=timezone.utc)  # 17 days ago
+    last_outreach = datetime(2026, 2, 1, tzinfo=UTC)  # 17 days ago
     assert compute_cadence_modifier(last_outreach, as_of) == 0.0
 
 
 def test_cadence_modifier_no_recent_outreach() -> None:
     """No outreach in 60+ days → CM=1."""
     as_of = date(2026, 2, 18)
-    last_outreach = datetime(2025, 11, 1, tzinfo=timezone.utc)  # 109 days ago
+    last_outreach = datetime(2025, 11, 1, tzinfo=UTC)  # 109 days ago
     assert compute_cadence_modifier(last_outreach, as_of) == 1.0
 
 
@@ -162,7 +159,15 @@ def test_svi_no_events() -> None:
 
 def test_svi_urgency_events_recent() -> None:
     """Recent founder_urgency_language → SVI > 0."""
-    ev = type("Ev", (), {"event_type": "founder_urgency_language", "event_time": datetime(2026, 2, 15, tzinfo=timezone.utc), "confidence": 0.8})()
+    ev = type(
+        "Ev",
+        (),
+        {
+            "event_type": "founder_urgency_language",
+            "event_time": datetime(2026, 2, 15, tzinfo=UTC),
+            "confidence": 0.8,
+        },
+    )()
     result = compute_svi([ev], date(2026, 2, 18))
     assert result > 0
 
@@ -186,7 +191,7 @@ def test_csi_no_events() -> None:
 
 def test_csi_few_events_no_gap() -> None:
     """Few events, no long gap → CSI high."""
-    ev = type("Ev", (), {"event_time": datetime(2026, 2, 10, tzinfo=timezone.utc)})()
+    ev = type("Ev", (), {"event_time": datetime(2026, 2, 10, tzinfo=UTC)})()
     result = compute_csi([ev], date(2026, 2, 18))
     assert result >= 0.9
 
@@ -251,6 +256,7 @@ def test_map_esl_to_recommendation_with_cto_pack_same_as_none() -> None:
     """map_esl_to_recommendation(esl, pack=cto_pack) == map_esl_to_recommendation(esl) for CTO boundaries."""
     try:
         from app.packs.loader import load_pack
+
         cto_pack = load_pack("fractional_cto_v1", "1")
         for esl_val in [0.1, 0.4, 0.7, 0.9]:
             r_none = map_esl_to_recommendation(esl_val)

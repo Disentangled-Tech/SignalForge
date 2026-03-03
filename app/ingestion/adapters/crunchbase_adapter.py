@@ -59,7 +59,11 @@ def _entity_to_raw_event(entity: dict) -> RawEvent | None:
     event_time = _parse_announced_on(announced_val)
 
     org_card = entity.get("funded_organization_card") or {}
-    company_name = org_card.get("name") or entity.get("funded_organization_identifier", {}).get("value") or "Unknown"
+    company_name = (
+        org_card.get("name")
+        or entity.get("funded_organization_identifier", {}).get("value")
+        or "Unknown"
+    )
     domain = org_card.get("domain")
     homepage_url = org_card.get("homepage_url")
 
@@ -91,7 +95,9 @@ def _entity_to_raw_event(entity: dict) -> RawEvent | None:
         event_time=event_time,
         title=title[:512] if title else None,
         summary=summary,
-        url=f"https://www.crunchbase.com/funding_round/{source_event_id}" if source_event_id != "unknown" else None,
+        url=f"https://www.crunchbase.com/funding_round/{source_event_id}"
+        if source_event_id != "unknown"
+        else None,
         source_event_id=source_event_id[:255],
         raw_payload={
             "money_raised": money_val,

@@ -27,6 +27,7 @@ httpx>=0.28.0
 
 # LLM (provider abstraction - add specific providers as needed)
 openai>=1.0.0
+anthropic>=0.39.0
 
 # Validation & serialization
 pydantic>=2.0.0

@@ -235,11 +235,7 @@ class NewsAPIAdapter(SourceAdapter):
 
                     for article in articles:
                         raw = _article_to_raw_event(article)
-                        if (
-                            raw
-                            and raw.source_event_id
-                            and raw.source_event_id not in seen_ids
-                        ):
+                        if raw and raw.source_event_id and raw.source_event_id not in seen_ids:
                             seen_ids.add(raw.source_event_id)
                             events.append(raw)
 

@@ -187,37 +187,55 @@ def test_evidence_bundle_forbid_extra_fields() -> None:
 
 def test_run_scout_request_requires_icp_definition() -> None:
     """RunScoutRequest requires non-empty icp_definition."""
-    RunScoutRequest(icp_definition="Seed-stage B2B", page_fetch_limit=10)
+    from tests.test_constants import TEST_WORKSPACE_ID
+
+    RunScoutRequest(
+        icp_definition="Seed-stage B2B", page_fetch_limit=10, workspace_id=TEST_WORKSPACE_ID
+    )
     with pytest.raises(ValidationError):
-        RunScoutRequest(icp_definition="", page_fetch_limit=10)
+        RunScoutRequest(icp_definition="", page_fetch_limit=10, workspace_id=TEST_WORKSPACE_ID)
     with pytest.raises(ValidationError):
-        RunScoutRequest(icp_definition="   ", page_fetch_limit=10)
+        RunScoutRequest(icp_definition="   ", page_fetch_limit=10, workspace_id=TEST_WORKSPACE_ID)
 
 
 def test_run_scout_request_page_fetch_limit_bounds() -> None:
     """RunScoutRequest accepts page_fetch_limit 0 and 100; rejects < 0 or > 100."""
-    RunScoutRequest(icp_definition="B2B", page_fetch_limit=0)
-    RunScoutRequest(icp_definition="B2B", page_fetch_limit=100)
-    RunScoutRequest(icp_definition="B2B")  # default 10
+    from tests.test_constants import TEST_WORKSPACE_ID
+
+    RunScoutRequest(icp_definition="B2B", page_fetch_limit=0, workspace_id=TEST_WORKSPACE_ID)
+    RunScoutRequest(icp_definition="B2B", page_fetch_limit=100, workspace_id=TEST_WORKSPACE_ID)
+    RunScoutRequest(icp_definition="B2B", workspace_id=TEST_WORKSPACE_ID)  # default 10
     with pytest.raises(ValidationError):
-        RunScoutRequest(icp_definition="B2B", page_fetch_limit=-1)
+        RunScoutRequest(icp_definition="B2B", page_fetch_limit=-1, workspace_id=TEST_WORKSPACE_ID)
     with pytest.raises(ValidationError):
-        RunScoutRequest(icp_definition="B2B", page_fetch_limit=101)
+        RunScoutRequest(icp_definition="B2B", page_fetch_limit=101, workspace_id=TEST_WORKSPACE_ID)
 
 
 def test_run_scout_request_optional_fields() -> None:
-    """RunScoutRequest allows exclusion_rules and pack_id to be None; default page_fetch_limit 10."""
-    req = RunScoutRequest(icp_definition="Fintech")
+    """RunScoutRequest requires workspace_id; allows exclusion_rules, pack_id to be None; default page_fetch_limit 10."""
+    from tests.test_constants import TEST_WORKSPACE_ID
+
+    req = RunScoutRequest(icp_definition="Fintech", workspace_id=TEST_WORKSPACE_ID)
     assert req.exclusion_rules is None
     assert req.pack_id is None
+    assert req.workspace_id == TEST_WORKSPACE_ID
     assert req.page_fetch_limit == 10
+
+
+def test_run_scout_request_requires_workspace_id() -> None:
+    """RunScoutRequest requires workspace_id for tenant scoping."""
+    with pytest.raises(ValidationError):
+        RunScoutRequest(icp_definition="B2B SaaS", page_fetch_limit=10)
 
 
 def test_run_scout_request_forbid_extra() -> None:
     """RunScoutRequest forbids extra fields."""
+    from tests.test_constants import TEST_WORKSPACE_ID
+
     with pytest.raises(ValidationError):
         RunScoutRequest(
             icp_definition="B2B",
+            workspace_id=TEST_WORKSPACE_ID,
             extra_field="not allowed",
         )
 

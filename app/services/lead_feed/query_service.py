@@ -36,14 +36,11 @@ def get_entity_ids_from_feed(
     ws_uuid = UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
     pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
 
-    q = (
-        db.query(LeadFeed.entity_id)
-        .filter(
-            LeadFeed.workspace_id == ws_uuid,
-            LeadFeed.pack_id == pack_uuid,
-            LeadFeed.as_of == as_of,
-            LeadFeed.composite_score >= min_composite,
-        )
+    q = db.query(LeadFeed.entity_id).filter(
+        LeadFeed.workspace_id == ws_uuid,
+        LeadFeed.pack_id == pack_uuid,
+        LeadFeed.as_of == as_of,
+        LeadFeed.composite_score >= min_composite,
     )
     if sort_by == "last_seen":
         q = q.order_by(LeadFeed.last_seen.desc())
@@ -149,18 +146,20 @@ def get_leads_from_feed(
         # (parity with get_emerging_companies legacy path, Issue #108)
         if outreach_score < outreach_score_threshold and not (es and es.cadence_blocked):
             continue
-        result.append({
-            "entity_id": row.entity_id,
-            "composite_score": row.composite_score,
-            "outreach_score": outreach_score,
-            "top_signal_ids": row.top_signal_ids or [],
-            "esl_decision": row.esl_decision,
-            "sensitivity_level": row.sensitivity_level,
-            "recommendation_band": row.recommendation_band,
-            "last_seen": row.last_seen,
-            "outreach_status_summary": row.outreach_status_summary,
-            "as_of": row.as_of,
-        })
+        result.append(
+            {
+                "entity_id": row.entity_id,
+                "composite_score": row.composite_score,
+                "outreach_score": outreach_score,
+                "top_signal_ids": row.top_signal_ids or [],
+                "esl_decision": row.esl_decision,
+                "sensitivity_level": row.sensitivity_level,
+                "recommendation_band": row.recommendation_band,
+                "last_seen": row.last_seen,
+                "outreach_status_summary": row.outreach_status_summary,
+                "as_of": row.as_of,
+            }
+        )
         if len(result) >= limit:
             break
 
@@ -339,18 +338,22 @@ def get_weekly_review_companies_from_feed(
         cooldown = check_outreach_cooldown(db, company.id, as_of_dt)
         if not cooldown.allowed:
             continue
-        outreach_score = es.outreach_score if es.outreach_score is not None else lead["outreach_score"]
+        outreach_score = (
+            es.outreach_score if es.outreach_score is not None else lead["outreach_score"]
+        )
         effective_type = get_effective_engagement_type(
             es.engagement_type, es.explain, es.esl_decision
         )
-        results.append({
-            "company_id": company.id,
-            "company": company,
-            "readiness_snapshot": rs,
-            "engagement_snapshot": es,
-            "outreach_score": outreach_score,
-            "effective_engagement_type": effective_type,
-            "explain": {"readiness": rs.explain or {}, "engagement": es.explain or {}},
-        })
+        results.append(
+            {
+                "company_id": company.id,
+                "company": company,
+                "readiness_snapshot": rs,
+                "engagement_snapshot": es,
+                "outreach_score": outreach_score,
+                "effective_engagement_type": effective_type,
+                "explain": {"readiness": rs.explain or {}, "engagement": es.explain or {}},
+            }
+        )
 
     return results

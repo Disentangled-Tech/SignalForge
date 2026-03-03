@@ -88,6 +88,4 @@ def validate_deriver_regex_safety(derivers: dict[str, Any]) -> None:
         try:
             re.compile(pat)
         except re.error as e:
-            raise ValidationError(
-                f"deriver {key} has invalid regex syntax: {e}"
-            ) from e
+            raise ValidationError(f"deriver {key} has invalid regex syntax: {e}") from e

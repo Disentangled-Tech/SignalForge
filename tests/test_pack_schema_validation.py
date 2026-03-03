@@ -80,7 +80,11 @@ class TestValidatePackSchemaHappyPath:
             taxonomy={"signal_ids": ["funding_raised"]},
             scoring={"base_scores": {"momentum": {"funding_raised": 35}}},
             esl_policy={},
-            derivers={"derivers": {"passthrough": [{"event_type": "funding_raised", "signal_id": "funding_raised"}]}},
+            derivers={
+                "derivers": {
+                    "passthrough": [{"event_type": "funding_raised", "signal_id": "funding_raised"}]
+                }
+            },
             playbooks={},
         )
 
@@ -364,7 +368,10 @@ class TestValidatePackSchemaDeriversPattern:
         """Pattern deriver without pattern or regex raises ValidationError."""
         from app.packs.schemas import ValidationError, validate_pack_schema
 
-        taxonomy = {**_valid_taxonomy(), "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"]}
+        taxonomy = {
+            **_valid_taxonomy(),
+            "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"],
+        }
         scoring = {
             "base_scores": {
                 "momentum": {"funding_raised": 35},
@@ -420,7 +427,10 @@ class TestValidatePackSchemaDeriversPattern:
         """Pattern deriver with disallowed source_fields raises ValidationError."""
         from app.packs.schemas import ValidationError, validate_pack_schema
 
-        taxonomy = {**_valid_taxonomy(), "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"]}
+        taxonomy = {
+            **_valid_taxonomy(),
+            "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"],
+        }
         scoring = {
             "base_scores": {
                 "momentum": {"funding_raised": 35},
@@ -454,7 +464,10 @@ class TestValidatePackSchemaDeriversPattern:
         """Pattern deriver with allowed source_fields passes."""
         from app.packs.schemas import validate_pack_schema
 
-        taxonomy = {**_valid_taxonomy(), "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"]}
+        taxonomy = {
+            **_valid_taxonomy(),
+            "signal_ids": ["funding_raised", "cto_role_posted", "compliance_mentioned"],
+        }
         scoring = {
             "base_scores": {
                 "momentum": {"funding_raised": 35},
@@ -964,12 +977,12 @@ class TestValidatePackSchemaStrictExplainability:
             "schema_version": "1",
         }
         scoring = {
-            "base_scores": {
-                dim: dict.fromkeys(signal_ids, 10) for dim in ["momentum", "pressure"]
-            }
+            "base_scores": {dim: dict.fromkeys(signal_ids, 10) for dim in ["momentum", "pressure"]}
         }
         esl_policy = {"recommendation_boundaries": [[0.0, "Low"], [0.5, "High"]]}
-        derivers = {"derivers": {"passthrough": [{"event_type": s, "signal_id": s} for s in signal_ids]}}
+        derivers = {
+            "derivers": {"passthrough": [{"event_type": s, "signal_id": s} for s in signal_ids]}
+        }
         validate_pack_schema(
             manifest=manifest,
             taxonomy=taxonomy,

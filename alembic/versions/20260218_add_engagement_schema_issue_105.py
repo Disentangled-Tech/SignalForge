@@ -7,17 +7,19 @@ Create Date: 2026-02-18
 Engagement Suitability Layer (ESL) schema: engagement_snapshots, outreach outcome,
 alignment flags on companies.
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 # revision identifiers, used by Alembic.
 revision: str = "20260218_engagement"
-down_revision: Union[str, None] = "20260218_outreach"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "20260218_outreach"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -40,13 +42,9 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["company_id"], ["companies.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "company_id", "as_of", name="uq_engagement_snapshots_company_as_of"
-        ),
+        sa.UniqueConstraint("company_id", "as_of", name="uq_engagement_snapshots_company_as_of"),
     )
     op.create_index(
         "ix_engagement_snapshots_as_of_esl_score",

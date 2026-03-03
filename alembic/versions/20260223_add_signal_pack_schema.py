@@ -17,6 +17,7 @@ Downgrade limitation:
   Downgrade fails when multiple packs have data. Restoring UNIQUE(company_id, as_of)
   would conflict with duplicate rows. Run pre-downgrade check before downgrading.
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -42,8 +43,18 @@ def upgrade() -> None:
         sa.Column("industry", sa.String(length=255), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -62,7 +73,13 @@ def upgrade() -> None:
     )
 
     # 3. Add pack_id to tables (nullable first for backfill)
-    for table in ["readiness_snapshots", "engagement_snapshots", "signal_events", "signal_records", "outreach_recommendations"]:
+    for table in [
+        "readiness_snapshots",
+        "engagement_snapshots",
+        "signal_events",
+        "signal_records",
+        "outreach_recommendations",
+    ]:
         op.add_column(
             table,
             sa.Column("pack_id", postgresql.UUID(as_uuid=True), nullable=True),
@@ -87,23 +104,33 @@ def upgrade() -> None:
         )
 
     # 5. Backfill existing rows with fractional_cto_v1 (parameterized)
-    for table in ["readiness_snapshots", "engagement_snapshots", "signal_events", "signal_records", "outreach_recommendations"]:
+    for table in [
+        "readiness_snapshots",
+        "engagement_snapshots",
+        "signal_events",
+        "signal_records",
+        "outreach_recommendations",
+    ]:
         op.execute(
-            sa.text(f"UPDATE {table} SET pack_id = CAST(:pid AS uuid) WHERE pack_id IS NULL").bindparams(
-                pid=FRACTIONAL_CTO_PACK_ID
-            )
+            sa.text(
+                f"UPDATE {table} SET pack_id = CAST(:pid AS uuid) WHERE pack_id IS NULL"
+            ).bindparams(pid=FRACTIONAL_CTO_PACK_ID)
         )
 
     # 6. Update unique constraints for readiness_snapshots and engagement_snapshots
     # Drop old (company_id, as_of), add (company_id, as_of, pack_id)
-    op.drop_constraint("uq_readiness_snapshots_company_as_of", "readiness_snapshots", type_="unique")
+    op.drop_constraint(
+        "uq_readiness_snapshots_company_as_of", "readiness_snapshots", type_="unique"
+    )
     op.create_unique_constraint(
         "uq_readiness_snapshots_company_as_of_pack",
         "readiness_snapshots",
         ["company_id", "as_of", "pack_id"],
     )
 
-    op.drop_constraint("uq_engagement_snapshots_company_as_of", "engagement_snapshots", type_="unique")
+    op.drop_constraint(
+        "uq_engagement_snapshots_company_as_of", "engagement_snapshots", type_="unique"
+    )
     op.create_unique_constraint(
         "uq_engagement_snapshots_company_as_of_pack",
         "engagement_snapshots",
@@ -146,14 +173,18 @@ def downgrade() -> None:
     op.drop_index("ix_engagement_snapshots_as_of_pack_id", table_name="engagement_snapshots")
 
     # Restore old unique constraints
-    op.drop_constraint("uq_engagement_snapshots_company_as_of_pack", "engagement_snapshots", type_="unique")
+    op.drop_constraint(
+        "uq_engagement_snapshots_company_as_of_pack", "engagement_snapshots", type_="unique"
+    )
     op.create_unique_constraint(
         "uq_engagement_snapshots_company_as_of",
         "engagement_snapshots",
         ["company_id", "as_of"],
     )
 
-    op.drop_constraint("uq_readiness_snapshots_company_as_of_pack", "readiness_snapshots", type_="unique")
+    op.drop_constraint(
+        "uq_readiness_snapshots_company_as_of_pack", "readiness_snapshots", type_="unique"
+    )
     op.create_unique_constraint(
         "uq_readiness_snapshots_company_as_of",
         "readiness_snapshots",
@@ -161,7 +192,13 @@ def downgrade() -> None:
     )
 
     # Remove pack_id columns
-    for table in ["readiness_snapshots", "engagement_snapshots", "signal_events", "signal_records", "outreach_recommendations"]:
+    for table in [
+        "readiness_snapshots",
+        "engagement_snapshots",
+        "signal_events",
+        "signal_records",
+        "outreach_recommendations",
+    ]:
         op.drop_constraint(f"fk_{table}_pack_id", table, type_="foreignkey")
         op.drop_column(table, "pack_id")
 

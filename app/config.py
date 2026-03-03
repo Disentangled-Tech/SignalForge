@@ -34,8 +34,11 @@ class Settings:
     internal_job_token: str = ""  # Required for /internal/* endpoints
 
     # LLM
+    # When llm_provider == "anthropic", the app uses Claude model names (e.g. claude-3-5-sonnet,
+    # claude-3-5-haiku) via the same role env vars (LLM_MODEL_REASONING, LLM_MODEL_JSON, etc.).
     llm_provider: str = "openai"
     llm_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None  # ANTHROPIC_API_KEY or fallback to llm_api_key
     llm_model: str = "gpt-4o-mini"
     # Model roles (issue #15): reasoning=analysis, json=cheap, outreach=conversational
     llm_model_reasoning: str = "gpt-4o"
@@ -80,6 +83,12 @@ class Settings:
     # Scout (LLM Discovery) — source allowlist/denylist; empty allowlist = all allowed
     scout_source_allowlist: list[str] = ()  # e.g. ["example.com", "news.ycombinator.com"]
     scout_source_denylist: list[str] = ()  # denylist takes precedence; e.g. ["blocked.com"]
+    # M4 (Issue #277): when True, run Extractor per bundle and pass structured_payloads to store
+    scout_run_extractor: bool = False
+    # M3 (Issue #278): when True, run Verification Gate before store; failed bundles quarantined
+    scout_verification_gate_enabled: bool = False
+    # M4 (Issue #281): when True (and scout_run_extractor True), run LLM interpretation per bundle then extract with raw_extraction
+    scout_run_interpretation: bool = False
 
     def __init__(self) -> None:
         self.app_name = os.getenv("APP_NAME", self.app_name)
@@ -105,6 +114,7 @@ class Settings:
 
         self.llm_provider = os.getenv("LLM_PROVIDER", self.llm_provider)
         self.llm_api_key = os.getenv("LLM_API_KEY")
+        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") or self.llm_api_key
         self.llm_model = os.getenv("LLM_MODEL", self.llm_model)
         # Role-specific models; legacy: LLM_MODEL used for all if role vars unset
         legacy_model = os.getenv("LLM_MODEL")
@@ -115,9 +125,7 @@ class Settings:
         self.llm_model_outreach = (
             os.getenv("LLM_MODEL_OUTREACH") or legacy_model or self.llm_model_outreach
         )
-        self.llm_model_scout = (
-            os.getenv("LLM_MODEL_SCOUT") or legacy_model or self.llm_model_scout
-        )
+        self.llm_model_scout = os.getenv("LLM_MODEL_SCOUT") or legacy_model or self.llm_model_scout
         self.llm_timeout = float(os.getenv("LLM_TIMEOUT", str(self.llm_timeout)))
         self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", str(self.llm_max_retries)))
 
@@ -162,3 +170,9 @@ class Settings:
         self.scout_source_allowlist = [s.strip().lower() for s in _allow.split(",") if s.strip()]
         _deny = os.getenv("SCOUT_SOURCE_DENYLIST", "").strip()
         self.scout_source_denylist = [s.strip().lower() for s in _deny.split(",") if s.strip()]
+        _run_ext = os.getenv("SCOUT_RUN_EXTRACTOR", "0").strip().lower()
+        self.scout_run_extractor = _run_ext in ("1", "true", "yes")
+        _verif = os.getenv("SCOUT_VERIFICATION_GATE_ENABLED", "0").strip().lower()
+        self.scout_verification_gate_enabled = _verif in ("1", "true", "yes")
+        _interp = os.getenv("SCOUT_RUN_INTERPRETATION", "0").strip().lower()
+        self.scout_run_interpretation = _interp in ("1", "true", "yes")

@@ -41,9 +41,7 @@ class SignalRecordRead(BaseModel):
     company_id: int
     source_url: str
     source_type: str | None = None
-    content_text: str = Field(
-        ..., description="Content text, may be truncated in list views"
-    )
+    content_text: str = Field(..., description="Content text, may be truncated in list views")
     created_at: datetime
 
 
@@ -54,4 +52,3 @@ class SignalRecordList(BaseModel):
     total: int
     page: int = 1
     page_size: int = 20
-

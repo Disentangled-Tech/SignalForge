@@ -56,10 +56,12 @@ RECOMMENDATION_BOUNDARIES: list[tuple[float, str]] = [
 ]
 
 # Event types that contribute to SVI (stress/urgency)
-SVI_EVENT_TYPES: frozenset[str] = frozenset({
-    "founder_urgency_language",
-    "regulatory_deadline",
-    "enterprise_customer",
-    "revenue_milestone",
-    "funding_raised",
-})
+SVI_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "founder_urgency_language",
+        "regulatory_deadline",
+        "enterprise_customer",
+        "revenue_milestone",
+        "funding_raised",
+    }
+)

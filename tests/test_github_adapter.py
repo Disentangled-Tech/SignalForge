@@ -175,7 +175,9 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].event_time.year == 2025
 
-    def test_github_adapter_returns_empty_when_no_repos_or_orgs(self, mock_sleep: MagicMock) -> None:
+    def test_github_adapter_returns_empty_when_no_repos_or_orgs(
+        self, mock_sleep: MagicMock
+    ) -> None:
         """INGEST_GITHUB_REPOS and INGEST_GITHUB_ORGS both unset → []."""
         adapter = GitHubAdapter()
         with patch.dict(
@@ -259,7 +261,9 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].raw_payload and events[0].raw_payload.get("repo") == "org/valid-repo"
 
-    def test_github_adapter_populates_website_url_from_org_metadata(self, mock_sleep: MagicMock) -> None:
+    def test_github_adapter_populates_website_url_from_org_metadata(
+        self, mock_sleep: MagicMock
+    ) -> None:
         """Org with blog → RawEvent.website_url set (Phase 3 company resolution)."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -302,12 +306,18 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url == "https://acme.example.com"
 
-    def test_github_adapter_website_url_none_when_org_has_no_blog(self, mock_sleep: MagicMock) -> None:
+    def test_github_adapter_website_url_none_when_org_has_no_blog(
+        self, mock_sleep: MagicMock
+    ) -> None:
         """Org with empty blog → website_url=None."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
         mock_org.status_code = 200
-        mock_org.json.return_value = {"login": "noblog", "blog": "", "html_url": "https://github.com/noblog"}
+        mock_org.json.return_value = {
+            "login": "noblog",
+            "blog": "",
+            "html_url": "https://github.com/noblog",
+        }
         mock_events = MagicMock()
         mock_events.status_code = 200
         mock_events.json.return_value = [
@@ -341,7 +351,9 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url is None
 
-    def test_github_adapter_website_url_adds_https_when_blog_has_no_scheme(self, mock_sleep: MagicMock) -> None:
+    def test_github_adapter_website_url_adds_https_when_blog_has_no_scheme(
+        self, mock_sleep: MagicMock
+    ) -> None:
         """Blog 'example.com' → website_url 'https://example.com'."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -384,7 +396,9 @@ class TestGitHubAdapterMocked:
         assert len(events) == 1
         assert events[0].website_url == "https://example.com"
 
-    def test_github_adapter_website_url_none_when_blog_is_github(self, mock_sleep: MagicMock) -> None:
+    def test_github_adapter_website_url_none_when_blog_is_github(
+        self, mock_sleep: MagicMock
+    ) -> None:
         """Blog pointing to github.com → website_url=None (org profile, not company site)."""
         adapter = GitHubAdapter()
         mock_org = MagicMock()
@@ -479,7 +493,11 @@ class TestGitHubAdapterMocked:
         adapter = GitHubAdapter()
         mock_org = MagicMock()
         mock_org.status_code = 200
-        mock_org.json.return_value = {"login": "acme", "blog": "", "html_url": "https://github.com/acme"}
+        mock_org.json.return_value = {
+            "login": "acme",
+            "blog": "",
+            "html_url": "https://github.com/acme",
+        }
         mock_events = MagicMock()
         mock_events.status_code = 200
         mock_events.json.return_value = [

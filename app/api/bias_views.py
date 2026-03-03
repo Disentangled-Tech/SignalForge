@@ -27,12 +27,7 @@ def bias_reports_list(
     db: Session = Depends(get_db),
 ):
     """List bias reports (newest first)."""
-    reports = (
-        db.query(BiasReport)
-        .order_by(BiasReport.report_month.desc())
-        .limit(50)
-        .all()
-    )
+    reports = db.query(BiasReport).order_by(BiasReport.report_month.desc()).limit(50).all()
     flash_message = request.query_params.get("success")
     error = request.query_params.get("error")
 

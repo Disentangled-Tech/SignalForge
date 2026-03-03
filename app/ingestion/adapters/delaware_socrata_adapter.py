@@ -212,9 +212,7 @@ class DelawareSocrataAdapter(SourceAdapter):
                 # 400 may indicate invalid $where column; retry once without filter
                 if status == 400 and date_column and offset == 0:
                     date_column = None
-                    rows, status = _fetch_page(
-                        client, dataset_id, since, offset, date_column=None
-                    )
+                    rows, status = _fetch_page(client, dataset_id, since, offset, date_column=None)
 
                 if status in (400, 401, 403, 404, 429, 500):
                     if status == 404:

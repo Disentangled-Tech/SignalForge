@@ -6,18 +6,15 @@ Uses FastAPI TestClient + BeautifulSoup to assert rendered content.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 from uuid import UUID
 
-from unittest.mock import MagicMock
-
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.views import _require_ui_auth
 from app.db.session import get_db
 from app.models import Company, OutreachHistory, User, Workspace
-
 from tests.test_constants import TEST_USERNAME_VIEWS
 
 
@@ -44,9 +41,7 @@ def company_detail_client(db):
 
 
 @pytest.mark.integration
-def test_company_detail_renders_company_name(
-    company_detail_client: TestClient, db
-) -> None:
+def test_company_detail_renders_company_name(company_detail_client: TestClient, db) -> None:
     """GET /companies/{id}: company name in page."""
     company = Company(
         name="Detail Test Co",
@@ -63,9 +58,7 @@ def test_company_detail_renders_company_name(
 
 
 @pytest.mark.integration
-def test_company_detail_has_outreach_section(
-    company_detail_client: TestClient, db
-) -> None:
+def test_company_detail_has_outreach_section(company_detail_client: TestClient, db) -> None:
     """GET /companies/{id}: outreach section or generation controls present."""
     company = Company(
         name="Outreach Co",

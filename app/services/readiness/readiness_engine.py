@@ -521,7 +521,14 @@ def compute_readiness(
     quiet_amplified = [t for t in quiet_base if t in event_types_present] if not has_funding else []
 
     explain = build_explain_payload(
-        M, C, P, G, R, top_events, suppressors_applied, quiet_amplified,
+        M,
+        C,
+        P,
+        G,
+        R,
+        top_events,
+        suppressors_applied,
+        quiet_amplified,
         disqualifiers_applied=disqualifiers_applied or None,
         _cfg=_cfg,
     )

@@ -6,8 +6,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 
 class TestCleanTestDataScript:
     """Tests for the clean_test_data_from_dev script."""

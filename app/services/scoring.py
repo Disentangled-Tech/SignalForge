@@ -55,7 +55,9 @@ def _get_pack_or_default(db: Session | None = None) -> Pack | None:
     return get_default_pack(db)
 
 
-def _get_weights_from_pack(pack_interface: PackScoringInterface) -> tuple[dict[str, int], dict[str, int]]:
+def _get_weights_from_pack(
+    pack_interface: PackScoringInterface,
+) -> tuple[dict[str, int], dict[str, int]]:
     """Extract pain_signal_weights and stage_bonuses from pack interface (Phase 1)."""
     weights = pack_interface.get_pain_signal_weights()
     stage_bonuses = pack_interface.get_stage_bonuses()
@@ -264,9 +266,7 @@ def get_display_scores_with_bands(
     """
     from app.services.score_resolver import get_company_scores_and_bands_batch
 
-    return get_company_scores_and_bands_batch(
-        db, company_ids, workspace_id=workspace_id
-    )
+    return get_company_scores_and_bands_batch(db, company_ids, workspace_id=workspace_id)
 
 
 def score_company(
@@ -288,8 +288,10 @@ def score_company(
     from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
     custom_weights = get_custom_weights(db)
-    effective_pack = pack if pack is not None else (
-        resolve_pack(db, pid) if (pid := get_default_pack_id(db)) else None
+    effective_pack = (
+        pack
+        if pack is not None
+        else (resolve_pack(db, pid) if (pid := get_default_pack_id(db)) else None)
     )
     pain_signals = (
         analysis.pain_signals_json if isinstance(analysis.pain_signals_json, dict) else {}

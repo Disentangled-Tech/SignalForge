@@ -21,4 +21,3 @@ class OperatorProfile(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
-

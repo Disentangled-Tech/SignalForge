@@ -18,12 +18,8 @@ class SettingsUpdate(BaseModel):
         max_length=255,
         description="Email address for briefing delivery",
     )
-    briefing_email_enabled: bool | None = Field(
-        None, description="Enable briefing email delivery"
-    )
-    briefing_frequency: str | None = Field(
-        None, description="daily or weekly"
-    )
+    briefing_email_enabled: bool | None = Field(None, description="Enable briefing email delivery")
+    briefing_frequency: str | None = Field(None, description="daily or weekly")
     briefing_day_of_week: int | None = Field(
         None, ge=0, le=6, description="0=Monday .. 6=Sunday for weekly briefings"
     )
@@ -62,4 +58,3 @@ class OperatorProfileRead(BaseModel):
 
     content: str | None = None
     updated_at: datetime | None = None
-

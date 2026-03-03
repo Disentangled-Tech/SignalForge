@@ -19,7 +19,12 @@ class ReadinessSnapshot(Base):
 
     __table_args__ = (
         UniqueConstraint("company_id", "as_of", name="uq_readiness_snapshots_company_as_of"),
-        Index("ix_readiness_snapshots_as_of_composite", "as_of", "composite", postgresql_ops={"composite": "DESC"}),
+        Index(
+            "ix_readiness_snapshots_as_of_composite",
+            "as_of",
+            "composite",
+            postgresql_ops={"composite": "DESC"},
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

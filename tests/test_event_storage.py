@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ingestion.event_storage import store_signal_event
-from app.models import Company, SignalEvent
+from app.models import Company, EvidenceBundle, SignalEvent
 
 
 def test_store_new_event_returns_signal_event(db: Session) -> None:
@@ -66,7 +66,9 @@ def test_store_duplicate_returns_none(db: Session) -> None:
         event_time=datetime(2026, 2, 18, 11, 0, 0, tzinfo=UTC),
     )
     assert result is None
-    assert db.query(SignalEvent).filter(SignalEvent.source == "producthunt").count() == initial_count
+    assert (
+        db.query(SignalEvent).filter(SignalEvent.source == "producthunt").count() == initial_count
+    )
 
 
 def test_duplicate_signal_event_insert(db: Session) -> None:
@@ -102,14 +104,15 @@ def test_duplicate_signal_event_insert(db: Session) -> None:
     )
     assert result is None
 
-    # DB-level: direct insert of duplicate raises IntegrityError (Issue #240)
+    # DB-level: direct insert of duplicate raises IntegrityError (Issue #240).
+    # evidence_bundle_id explicitly NULL to document that dedupe is (source, source_event_id) only (M1).
     with pytest.raises(IntegrityError):
         db.execute(
             text(
                 """
                 INSERT INTO signal_events
-                (company_id, source, source_event_id, event_type, event_time, ingested_at)
-                VALUES (:cid, :src, :eid, 'job_posted', :et, now())
+                (company_id, source, source_event_id, event_type, event_time, ingested_at, evidence_bundle_id)
+                VALUES (:cid, :src, :eid, 'job_posted', :et, now(), NULL)
                 """
             ),
             {
@@ -198,3 +201,34 @@ def test_store_with_optional_fields(db: Session) -> None:
     assert result.url == "https://delta.example.com/api"
     assert result.raw == {"version": "2.0"}
     assert result.confidence == 0.9
+
+
+def test_store_with_evidence_bundle_id(db: Session) -> None:
+    """evidence_bundle_id is stored when provided (Watchlist Seeder M1)."""
+    bundle = EvidenceBundle(
+        scout_version="test-scout-1",
+        core_taxonomy_version="tax-v1",
+        core_derivers_version="deriv-v1",
+    )
+    db.add(bundle)
+    db.flush()
+
+    company = Company(name="Zeta", website_url="https://zeta.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    db.refresh(bundle)
+
+    source_event_id = f"t-eb-{uuid.uuid4().hex[:12]}"
+    result = store_signal_event(
+        db,
+        company_id=company.id,
+        source="watchlist_seeder",
+        source_event_id=source_event_id,
+        event_type="funding_raised",
+        event_time=datetime(2026, 2, 18, 16, 0, 0, tzinfo=UTC),
+        evidence_bundle_id=bundle.id,
+    )
+    assert result is not None
+    assert result.evidence_bundle_id == bundle.id
+    assert result.source == "watchlist_seeder"

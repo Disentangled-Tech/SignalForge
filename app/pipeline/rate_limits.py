@@ -32,13 +32,16 @@ def check_workspace_rate_limit(
         return True
 
     cutoff = datetime.now(UTC) - timedelta(hours=1)
-    count = db.scalar(
-        select(func.count(JobRun.id)).where(
-            JobRun.workspace_id == workspace_id,
-            JobRun.job_type == job_type,
-            JobRun.started_at >= cutoff,
+    count = (
+        db.scalar(
+            select(func.count(JobRun.id)).where(
+                JobRun.workspace_id == workspace_id,
+                JobRun.job_type == job_type,
+                JobRun.started_at >= cutoff,
+            )
         )
-    ) or 0
+        or 0
+    )
 
     if count >= limit:
         logger.warning(

@@ -50,12 +50,8 @@ class LeadFeed(Base):
     sensitivity_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Issue #242 Phase 3 — pack recommendation band when available
     recommendation_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    last_seen: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    outreach_status_summary: Mapped[dict | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outreach_status_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     as_of: Mapped[date] = mapped_column(Date, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -63,6 +59,4 @@ class LeadFeed(Base):
         nullable=False,
     )
 
-    company: Mapped["Company"] = relationship(
-        "Company", back_populates="lead_feed"
-    )
+    company: Mapped[Company] = relationship("Company", back_populates="lead_feed")

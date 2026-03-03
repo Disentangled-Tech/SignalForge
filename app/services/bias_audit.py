@@ -40,9 +40,7 @@ def get_surfaced_company_ids(db: Session, report_month: date) -> list[int]:
     return [r[0] for r in rows if r[0] is not None]
 
 
-def compute_funding_concentration(
-    db: Session, company_ids: list[int], as_of: date
-) -> dict:
+def compute_funding_concentration(db: Session, company_ids: list[int], as_of: date) -> dict:
     """Count % of companies with funding_raised SignalEvent in last 365 days."""
     if not company_ids:
         return {"with_funding": 0, "pct": 0.0, "segment": "with_funding"}
@@ -71,11 +69,7 @@ def compute_alignment_skew(db: Session, company_ids: list[int]) -> dict:
     if not company_ids:
         return {"true": 0, "false": 0, "null": 0, "max_segment": "null", "max_pct": 0.0}
 
-    companies = (
-        db.query(Company.alignment_ok_to_contact)
-        .filter(Company.id.in_(company_ids))
-        .all()
-    )
+    companies = db.query(Company.alignment_ok_to_contact).filter(Company.id.in_(company_ids)).all()
     counts = {"true": 0, "false": 0, "null": 0}
     for (val,) in companies:
         if val is True:
@@ -104,11 +98,7 @@ def compute_stage_skew(db: Session, company_ids: list[int]) -> dict:
     if not company_ids:
         return {}
 
-    companies = (
-        db.query(Company.current_stage)
-        .filter(Company.id.in_(company_ids))
-        .all()
-    )
+    companies = db.query(Company.current_stage).filter(Company.id.in_(company_ids)).all()
     counts: dict[str, int] = {}
     for (stage,) in companies:
         key = (stage or "").strip().lower()
@@ -153,10 +143,7 @@ def run_bias_audit(db: Session, report_month: date | None = None) -> dict:
 
         # Stage skew: compute max pct for flagging
         total = len(company_ids)
-        stage_pcts = {
-            k: round((v / total) * 100.0, 1) if total else 0.0
-            for k, v in stage.items()
-        }
+        stage_pcts = {k: round((v / total) * 100.0, 1) if total else 0.0 for k, v in stage.items()}
         max_stage = max(stage_pcts, key=stage_pcts.get) if stage_pcts else None
         max_stage_pct = stage_pcts.get(max_stage, 0.0) if max_stage else 0.0
 
@@ -181,11 +168,7 @@ def run_bias_audit(db: Session, report_month: date | None = None) -> dict:
         }
 
         # Upsert: replace existing report for same month
-        existing = (
-            db.query(BiasReport)
-            .filter(BiasReport.report_month == report_month)
-            .first()
-        )
+        existing = db.query(BiasReport).filter(BiasReport.report_month == report_month).first()
         if existing:
             existing.surfaced_count = surfaced_count
             existing.payload = payload

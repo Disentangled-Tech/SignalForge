@@ -24,8 +24,15 @@ MAX_REVIEW_LIMIT = 20
 
 @router.get("/review", response_model=OutreachReviewResponse)
 def api_outreach_review(
-    date_param: date | None = Query(None, alias="date", description="Snapshot date (YYYY-MM-DD). Default: latest available."),
-    limit: int | None = Query(None, ge=1, le=MAX_REVIEW_LIMIT, description="Max companies to return. Default: weekly_review_limit."),
+    date_param: date | None = Query(
+        None, alias="date", description="Snapshot date (YYYY-MM-DD). Default: latest available."
+    ),
+    limit: int | None = Query(
+        None,
+        ge=1,
+        le=MAX_REVIEW_LIMIT,
+        description="Max companies to return. Default: weekly_review_limit.",
+    ),
     db: Session = Depends(get_db),
     _auth: None = Depends(require_auth),
 ) -> OutreachReviewResponse:

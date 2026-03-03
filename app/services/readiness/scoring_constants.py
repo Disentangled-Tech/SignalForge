@@ -306,7 +306,11 @@ def _norm_recommendation_bands(bands: dict | None) -> dict[str, int] | None:
         return None
     if not (ignore_max < watch_max < high_priority_min):
         return None
-    return {"ignore_max": ignore_max, "watch_max": watch_max, "high_priority_min": high_priority_min}
+    return {
+        "ignore_max": ignore_max,
+        "watch_max": watch_max,
+        "high_priority_min": high_priority_min,
+    }
 
 
 def _norm_disqualifier_signals(signals: dict | None) -> dict[str, int]:

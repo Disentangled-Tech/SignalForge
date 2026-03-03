@@ -74,7 +74,11 @@ def get_company_score(
             (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
         )
         if pack_uuid is not None and default_pack_uuid is not None
-        else (ReadinessSnapshot.pack_id == pack_uuid if pack_uuid is not None else ReadinessSnapshot.pack_id.is_(None))
+        else (
+            ReadinessSnapshot.pack_id == pack_uuid
+            if pack_uuid is not None
+            else ReadinessSnapshot.pack_id.is_(None)
+        )
     )
     snapshot = (
         db.query(ReadinessSnapshot)
@@ -124,7 +128,11 @@ def get_company_score_with_band(
             (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
         )
         if pack_uuid is not None and default_pack_uuid is not None
-        else (ReadinessSnapshot.pack_id == pack_uuid if pack_uuid is not None else ReadinessSnapshot.pack_id.is_(None))
+        else (
+            ReadinessSnapshot.pack_id == pack_uuid
+            if pack_uuid is not None
+            else ReadinessSnapshot.pack_id.is_(None)
+        )
     )
     snapshot = (
         db.query(ReadinessSnapshot)
@@ -198,9 +206,7 @@ def get_company_scores_batch(
             latest_by_company[s.company_id] = s
 
     result: dict[int, int] = {
-        cid: latest_by_company[cid].composite
-        for cid in company_ids
-        if cid in latest_by_company
+        cid: latest_by_company[cid].composite for cid in company_ids if cid in latest_by_company
     }
 
     # 2. Fallback: batch fetch Company.cto_need_score for companies without snapshot
@@ -270,9 +276,7 @@ def get_company_scores_and_bands_batch(
             latest_by_company[s.company_id] = s
 
     scores: dict[int, int] = {
-        cid: latest_by_company[cid].composite
-        for cid in company_ids
-        if cid in latest_by_company
+        cid: latest_by_company[cid].composite for cid in company_ids if cid in latest_by_company
     }
     bands: dict[int, str | None] = {
         cid: _band_from_explain(latest_by_company[cid].explain)

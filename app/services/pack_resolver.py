@@ -88,9 +88,7 @@ def get_default_pack(db: Session | None = None) -> Pack | None:
         return None
 
 
-def get_pack_for_workspace(
-    db: Session, workspace_id: str | UUID | None
-) -> UUID | None:
+def get_pack_for_workspace(db: Session, workspace_id: str | UUID | None) -> UUID | None:
     """Return the active pack for the workspace, or default pack if workspace has none.
 
     Phase 3 (Pack Activation Runtime): When workspace has active_pack_id, use it.

@@ -52,6 +52,9 @@ class Company(Base):
     signal_events: Mapped[list[SignalEvent]] = relationship(
         "SignalEvent", back_populates="company", passive_deletes=True
     )
+    page_snapshots: Mapped[list["PageSnapshot"]] = relationship(
+        "PageSnapshot", back_populates="company", cascade="all, delete-orphan"
+    )
     readiness_snapshots: Mapped[list[ReadinessSnapshot]] = relationship(
         "ReadinessSnapshot", back_populates="company", cascade="all, delete-orphan"
     )
@@ -73,6 +76,9 @@ class Company(Base):
     aliases: Mapped[list[CompanyAlias]] = relationship(
         "CompanyAlias", back_populates="company", cascade="all, delete-orphan"
     )
-    lead_feed: Mapped[list["LeadFeed"]] = relationship(
+    lead_feed: Mapped[list[LeadFeed]] = relationship(
         "LeadFeed", back_populates="company", cascade="all, delete-orphan"
+    )
+    page_snapshots: Mapped[list["PageSnapshot"]] = relationship(
+        "PageSnapshot", back_populates="company", cascade="all, delete-orphan"
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 
 import pytest
 from pydantic import ValidationError
@@ -28,7 +28,6 @@ from app.schemas import (
     TokenResponse,
     UserRead,
 )
-
 
 # ── Company ──────────────────────────────────────────────────────────
 
@@ -80,7 +79,7 @@ class TestCompanyUpdate:
 
 class TestCompanyRead:
     def test_from_dict(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         r = CompanyRead(
             id=1,
             company_name="Test",
@@ -90,7 +89,7 @@ class TestCompanyRead:
         assert r.cto_need_score is None
 
     def test_company_list(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         item = CompanyRead(id=1, company_name="Co", created_at=now)
         cl = CompanyList(items=[item], total=1)
         assert cl.total == 1
@@ -107,7 +106,7 @@ class TestRawEvent:
         ev = RawEvent(
             company_name="Acme Corp",
             event_type_candidate="funding_raised",
-            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
         )
         assert ev.company_name == "Acme Corp"
         assert ev.event_type_candidate == "funding_raised"
@@ -120,7 +119,7 @@ class TestRawEvent:
             domain="acme.example.com",
             website_url="https://acme.example.com",
             event_type_candidate="job_posted_engineering",
-            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+            event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
             title="Senior Engineer",
             summary="Hiring for growth",
             url="https://acme.example.com/jobs",
@@ -136,7 +135,7 @@ class TestRawEvent:
             RawEvent(
                 company_name="",
                 event_type_candidate="funding_raised",
-                event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+                event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
             )
 
     def test_rejects_missing_required_fields(self) -> None:
@@ -146,7 +145,7 @@ class TestRawEvent:
 
 class TestSignalRecordRead:
     def test_valid(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         s = SignalRecordRead(
             id=1,
             company_id=10,
@@ -177,7 +176,7 @@ class TestPainSignals:
 
 class TestAnalysisRecordRead:
     def test_valid(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         a = AnalysisRecordRead(
             id=1,
             company_id=5,
@@ -192,11 +191,9 @@ class TestAnalysisRecordRead:
         assert a.stage_confidence == 0.85
 
     def test_rejects_confidence_out_of_range(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         with pytest.raises(ValidationError):
-            AnalysisRecordRead(
-                id=1, company_id=5, stage_confidence=1.5, created_at=now
-            )
+            AnalysisRecordRead(id=1, company_id=5, stage_confidence=1.5, created_at=now)
 
 
 # ── Briefing ─────────────────────────────────────────────────────────
@@ -204,7 +201,7 @@ class TestAnalysisRecordRead:
 
 class TestBriefingItemRead:
     def test_valid(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         company = CompanyRead(id=1, company_name="Co", created_at=now)
         b = BriefingItemRead(
             id=1,
@@ -304,7 +301,6 @@ class TestOperatorProfile:
             OperatorProfileUpdate(content="")
 
     def test_read_valid(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         r = OperatorProfileRead(content="Profile text", updated_at=now)
         assert r.content == "Profile text"
-

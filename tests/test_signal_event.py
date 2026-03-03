@@ -1,7 +1,7 @@
 """SignalEvent model and CRUD tests."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -15,7 +15,7 @@ def test_signal_event_model_creation(db: Session) -> None:
     event = SignalEvent(
         source="crunchbase",
         event_type="funding_raised",
-        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
     )
     assert event.source == "crunchbase"
     assert event.event_type == "funding_raised"
@@ -43,7 +43,7 @@ def test_signal_event_company_relationship(db: Session) -> None:
         company_id=company.id,
         source="producthunt",
         event_type="job_posted_engineering",
-        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
         title="Senior Engineer",
     )
     db.add(event)
@@ -64,7 +64,7 @@ def test_signal_event_unique_constraint_prevents_duplicate(db: Session) -> None:
         source="crunchbase",
         source_event_id=unique_id,
         event_type="funding_raised",
-        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
     )
     db.add(event1)
     db.commit()
@@ -73,7 +73,7 @@ def test_signal_event_unique_constraint_prevents_duplicate(db: Session) -> None:
         source="crunchbase",
         source_event_id=unique_id,
         event_type="funding_raised",
-        event_time=datetime(2026, 2, 18, 13, 0, 0, tzinfo=timezone.utc),
+        event_time=datetime(2026, 2, 18, 13, 0, 0, tzinfo=UTC),
     )
     db.add(event2)
     with pytest.raises(IntegrityError):
@@ -89,7 +89,7 @@ def test_signal_event_duplicate_allowed_when_source_event_id_null(
         source="manual",
         source_event_id=None,
         event_type="funding_raised",
-        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
+        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
     )
     db.add(event1)
     db.commit()
@@ -98,7 +98,7 @@ def test_signal_event_duplicate_allowed_when_source_event_id_null(
         source="manual",
         source_event_id=None,
         event_type="job_posted_engineering",
-        event_time=datetime(2026, 2, 18, 13, 0, 0, tzinfo=timezone.utc),
+        event_time=datetime(2026, 2, 18, 13, 0, 0, tzinfo=UTC),
     )
     db.add(event2)
     db.commit()

@@ -107,9 +107,7 @@ class TestProductHuntAdapterMockedHttp:
 
     @patch.dict("os.environ", {"PRODUCTHUNT_API_TOKEN": "test-token"}, clear=False)
     @patch("app.ingestion.adapters.producthunt_adapter.httpx")
-    def test_producthunt_adapter_maps_launch_to_launch_major(
-        self, mock_httpx: MagicMock
-    ) -> None:
+    def test_producthunt_adapter_maps_launch_to_launch_major(self, mock_httpx: MagicMock) -> None:
         """Post nodes map to RawEvent with event_type_candidate='launch_major'."""
         node = _make_post_node()
         mock_response = MagicMock()

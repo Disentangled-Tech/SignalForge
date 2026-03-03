@@ -170,4 +170,3 @@ def send_briefing_email(
     except (smtplib.SMTPException, OSError) as exc:
         logger.error("email_send_failed: %s", exc)
         return False
-

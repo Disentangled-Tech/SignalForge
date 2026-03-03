@@ -38,11 +38,7 @@ def run_alert_scan(db: Session, as_of: date | None = None) -> dict:
     threshold = get_settings().alert_delta_threshold
     prev_date = as_of - timedelta(days=1)
 
-    current_snapshots = (
-        db.query(ReadinessSnapshot)
-        .filter(ReadinessSnapshot.as_of == as_of)
-        .all()
-    )
+    current_snapshots = db.query(ReadinessSnapshot).filter(ReadinessSnapshot.as_of == as_of).all()
 
     alerts_created = 0
     companies_scanned = len(current_snapshots)

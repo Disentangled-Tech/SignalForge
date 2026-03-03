@@ -158,8 +158,15 @@ Resolution: get_company_score(db, company_id, pack_id) → ReadinessSnapshot | C
 
 ---
 
-## 5. References
+## 5. Evidence Store (Scout-Only)
 
+Company Signal models (events, scores) above are used by the ingest → derive → score pipeline. A **separate** immutable Evidence Store persists Scout (LLM Discovery) outputs: `evidence_bundles`, `evidence_sources`, `evidence_claims`, `evidence_quarantine`. That store is versioned against core taxonomy/derivers, does not write to `signal_events` or `signal_instances`, and does not apply pack logic. See [evidence-store.md](evidence-store.md) for schema, versioning, and the Evidence Repository read interface.
+
+---
+
+## 6. References
+
+- [evidence-store.md](evidence-store.md) — Evidence Store schema, versioning, repository (Scout-only)
 - [CORE_VS_PACK_RESPONSIBILITIES.md](CORE_VS_PACK_RESPONSIBILITIES.md) — Core taxonomy vs pack (scoring, ESL, outreach); derive uses core only
 - [ADR-001](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) — Declarative Signal Pack Architecture
 - [ADR-002](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md) — Pack Version Pinning Per Workspace

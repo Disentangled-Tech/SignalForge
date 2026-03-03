@@ -23,9 +23,8 @@ router = APIRouter()
 def _item_to_read(item, display_scores: dict, esl_by_company: dict) -> BriefingItemRead:
     """Build BriefingItemRead from BriefingItem with optional ESL fields."""
     company_read = _model_to_read(item.company)
-    stage = (
-        (item.analysis.stage if item.analysis else None)
-        or (item.company.current_stage if item.company else None)
+    stage = (item.analysis.stage if item.analysis else None) or (
+        item.company.current_stage if item.company else None
     )
 
     esl = esl_by_company.get(item.company_id) or {}

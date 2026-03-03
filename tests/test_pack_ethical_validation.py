@@ -154,9 +154,7 @@ class TestValidateEslPolicyAgainstCoreBansDirect:
     def test_integer_one_rejected(self) -> None:
         """esl_policy with allow_*=1 (YAML integer) is rejected (no bypass)."""
         with pytest.raises(ValidationError, match="core ban|allow_protected_attribute_targeting"):
-            validate_esl_policy_against_core_bans(
-                {"allow_protected_attribute_targeting": 1}
-            )
+            validate_esl_policy_against_core_bans({"allow_protected_attribute_targeting": 1})
 
 
 class TestEthicalConstantsExports:

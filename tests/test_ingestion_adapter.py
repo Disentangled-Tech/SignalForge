@@ -21,12 +21,8 @@ _GITHUB_PHASE3_DOMAIN = "github-phase3.example.com"
 @pytest.fixture(autouse=True)
 def _cleanup_test_adapter_data(db: Session) -> None:
     """Remove test adapter data before each test (handles pre-existing data from prior runs)."""
-    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(
-        synchronize_session="fetch"
-    )
-    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(
-        synchronize_session="fetch"
-    )
+    db.query(SignalEvent).filter(SignalEvent.source == "test").delete(synchronize_session="fetch")
+    db.query(Company).filter(Company.domain.in_(_TEST_DOMAINS)).delete(synchronize_session="fetch")
     db.commit()
 
 
@@ -80,9 +76,11 @@ def test_run_ingest_creates_companies_via_resolver(db: Session) -> None:
     since = datetime(2026, 2, 1, tzinfo=UTC)
     run_ingest(db, adapter, since)
 
-    companies = db.query(Company).filter(Company.domain.in_(
-        ["testa.example.com", "testb.example.com", "testc.example.com"]
-    )).all()
+    companies = (
+        db.query(Company)
+        .filter(Company.domain.in_(["testa.example.com", "testb.example.com", "testc.example.com"]))
+        .all()
+    )
     assert len(companies) == 3
 
 
@@ -100,9 +98,7 @@ def test_run_ingest_one_failure_does_not_stop_others(db: Session) -> None:
 def test_run_ingest_github_stores_signal_event_with_company_id(db: Session) -> None:
     """Mock GitHub API → ingest → SignalEvent stored with company_id (Phase 3 company resolution)."""
     # Cleanup prior GitHub test data
-    db.query(SignalEvent).filter(SignalEvent.source == "github").delete(
-        synchronize_session="fetch"
-    )
+    db.query(SignalEvent).filter(SignalEvent.source == "github").delete(synchronize_session="fetch")
     db.query(Company).filter(Company.domain == _GITHUB_PHASE3_DOMAIN).delete(
         synchronize_session="fetch"
     )

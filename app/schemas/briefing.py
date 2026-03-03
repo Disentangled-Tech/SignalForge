@@ -67,4 +67,3 @@ class BriefingResponse(BaseModel):
     items: list[BriefingItemRead]
     emerging_companies: list[EmergingCompanyBriefing] = Field(default_factory=list)
     total: int = 0
-

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.briefing_item import BriefingItem
 from app.models.company import Company
-from app.models.outreach_history import OutreachHistory
 from app.services.outreach_history import (
     create_outreach_record,
     delete_outreach_record,
@@ -18,7 +16,6 @@ from app.services.outreach_history import (
     list_outreach_for_company,
     update_outreach_outcome,
 )
-
 
 # ── Migration test ────────────────────────────────────────────────────
 
@@ -55,7 +52,7 @@ def test_create_outreach_record(db: Session):
     db.commit()
     db.refresh(company)
 
-    sent_at = datetime(2026, 2, 18, 14, 30, 0, tzinfo=timezone.utc)
+    sent_at = datetime(2026, 2, 18, 14, 30, 0, tzinfo=UTC)
     record = create_outreach_record(
         db,
         company_id=company.id,
@@ -80,7 +77,7 @@ def test_create_outreach_record_minimal(db: Session):
     db.commit()
     db.refresh(company)
 
-    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
     record = create_outreach_record(
         db,
         company_id=company.id,
@@ -177,7 +174,7 @@ def test_list_outreach_ordered(db: Session):
     db.commit()
     db.refresh(company)
 
-    base = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 2, 18, 14, 0, 0, tzinfo=UTC)
     t1 = base - timedelta(days=132)
     t2 = base - timedelta(days=71)
     t3 = base - timedelta(days=10)
@@ -201,9 +198,12 @@ def test_delete_outreach_record(db: Session):
     db.refresh(company)
 
     record = create_outreach_record(
-        db, company.id,
-        datetime(2026, 2, 18, 12, 0, 0, tzinfo=timezone.utc),
-        "email", "To delete", None,
+        db,
+        company.id,
+        datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        "email",
+        "To delete",
+        None,
     )
 
     deleted = delete_outreach_record(db, company.id, record.id)
@@ -231,7 +231,7 @@ def test_create_outreach_record_with_outcome(db: Session):
     db.commit()
     db.refresh(company)
 
-    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
     record = create_outreach_record(
         db,
         company_id=company.id,
@@ -252,7 +252,7 @@ def test_update_outreach_outcome(db: Session):
     db.commit()
     db.refresh(company)
 
-    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
     record = create_outreach_record(
         db,
         company_id=company.id,
@@ -275,7 +275,7 @@ def test_update_outreach_outcome_clears_when_empty(db: Session):
     db.commit()
     db.refresh(company)
 
-    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    sent_at = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
     record = create_outreach_record(
         db,
         company_id=company.id,
@@ -317,14 +317,10 @@ def test_list_outreach_for_company_with_workspace_id_includes_default_and_null(
     db.commit()
     db.refresh(company)
 
-    base = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
-    create_outreach_record(
-        db, company.id, base, "email", "Default workspace", None
-    )
+    base = datetime(2026, 2, 18, 14, 0, 0, tzinfo=UTC)
+    create_outreach_record(db, company.id, base, "email", "Default workspace", None)
 
-    records = list_outreach_for_company(
-        db, company.id, workspace_id=DEFAULT_WORKSPACE_ID
-    )
+    records = list_outreach_for_company(db, company.id, workspace_id=DEFAULT_WORKSPACE_ID)
     assert len(records) == 1
     assert records[0].message == "Default workspace"
 
@@ -354,9 +350,7 @@ def test_get_draft_for_company_with_workspace_id_returns_draft_when_default(
     db.add(briefing)
     db.commit()
 
-    draft = get_draft_for_company(
-        db, company.id, workspace_id=DEFAULT_WORKSPACE_ID
-    )
+    draft = get_draft_for_company(db, company.id, workspace_id=DEFAULT_WORKSPACE_ID)
     assert draft == "Draft for default workspace"
 
 
@@ -378,7 +372,7 @@ def test_update_outreach_outcome_workspace_isolated(db: Session):
     db.commit()
     db.refresh(company)
 
-    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
     # Space 61+ days apart to avoid cooldown
     sent_default = base - timedelta(days=100)
     sent_other = base - timedelta(days=35)
@@ -444,7 +438,7 @@ def test_delete_outreach_record_workspace_isolated(db: Session):
     db.commit()
     db.refresh(company)
 
-    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 2, 18, 10, 0, 0, tzinfo=UTC)
     # Space 61+ days apart to avoid cooldown
     sent_default = base - timedelta(days=100)
     sent_other = base - timedelta(days=35)
@@ -475,9 +469,7 @@ def test_delete_outreach_record_workspace_isolated(db: Session):
     assert deleted is False
 
     # Delete with other workspace: only record_other should be deleted
-    deleted = delete_outreach_record(
-        db, company.id, record_other.id, workspace_id=other_ws
-    )
+    deleted = delete_outreach_record(db, company.id, record_other.id, workspace_id=other_ws)
     assert deleted is True
 
     remaining = list_outreach_for_company(db, company.id)
@@ -485,7 +477,5 @@ def test_delete_outreach_record_workspace_isolated(db: Session):
     assert remaining[0].id == record_default.id
 
     # Delete with other workspace targeting default-workspace record: should return False
-    deleted = delete_outreach_record(
-        db, company.id, record_default.id, workspace_id=other_ws
-    )
+    deleted = delete_outreach_record(db, company.id, record_default.id, workspace_id=other_ws)
     assert deleted is False

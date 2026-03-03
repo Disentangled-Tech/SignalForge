@@ -152,9 +152,7 @@ def _load_owner_metadata_cache() -> dict[str, dict[str, str | None]]:
             if not cached_at_str:
                 continue
             try:
-                cached_at = datetime.fromisoformat(
-                    str(cached_at_str).replace("Z", "+00:00")
-                )
+                cached_at = datetime.fromisoformat(str(cached_at_str).replace("Z", "+00:00"))
                 if cached_at.tzinfo is None:
                     cached_at = cached_at.replace(tzinfo=UTC)
                 if (now - cached_at).total_seconds() > ttl:
@@ -171,9 +169,7 @@ def _load_owner_metadata_cache() -> dict[str, dict[str, str | None]]:
         return {}
 
 
-def _save_owner_metadata_to_cache(
-    owner: str, metadata: dict[str, str | None]
-) -> None:
+def _save_owner_metadata_to_cache(owner: str, metadata: dict[str, str | None]) -> None:
     """Save owner metadata to file cache."""
     cache_dir = _get_cache_dir()
     if cache_dir is None:
@@ -305,7 +301,7 @@ def _event_to_raw_event(
     url = f"https://github.com/{repo_name}"
     if ev_type == "PushEvent" and isinstance(ev.get("payload"), dict):
         payload = ev["payload"]
-        head = (payload.get("head") or payload.get("before") or "")
+        head = payload.get("head") or payload.get("before") or ""
         if head:
             url = f"https://github.com/{repo_name}/commit/{head}"
     elif ev_type == "PullRequestEvent" and isinstance(ev.get("payload"), dict):
@@ -486,7 +482,9 @@ class GitHubAdapter(SourceAdapter):
                         break
                     for ev in evs:
                         repo_info = ev.get("repo") or {}
-                        repo_name = repo_info.get("name", org) if isinstance(repo_info, dict) else org
+                        repo_name = (
+                            repo_info.get("name", org) if isinstance(repo_info, dict) else org
+                        )
                         ev_owner = repo_name.split("/")[0] if "/" in repo_name else repo_name
                         _ensure_owner_metadata(ev_owner)
                         raw = _event_to_raw_event(ev, repo_name, owner_metadata)

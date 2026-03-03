@@ -17,7 +17,9 @@ from tests.test_constants import TEST_USERNAME_VIEWS
 
 def _make_user():
     from unittest.mock import MagicMock
+
     from app.models.user import User
+
     user = MagicMock(spec=User)
     user.id = 1
     user.username = TEST_USERNAME_VIEWS
@@ -27,9 +29,10 @@ def _make_user():
 @pytest.fixture
 def pack_ui_client(db):
     """TestClient with auth override for pack metadata UI tests."""
-    from app.db import SessionLocal
+
     def override_get_db():
         yield db
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[require_ui_auth] = lambda: _make_user()
     client = TestClient(app)
@@ -49,7 +52,11 @@ class TestSettingsPackMetadata:
         assert resp.status_code == 200
         soup = BeautifulSoup(resp.text, "html.parser")
         text = soup.get_text(separator=" ", strip=True)
-        assert "fractional_cto" in text.lower() or "active pack" in text.lower() or "signal pack" in text.lower(), (
+        assert (
+            "fractional_cto" in text.lower()
+            or "active pack" in text.lower()
+            or "signal pack" in text.lower()
+        ), (
             "Settings must show active pack metadata (Issue #172). "
             "Expected 'fractional_cto' or 'Active pack' or 'Signal pack' in page."
         )

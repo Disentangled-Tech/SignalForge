@@ -229,10 +229,12 @@ class TestValidateCoreTaxonomy:
         )
 
         with pytest.raises(CoreTaxonomyValidationError, match="not in signal_ids"):
-            validate_core_taxonomy({
-                "signal_ids": ["foo"],
-                "dimensions": {"M": ["bar"]},  # bar not in signal_ids
-            })
+            validate_core_taxonomy(
+                {
+                    "signal_ids": ["foo"],
+                    "dimensions": {"M": ["bar"]},  # bar not in signal_ids
+                }
+            )
 
     def test_dimensions_not_dict_raises(self) -> None:
         from app.core_taxonomy.validator import (
@@ -250,10 +252,12 @@ class TestValidateCoreTaxonomy:
         )
 
         with pytest.raises(CoreTaxonomyValidationError, match="must be a list"):
-            validate_core_taxonomy({
-                "signal_ids": ["foo"],
-                "dimensions": {"M": "foo"},  # type: ignore[dict-item]
-            })
+            validate_core_taxonomy(
+                {
+                    "signal_ids": ["foo"],
+                    "dimensions": {"M": "foo"},  # type: ignore[dict-item]
+                }
+            )
 
     def test_non_string_signal_id_raises(self) -> None:
         from app.core_taxonomy.validator import (

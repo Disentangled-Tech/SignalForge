@@ -33,9 +33,7 @@ class OutreachHistory(Base):
         default=lambda: uuid.UUID("00000000-0000-0000-0000-000000000001"),
     )
     outreach_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    sent_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     outcome: Mapped[str | None] = mapped_column(String(64), nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -45,6 +43,4 @@ class OutreachHistory(Base):
         nullable=False,
     )
 
-    company: Mapped[Company] = relationship(
-        "Company", back_populates="outreach_history"
-    )
+    company: Mapped[Company] = relationship("Company", back_populates="outreach_history")

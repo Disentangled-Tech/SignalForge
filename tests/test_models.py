@@ -1,8 +1,7 @@
 """SQLAlchemy model tests."""
 
-from datetime import date, datetime
+from datetime import date
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.models import (

@@ -89,7 +89,12 @@ def get_weekly_review_companies(
     )
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
-        .join(EngagementSnapshot, (ReadinessSnapshot.company_id == EngagementSnapshot.company_id) & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of) & pack_match)
+        .join(
+            EngagementSnapshot,
+            (ReadinessSnapshot.company_id == EngagementSnapshot.company_id)
+            & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
+            & pack_match,
+        )
         .options(joinedload(ReadinessSnapshot.company))
         .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
         .all()
@@ -112,7 +117,11 @@ def get_weekly_review_companies(
     # Rank by OutreachScore descending
     def _score(c: tuple) -> int:
         rs, es = c[0], c[1]
-        return es.outreach_score if es.outreach_score is not None else compute_outreach_score(rs.composite, es.esl_score)
+        return (
+            es.outreach_score
+            if es.outreach_score is not None
+            else compute_outreach_score(rs.composite, es.esl_score)
+        )
 
     candidates.sort(key=_score, reverse=True)
 
@@ -123,20 +132,26 @@ def get_weekly_review_companies(
         cooldown = check_outreach_cooldown(db, company.id, as_of_dt)
         if not cooldown.allowed:
             continue
-        outreach_score = es.outreach_score if es.outreach_score is not None else compute_outreach_score(rs.composite, es.esl_score)
+        outreach_score = (
+            es.outreach_score
+            if es.outreach_score is not None
+            else compute_outreach_score(rs.composite, es.esl_score)
+        )
         effective_type = get_effective_engagement_type(
             es.engagement_type, es.explain, es.esl_decision
         )
         explain = _merge_explain(rs.explain, es.explain)
-        results.append({
-            "company_id": company.id,
-            "company": company,
-            "readiness_snapshot": rs,
-            "engagement_snapshot": es,
-            "outreach_score": outreach_score,
-            "effective_engagement_type": effective_type,
-            "explain": explain,
-        })
+        results.append(
+            {
+                "company_id": company.id,
+                "company": company,
+                "readiness_snapshot": rs,
+                "engagement_snapshot": es,
+                "outreach_score": outreach_score,
+                "effective_engagement_type": effective_type,
+                "explain": explain,
+            }
+        )
     return results
 
 

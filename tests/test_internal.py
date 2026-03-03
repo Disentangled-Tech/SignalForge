@@ -60,9 +60,7 @@ class TestRunScan:
         assert response.status_code == 403
 
     @patch("app.services.scan_orchestrator.run_scan_all", new_callable=AsyncMock)
-    def test_run_scan_with_workspace_id_passes_to_run_scan_all(
-        self, mock_scan, client: TestClient
-    ):
+    def test_run_scan_with_workspace_id_passes_to_run_scan_all(self, mock_scan, client: TestClient):
         """POST /internal/run_scan with workspace_id forwards it (Phase 3)."""
         job = JobRun(job_type="scan", status="completed")
         job.id = 43
@@ -101,9 +99,7 @@ class TestRunScan:
 
 class TestRunBriefing:
     @patch("app.services.briefing.generate_briefing")
-    def test_valid_token_calls_generate_briefing(
-        self, mock_briefing, client: TestClient
-    ):
+    def test_valid_token_calls_generate_briefing(self, mock_briefing, client: TestClient):
         """POST /internal/run_briefing with valid token triggers briefing."""
         mock_briefing.return_value = [MagicMock(), MagicMock(), MagicMock()]
 
@@ -152,9 +148,7 @@ class TestRunBriefing:
         )
 
     @patch("app.services.briefing.generate_briefing")
-    def test_briefing_error_returns_failed(
-        self, mock_briefing, client: TestClient
-    ):
+    def test_briefing_error_returns_failed(self, mock_briefing, client: TestClient):
         """POST /internal/run_briefing returns failed status on exception."""
         mock_briefing.side_effect = RuntimeError("LLM down")
 
@@ -174,9 +168,7 @@ class TestRunBriefing:
 
 class TestRunScore:
     @patch("app.services.readiness.score_nightly.run_score_nightly")
-    def test_valid_token_calls_run_score_nightly(
-        self, mock_score, client: TestClient
-    ):
+    def test_valid_token_calls_run_score_nightly(self, mock_score, client: TestClient):
         """POST /internal/run_score with valid token triggers score job."""
         mock_score.return_value = {
             "status": "completed",
@@ -232,9 +224,7 @@ class TestRunScore:
         assert "DB error" in data["error"]
 
     @patch("app.pipeline.executor.run_stage")
-    def test_run_score_with_workspace_and_pack_params(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_run_score_with_workspace_and_pack_params(self, mock_run_stage, client: TestClient):
         """POST /internal/run_score passes workspace_id and pack_id to executor."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -259,9 +249,7 @@ class TestRunScore:
         assert call_kwargs["workspace_id"] == workspace_id
         assert str(call_kwargs["pack_id"]) == pack_id
 
-    def test_run_score_invalid_workspace_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_score_invalid_workspace_id_returns_422(self, client: TestClient):
         """POST /internal/run_score with invalid workspace_id returns 422."""
         response = client.post(
             "/internal/run_score",
@@ -293,9 +281,7 @@ class TestRunUpdateLeadFeed:
     """Tests for POST /internal/run_update_lead_feed."""
 
     @patch("app.pipeline.executor.run_stage")
-    def test_valid_token_calls_run_stage(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_valid_token_calls_run_stage(self, mock_run_stage, client: TestClient):
         """POST /internal/run_update_lead_feed with valid token triggers stage."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -317,16 +303,12 @@ class TestRunUpdateLeadFeed:
         mock_run_stage.assert_called_once()
         assert mock_run_stage.call_args[1]["job_type"] == "update_lead_feed"
 
-    def test_run_update_lead_feed_missing_token_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_update_lead_feed without token returns 422."""
         response = client.post("/internal/run_update_lead_feed")
         assert response.status_code == 422
 
-    def test_run_update_lead_feed_wrong_token_returns_403(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_wrong_token_returns_403(self, client: TestClient):
         """POST /internal/run_update_lead_feed with wrong token returns 403."""
         response = client.post(
             "/internal/run_update_lead_feed",
@@ -334,9 +316,7 @@ class TestRunUpdateLeadFeed:
         )
         assert response.status_code == 403
 
-    def test_run_update_lead_feed_invalid_workspace_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_invalid_workspace_id_returns_422(self, client: TestClient):
         """POST /internal/run_update_lead_feed with invalid workspace_id returns 422."""
         response = client.post(
             "/internal/run_update_lead_feed",
@@ -349,9 +329,7 @@ class TestRunUpdateLeadFeed:
         assert "workspace_id" in detail
         assert "uuid" in detail
 
-    def test_run_update_lead_feed_invalid_pack_id_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_update_lead_feed_invalid_pack_id_returns_422(self, client: TestClient):
         """POST /internal/run_update_lead_feed with invalid pack_id returns 422."""
         response = client.post(
             "/internal/run_update_lead_feed",
@@ -372,9 +350,7 @@ class TestRunBackfillLeadFeed:
     """Tests for POST /internal/run_backfill_lead_feed."""
 
     @patch("app.services.lead_feed.run_update.run_backfill_lead_feed")
-    def test_valid_token_calls_run_backfill(
-        self, mock_backfill, client: TestClient
-    ):
+    def test_valid_token_calls_run_backfill(self, mock_backfill, client: TestClient):
         """POST /internal/run_backfill_lead_feed with valid token triggers backfill."""
         mock_backfill.return_value = {
             "status": "completed",
@@ -395,16 +371,12 @@ class TestRunBackfillLeadFeed:
         assert data["total_rows_upserted"] == 15
         mock_backfill.assert_called_once()
 
-    def test_run_backfill_lead_feed_missing_token_returns_422(
-        self, client: TestClient
-    ):
+    def test_run_backfill_lead_feed_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_backfill_lead_feed without token returns 422."""
         response = client.post("/internal/run_backfill_lead_feed")
         assert response.status_code == 422
 
-    def test_run_backfill_lead_feed_wrong_token_returns_403(
-        self, client: TestClient
-    ):
+    def test_run_backfill_lead_feed_wrong_token_returns_403(self, client: TestClient):
         """POST /internal/run_backfill_lead_feed with wrong token returns 403."""
         response = client.post(
             "/internal/run_backfill_lead_feed",
@@ -418,9 +390,7 @@ class TestRunBackfillLeadFeed:
 
 class TestRunAlertScan:
     @patch("app.services.readiness.alert_scan.run_alert_scan")
-    def test_valid_token_calls_run_alert_scan(
-        self, mock_alert_scan, client: TestClient
-    ):
+    def test_valid_token_calls_run_alert_scan(self, mock_alert_scan, client: TestClient):
         """POST /internal/run_alert_scan with valid token triggers alert scan."""
         mock_alert_scan.return_value = {
             "status": "completed",
@@ -454,9 +424,7 @@ class TestRunAlertScan:
         assert response.status_code == 403
 
     @patch("app.services.readiness.alert_scan.run_alert_scan")
-    def test_run_alert_scan_error_returns_failed(
-        self, mock_alert_scan, client: TestClient
-    ):
+    def test_run_alert_scan_error_returns_failed(self, mock_alert_scan, client: TestClient):
         """POST /internal/run_alert_scan returns failed status on exception."""
         mock_alert_scan.side_effect = RuntimeError("Alert scan error")
 
@@ -471,14 +439,129 @@ class TestRunAlertScan:
         assert "Alert scan error" in data["error"]
 
 
+# ── /internal/run_monitor (M6, Issue #280) ───────────────────────────
+
+
+class TestRunMonitor:
+    """Tests for POST /internal/run_monitor (diff-based monitor full run + persistence)."""
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_valid_token_calls_run_monitor_full(self, mock_run_monitor_full, client: TestClient):
+        """POST /internal/run_monitor with valid token triggers run_monitor_full."""
+        mock_run_monitor_full.return_value = {
+            "status": "completed",
+            "change_events_count": 1,
+            "events_stored": 1,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 2,
+        }
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["change_events_count"] == 1
+        assert data["events_stored"] == 1
+        assert data["events_skipped_duplicate"] == 0
+        assert data["companies_processed"] == 2
+        mock_run_monitor_full.assert_called_once()
+
+    def test_run_monitor_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_monitor without token header returns 422."""
+        response = client.post("/internal/run_monitor")
+        assert response.status_code == 422
+
+    def test_run_monitor_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_monitor with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": "wrong-token"},
+        )
+        assert response.status_code == 403
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_run_monitor_with_workspace_id_passes_to_run_monitor_full(
+        self, mock_run_monitor_full, client: TestClient
+    ):
+        """POST /internal/run_monitor with workspace_id forwards it."""
+        mock_run_monitor_full.return_value = {
+            "status": "completed",
+            "change_events_count": 0,
+            "events_stored": 0,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 0,
+        }
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": "00000000-0000-0000-0000-000000000001"},
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_run_monitor_full.call_args[1]
+        assert call_kwargs["workspace_id"] == "00000000-0000-0000-0000-000000000001"
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_run_monitor_with_company_ids_passes_list(
+        self, mock_run_monitor_full, client: TestClient
+    ):
+        """POST /internal/run_monitor with company_ids forwards parsed list."""
+        mock_run_monitor_full.return_value = {
+            "status": "completed",
+            "change_events_count": 0,
+            "events_stored": 0,
+            "events_skipped_duplicate": 0,
+            "companies_processed": 1,
+        }
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"company_ids": "1,2,3"},
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_run_monitor_full.call_args[1]
+        assert call_kwargs["company_ids"] == [1, 2, 3]
+
+    def test_run_monitor_invalid_company_ids_returns_422(self, client: TestClient):
+        """POST /internal/run_monitor with non-integer company_ids returns 422."""
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"company_ids": "1,not-a-number"},
+        )
+        assert response.status_code == 422
+
+    @patch("app.monitor.runner.run_monitor_full", new_callable=AsyncMock)
+    def test_run_monitor_error_returns_failed(self, mock_run_monitor_full, client: TestClient):
+        """POST /internal/run_monitor returns failed status on exception."""
+        mock_run_monitor_full.side_effect = RuntimeError("Monitor error")
+
+        response = client.post(
+            "/internal/run_monitor",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert data["change_events_count"] == 0
+        assert data["events_stored"] == 0
+        assert "Monitor error" in data["error"]
+
+
 # ── /internal/run_derive ────────────────────────────────────────────
 
 
 class TestRunDerive:
     @patch("app.pipeline.executor.run_stage")
-    def test_run_derive_valid_token_returns_same_shape(
-        self, mock_run_stage, client: TestClient
-    ):
+    def test_run_derive_valid_token_returns_same_shape(self, mock_run_stage, client: TestClient):
         """POST /internal/run_derive with valid token returns expected keys."""
         mock_run_stage.return_value = {
             "status": "completed",
@@ -563,9 +646,7 @@ class TestRunDerive:
 
 class TestRunIngest:
     @patch("app.services.ingestion.ingest_daily.run_ingest_daily")
-    def test_valid_token_calls_run_ingest_daily(
-        self, mock_ingest, client: TestClient
-    ):
+    def test_valid_token_calls_run_ingest_daily(self, mock_ingest, client: TestClient):
         """POST /internal/run_ingest with valid token triggers ingest job."""
         mock_ingest.return_value = {
             "status": "completed",
@@ -627,16 +708,18 @@ class TestRunDailyAggregation:
     """Tests for POST /internal/run_daily_aggregation."""
 
     @patch("app.pipeline.executor.run_stage")
-    def test_run_daily_aggregation_returns_expected_shape(
-        self, mock_run_stage, client: TestClient
-    ):
-        """POST /internal/run_daily_aggregation returns status, job_run_id, inserted, companies_scored, ranked_count."""
+    def test_run_daily_aggregation_returns_expected_shape(self, mock_run_stage, client: TestClient):
+        """POST /internal/run_daily_aggregation returns status, job_run_id, inserted, companies_scored, ranked_count, ranked_companies."""
         mock_run_stage.return_value = {
             "status": "completed",
             "job_run_id": 100,
             "ingest_result": {"inserted": 5},
             "score_result": {"companies_scored": 3},
             "ranked_count": 2,
+            "ranked_companies": [
+                {"company_name": "Acme Corp", "composite": 75, "band": "allow"},
+                {"company_name": "Beta Inc", "composite": 60, "band": "nurture"},
+            ],
             "error": None,
         }
 
@@ -652,6 +735,11 @@ class TestRunDailyAggregation:
         assert data["inserted"] == 5
         assert data["companies_scored"] == 3
         assert data["ranked_count"] == 2
+        assert "ranked_companies" in data
+        assert len(data["ranked_companies"]) == 2
+        assert data["ranked_companies"][0]["company_name"] == "Acme Corp"
+        assert data["ranked_companies"][0]["composite"] == 75
+        assert data["ranked_companies"][0]["band"] == "allow"
         mock_run_stage.assert_called_once()
         assert mock_run_stage.call_args[1]["job_type"] == "daily_aggregation"
 
@@ -672,6 +760,9 @@ class TestRunDailyAggregation:
             "score_result": {"companies_scored": 8},
             # 8 companies scored; all 8 appear in ranked_count because threshold=0
             "ranked_count": 8,
+            "ranked_companies": [
+                {"company_name": f"Co{i}", "composite": 50, "band": "allow"} for i in range(8)
+            ],
             "error": None,
         }
 
@@ -699,3 +790,219 @@ class TestRunDailyAggregation:
         )
         assert response.status_code == 403
 
+
+# ── /internal/run_watchlist_seed (Issue #279 M3) ───────────────────────────────
+
+
+class TestRunWatchlistSeed:
+    """Tests for POST /internal/run_watchlist_seed."""
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_valid_token_and_body_returns_seed_derive_score_results(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_watchlist_seed with valid token and body returns combined results."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 99,
+            "seed_result": {
+                "companies_created": 1,
+                "companies_matched": 0,
+                "events_stored": 2,
+                "events_skipped_duplicate": 0,
+                "errors": [],
+            },
+            "derive_result": {
+                "status": "completed",
+                "job_run_id": 10,
+                "instances_upserted": 2,
+                "events_processed": 2,
+                "events_skipped": 0,
+                "error": None,
+            },
+            "score_result": {
+                "status": "completed",
+                "job_run_id": 11,
+                "companies_scored": 1,
+                "companies_skipped": 0,
+                "error": None,
+            },
+            "error": None,
+        }
+        bundle_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": [bundle_id]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["job_run_id"] == 99
+        assert data["seed_result"]["events_stored"] == 2
+        assert data["derive_result"]["instances_upserted"] == 2
+        assert data["score_result"]["companies_scored"] == 1
+        mock_run_stage.assert_called_once()
+        call_kwargs = mock_run_stage.call_args[1]
+        assert call_kwargs["job_type"] == "watchlist_seed"
+        assert len(call_kwargs["bundle_ids"]) == 1
+        assert str(call_kwargs["bundle_ids"][0]) == bundle_id
+
+    def test_run_watchlist_seed_missing_token_returns_422(self, client: TestClient):
+        """POST /internal/run_watchlist_seed without token returns 422."""
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+        )
+        assert response.status_code == 422
+
+    def test_run_watchlist_seed_wrong_token_returns_403(self, client: TestClient):
+        """POST /internal/run_watchlist_seed with wrong token returns 403."""
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": "wrong-token"},
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+        )
+        assert response.status_code == 403
+
+    def test_run_watchlist_seed_missing_body_returns_422(self, client: TestClient):
+        """POST /internal/run_watchlist_seed without body returns 422."""
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+        assert response.status_code == 422
+
+    def test_run_watchlist_seed_empty_bundle_ids_returns_422(self, client: TestClient):
+        """POST /internal/run_watchlist_seed with empty bundle_ids returns 422."""
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": []},
+        )
+        assert response.status_code == 422
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_watchlist_seed_with_workspace_and_pack_passes_through(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_watchlist_seed passes workspace_id and pack_id to run_stage."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 1,
+            "seed_result": {},
+            "derive_result": {"status": "completed"},
+            "score_result": {"status": "completed"},
+            "error": None,
+        }
+        bundle_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        workspace_id = "00000000-0000-0000-0000-000000000001"
+        pack_id = "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": [bundle_id], "workspace_id": workspace_id},
+            params={"pack_id": pack_id},
+        )
+
+        assert response.status_code == 200
+        mock_run_stage.assert_called_once()
+        call_kwargs = mock_run_stage.call_args[1]
+        assert call_kwargs["job_type"] == "watchlist_seed"
+        assert call_kwargs["workspace_id"] == workspace_id
+        assert str(call_kwargs["pack_id"]) == pack_id
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_watchlist_seed_error_returns_failed(self, mock_run_stage, client: TestClient):
+        """POST /internal/run_watchlist_seed returns failed status when orchestration fails."""
+        mock_run_stage.return_value = {
+            "status": "failed",
+            "job_run_id": None,
+            "seed_result": {"events_stored": 0, "errors": ["Bundle not found"]},
+            "derive_result": {},
+            "score_result": {},
+            "error": "No pack resolved for workspace",
+        }
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert "No pack resolved" in data["error"]
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_watchlist_seed_exception_returns_failed(self, mock_run_stage, client: TestClient):
+        """POST /internal/run_watchlist_seed returns failed when run_stage raises."""
+        mock_run_stage.side_effect = RuntimeError("DB connection lost")
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert "DB connection lost" in data["error"]
+
+    @patch("app.api.internal.get_settings")
+    def test_run_watchlist_seed_requires_workspace_id_when_multi_workspace_enabled(
+        self, mock_get_settings, client: TestClient
+    ):
+        """POST /internal/run_watchlist_seed returns 422 when MULTI_WORKSPACE_ENABLED and workspace_id omitted."""
+        settings = MagicMock()
+        settings.multi_workspace_enabled = True
+        settings.internal_job_token = VALID_TOKEN  # so _require_internal_token still passes
+        mock_get_settings.return_value = settings
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+        )
+        assert response.status_code == 422
+        data = response.json()
+        assert "workspace_id" in data.get("detail", "").lower()
+        assert "required" in data.get("detail", "").lower()
+
+    @patch("app.pipeline.executor.run_stage")
+    def test_run_watchlist_seed_passes_idempotency_key_to_run_stage(
+        self, mock_run_stage, client: TestClient
+    ):
+        """POST /internal/run_watchlist_seed passes X-Idempotency-Key to run_stage."""
+        mock_run_stage.return_value = {
+            "status": "completed",
+            "job_run_id": 1,
+            "seed_result": {},
+            "derive_result": {"status": "completed"},
+            "score_result": {"status": "completed"},
+            "error": None,
+        }
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={
+                "X-Internal-Token": VALID_TOKEN,
+                "X-Idempotency-Key": "ws1:2026-03-02T12:00:00",
+            },
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+        )
+        assert response.status_code == 200
+        mock_run_stage.assert_called_once()
+        call_kwargs = mock_run_stage.call_args[1]
+        assert call_kwargs["idempotency_key"] == "ws1:2026-03-02T12:00:00"
+
+    def test_run_watchlist_seed_invalid_pack_id_returns_422(self, client: TestClient):
+        """POST /internal/run_watchlist_seed with invalid pack_id query returns 422."""
+        response = client.post(
+            "/internal/run_watchlist_seed",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            json={"bundle_ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]},
+            params={"pack_id": "not-a-uuid"},
+        )
+        assert response.status_code == 422
+        data = response.json()
+        assert "pack_id" in data.get("detail", "").lower()

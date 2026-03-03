@@ -17,13 +17,17 @@ from typing import TYPE_CHECKING
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.evidence.store import quarantine_verification_failure, store_evidence_bundle
+from app.extractor.service import extract
+from app.interpretation.llm import interpret_bundle_to_core_events
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.scout_evidence_bundle import ScoutEvidenceBundle
 from app.models.scout_run import ScoutRun
 from app.prompts.loader import render_prompt
 from app.schemas.scout import EvidenceBundle, ScoutRunMetadata
-from app.scout.query_planner import plan_queries
+from app.scout.query_planner import QueryPlanner
 from app.scout.sources import filter_allowed_sources
+from app.verification import verify_bundles
 
 if TYPE_CHECKING:
     from app.llm.provider import LLMProvider
@@ -59,8 +63,12 @@ async def run(
     seed_urls: list[str] | None = None,
     allowlist: list[str] | None = None,
     denylist: list[str] | None = None,
-    fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
+    fetch_page: Callable[..., Awaitable[str | None]] | None = None,
     llm_provider: LLMProvider | None = None,
+    workspace_id: uuid.UUID,
+    run_extractor: bool | None = None,
+    run_interpretation: bool | None = None,
+    check_robots: bool = False,
 ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
     """Run discovery scout: plan queries, filter URLs, fetch, LLM, validate, persist.
 
@@ -76,8 +84,15 @@ async def run(
         seed_urls: URLs to fetch. If None, no pages are fetched (empty content).
         allowlist: Source allowlist. If None, uses settings.scout_source_allowlist.
         denylist: Source denylist. If None, uses settings.scout_source_denylist.
-        fetch_page: Async callable(url) -> str | None. If None, uses app.services.fetcher.fetch_page.
+        fetch_page: Async callable(url, check_robots=False) -> str | None. If None, uses
+            app.services.fetcher.fetch_page (with check_robots). Callables that accept only
+            (url) remain supported for backward compatibility.
         llm_provider: LLM provider. If None, uses get_llm_provider(role=ModelRole.SCOUT).
+        workspace_id: Required. Scopes the run to a tenant; stored on scout_runs.
+        run_extractor: If True/False, override settings.scout_run_extractor (M4). If None, use config.
+        run_interpretation: If True/False, override settings.scout_run_interpretation (M4). If None, use config.
+            When True with run_extractor, runs LLM interpretation per bundle then extract(bundle, raw_extraction).
+        check_robots: When using default fetcher, consult robots.txt before each fetch (default False).
 
     Returns:
         (run_id, list of validated EvidenceBundles, metadata).
@@ -89,7 +104,13 @@ async def run(
         denylist = list(settings.scout_source_denylist)
 
     run_id = str(uuid.uuid4())
-    queries = plan_queries(icp_definition, core_rubric=None, pack_id=pack_id)
+    planner = QueryPlanner()
+    queries, query_families = planner.plan_with_families(
+        icp_definition,
+        core_rubric=None,
+        pack_id=pack_id,
+        denylist=denylist,
+    )
 
     urls_to_fetch: list[str] = []
     if seed_urls:
@@ -99,7 +120,10 @@ async def run(
     if urls_to_fetch:
         from app.services.fetcher import fetch_page as _fetch_page
 
-        fetcher = fetch_page if fetch_page is not None else _fetch_page
+        async def _default_fetcher(url: str) -> str | None:
+            return await _fetch_page(url, check_robots=check_robots)
+
+        fetcher = fetch_page if fetch_page is not None else _default_fetcher
         for url in urls_to_fetch:
             html = await fetcher(url)
             if html:
@@ -136,10 +160,14 @@ async def run(
         "exclusion_rules": exclusion_rules,
         "pack_id": pack_id,
         "query_count": len(queries),
+        "queries": queries,
+        "query_families": query_families,
+        "bundles_count": len(validated),
         "page_fetch_count": len(urls_to_fetch),
     }
     scout_run = ScoutRun(
         run_id=uuid.UUID(run_id),
+        workspace_id=workspace_id,
         finished_at=datetime.now(UTC),
         model_version=model_version,
         tokens_used=None,
@@ -165,6 +193,72 @@ async def run(
             raw_llm_output=vb.model_dump(mode="json"),
         )
         db.add(row)
+    db.flush()
+
+    # Persist to Evidence Store (M6): immutable bundles with core versioning; same transaction.
+    # M4: optionally run Extractor per bundle and pass structured_payloads (default off).
+    # M4 (Issue #281): when run_interpretation and run_extractor, run LLM interpretation then extract with raw_extraction.
+    run_context = {"run_id": run_id, **config_snapshot}
+    raw_model_output = {"raw_response": raw_response, "parsed_bundles": bundle_dicts}
+    use_extractor = run_extractor if run_extractor is not None else settings.scout_run_extractor
+    use_interpretation = (
+        run_interpretation if run_interpretation is not None else settings.scout_run_interpretation
+    )
+    structured_payloads: list[dict | None] | None = None
+    if use_extractor and validated:
+        if use_interpretation:
+            payloads: list[dict] = []
+            for vb in validated:
+                candidates = interpret_bundle_to_core_events(vb, llm_provider=provider)
+                raw_extraction: dict = {
+                    "company": {
+                        "name": vb.candidate_company_name,
+                        "website_url": vb.company_website,
+                    },
+                    "core_event_candidates": [c.model_dump(mode="json") for c in candidates],
+                }
+                payloads.append(extract(vb, raw_extraction).model_dump(mode="json"))
+            structured_payloads = payloads
+        else:
+            structured_payloads = [extract(vb).model_dump(mode="json") for vb in validated]
+
+    # M3 (Issue #278): Verification Gate — when enabled, verify then quarantine failures, store only passing.
+    bundles_to_store = validated
+    payloads_to_store = structured_payloads
+    if settings.scout_verification_gate_enabled and validated:
+        results = verify_bundles(validated, structured_payloads)
+        passing_indices = [i for i, r in enumerate(results) if r.passed]
+        for i, r in enumerate(results):
+            if not r.passed:
+                quarantine_verification_failure(
+                    db,
+                    run_id=run_id,
+                    bundle_index=i,
+                    bundle_dict=validated[i].model_dump(mode="json"),
+                    structured_payload=(
+                        structured_payloads[i]
+                        if structured_payloads and i < len(structured_payloads)
+                        else None
+                    ),
+                    reason_codes=r.reason_codes,
+                )
+        bundles_to_store = [validated[i] for i in passing_indices]
+        payloads_to_store = (
+            [structured_payloads[j] for j in passing_indices]
+            if structured_payloads is not None
+            else None
+        )
+
+    store_evidence_bundle(
+        db,
+        run_id=run_id,
+        scout_version=model_version,
+        bundles=bundles_to_store,
+        run_context=run_context,
+        raw_model_output=raw_model_output,
+        structured_payloads=payloads_to_store,
+        pack_id=None,
+    )
     db.commit()
 
     metadata = ScoutRunMetadata(
@@ -190,8 +284,12 @@ class DiscoveryScoutService:
         seed_urls: list[str] | None = None,
         allowlist: list[str] | None = None,
         denylist: list[str] | None = None,
-        fetch_page: Callable[[str], Awaitable[str | None]] | None = None,
+        fetch_page: Callable[..., Awaitable[str | None]] | None = None,
         llm_provider: LLMProvider | None = None,
+        workspace_id: uuid.UUID,
+        run_extractor: bool | None = None,
+        run_interpretation: bool | None = None,
+        check_robots: bool = False,
     ) -> tuple[str, list[EvidenceBundle], ScoutRunMetadata]:
         """Run discovery scout. See module-level run() for full doc."""
         return await run(
@@ -205,4 +303,8 @@ class DiscoveryScoutService:
             denylist=denylist,
             fetch_page=fetch_page,
             llm_provider=llm_provider,
+            workspace_id=workspace_id,
+            run_extractor=run_extractor,
+            run_interpretation=run_interpretation,
+            check_robots=check_robots,
         )

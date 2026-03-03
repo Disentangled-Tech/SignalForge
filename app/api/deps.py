@@ -36,6 +36,7 @@ def validate_uuid_param_or_422(value: str | None, param_name: str) -> None:
             detail=f"Invalid {param_name}: must be a valid UUID",
         ) from None
 
+
 # Cookie name for browser sessions
 AUTH_COOKIE = "access_token"
 
@@ -56,7 +57,7 @@ def get_current_user(
 
     # Check Authorization header
     if authorization and authorization.startswith("Bearer "):
-        token = authorization[len("Bearer "):]
+        token = authorization[len("Bearer ") :]
 
     # Fall back to cookie
     if token is None and access_token:
@@ -100,4 +101,3 @@ def require_ui_auth(
             headers={"Location": "/login"},
         )
     return user
-

@@ -19,23 +19,23 @@ from app.schemas.company import (
     CompanySource,
     CompanyUpdate,
 )
+from app.schemas.evidence import EvidenceBundleRecord
 from app.schemas.ranked_companies import (
     RankedCompaniesResponse,
     RankedCompanyTop,
 )
-from app.schemas.settings import (
-    OperatorProfileRead,
-    OperatorProfileUpdate,
-    SettingsRead,
-    SettingsUpdate,
-)
-from app.schemas.evidence import EvidenceBundleRecord
 from app.schemas.scout import (
     EvidenceBundle,
     EvidenceItem,
     ScoutRunInput,
     ScoutRunMetadata,
     ScoutRunResult,
+)
+from app.schemas.settings import (
+    OperatorProfileRead,
+    OperatorProfileUpdate,
+    SettingsRead,
+    SettingsUpdate,
 )
 from app.schemas.signal import RawEvent, SignalRecordList, SignalRecordRead
 from app.schemas.watchlist import (

@@ -1,12 +1,13 @@
-"""Fix scout_evidence_bundles.scout_run_id to UUID FK to scout_runs.run_id.
+"""Fix scout_evidence_bundles.scout_run_id to UUID (align ORM with DB).
 
-Revision ID: 20260238_scout_bundle_run_uuid
-Revises: 20260236_evidence_store
+Revision ID: 20260238_scout_run_id_uuid
+Revises: 20260237_evidence_m5
 Create Date: 2026-02-28
 
-The 20260228_scout_runs migration created scout_run_id as Integer (FK to scout_runs.id).
-The ORM and application expect UUID (FK to scout_runs.run_id). This migration alters
-the column so model and DB match. Idempotent: no-op if column is already UUID.
+Branch 20260228 created scout_evidence_bundles with scout_run_id INTEGER FK to
+scout_runs.id; the ORM (ScoutEvidenceBundle) expects UUID FK to scout_runs.run_id.
+This migration aligns the schema with the ORM so run_scout and tests pass.
+Downgrade: deletes orphan bundles (run no longer exists) before backfill for clean reversible downgrade.
 """
 
 from collections.abc import Sequence
@@ -16,15 +17,15 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "20260238_scout_bundle_run_uuid"
-down_revision: str | None = "20260236_evidence_store"
+revision: str = "20260238_scout_run_id_uuid"
+down_revision: str | None = "20260237_evidence_m5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Only run if scout_evidence_bundles has integer scout_run_id (from 20260228 branch).
     conn = op.get_bind()
-    # Check if scout_run_id is already UUID (e.g. from another branch)
     r = conn.execute(
         sa.text(
             "SELECT data_type FROM information_schema.columns "
@@ -33,10 +34,11 @@ def upgrade() -> None:
         )
     )
     row = r.fetchone()
-    if row and row[0] == "uuid":
-        return
+    if row is None:
+        return  # Table or column missing (e.g. 20260227 branch only)
+    if row[0] not in ("integer", "smallint"):
+        return  # Already UUID (e.g. 20260227 branch created the table)
 
-    # Drop existing FK (references scout_runs.id)
     op.drop_constraint(
         "scout_evidence_bundles_scout_run_id_fkey",
         "scout_evidence_bundles",
@@ -46,21 +48,20 @@ def upgrade() -> None:
         "ix_scout_evidence_bundles_scout_run_id",
         table_name="scout_evidence_bundles",
     )
-    # Add temp UUID column, backfill from scout_runs.run_id
     op.add_column(
         "scout_evidence_bundles",
-        sa.Column("scout_run_id_uuid", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("scout_run_uuid", postgresql.UUID(as_uuid=True), nullable=True),
     )
-    conn.execute(
+    op.execute(
         sa.text(
-            "UPDATE scout_evidence_bundles sb SET scout_run_id_uuid = sr.run_id "
-            "FROM scout_runs sr WHERE sr.id = sb.scout_run_id"
+            "UPDATE scout_evidence_bundles SET scout_run_uuid = "
+            "(SELECT run_id FROM scout_runs WHERE scout_runs.id = scout_evidence_bundles.scout_run_id)"
         )
     )
     op.drop_column("scout_evidence_bundles", "scout_run_id")
     op.alter_column(
         "scout_evidence_bundles",
-        "scout_run_id_uuid",
+        "scout_run_uuid",
         new_column_name="scout_run_id",
         nullable=False,
     )
@@ -90,8 +91,9 @@ def downgrade() -> None:
         )
     )
     row = r.fetchone()
-    if row and row[0] != "uuid":
+    if row is None or row[0] != "uuid":
         return
+
     op.drop_constraint(
         "scout_evidence_bundles_scout_run_id_fkey",
         "scout_evidence_bundles",

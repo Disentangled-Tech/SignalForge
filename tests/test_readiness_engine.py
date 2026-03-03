@@ -270,7 +270,7 @@ class TestScenarioCtoHiredSuppressor:
         events = [
             _event("cto_role_posted", 50),
             _event("cto_hired", 150),  # 61-180d: -50
-            _event("cto_hired", 45),   # 0-60d: -70 (most recent)
+            _event("cto_hired", 45),  # 0-60d: -70 (most recent)
         ]
         g = compute_leadership_gap(events, as_of)
         # Most recent cto_hired is 45d ago → -70 suppressor
@@ -458,7 +458,9 @@ class TestEdgeCases:
 
     def test_event_with_ev_time_none_skipped(self) -> None:
         """Event with event_time=None is skipped, no crash (Issue #95)."""
-        ev_none_time = type("Ev", (), {"event_type": "funding_raised", "event_time": None, "confidence": 0.7})()
+        ev_none_time = type(
+            "Ev", (), {"event_type": "funding_raised", "event_time": None, "confidence": 0.7}
+        )()
         events = [ev_none_time, _event("funding_raised", 5)]
         m = compute_momentum(events, date.today())
         # Only the valid event contributes
@@ -466,13 +468,17 @@ class TestEdgeCases:
 
     def test_confidence_clamped_above_one(self) -> None:
         """Event with confidence > 1.0 is clamped to 1.0 (Issue #95)."""
-        ev_high_conf = MockEvent(event_type="funding_raised", event_time=_days_ago(5), confidence=1.5)
+        ev_high_conf = MockEvent(
+            event_type="funding_raised", event_time=_days_ago(5), confidence=1.5
+        )
         m = compute_momentum([ev_high_conf], date.today())
         assert m == 35  # 35 * 1.0 * 1.0 = 35 (clamped)
 
     def test_confidence_clamped_below_zero(self) -> None:
         """Event with confidence < 0 is clamped to 0 (Issue #95)."""
-        ev_low_conf = MockEvent(event_type="funding_raised", event_time=_days_ago(5), confidence=-0.1)
+        ev_low_conf = MockEvent(
+            event_type="funding_raised", event_time=_days_ago(5), confidence=-0.1
+        )
         m = compute_momentum([ev_low_conf], date.today())
         assert m == 0
 
@@ -521,7 +527,12 @@ class TestDisqualifierSignals:
         # Mock pack with disqualifier_signals
         pack = SimpleNamespace(
             scoring={
-                "base_scores": {"momentum": {}, "complexity": {}, "pressure": {}, "leadership_gap": {}},
+                "base_scores": {
+                    "momentum": {},
+                    "complexity": {},
+                    "pressure": {},
+                    "leadership_gap": {},
+                },
                 "quiet_signal": {},
                 "caps": {},
                 "composite_weights": {"M": 0.30, "C": 0.30, "P": 0.25, "G": 0.15},

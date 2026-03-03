@@ -184,12 +184,16 @@ async def run_scan_company_full(
     if pack_id is not None:
         effective_pack_id = pack_id
     elif effective_pack is not None:
-        pack_id_str = effective_pack.manifest.get("id") if isinstance(
-            getattr(effective_pack, "manifest", None), dict
-        ) else None
-        version = effective_pack.manifest.get("version") if isinstance(
-            getattr(effective_pack, "manifest", None), dict
-        ) else None
+        pack_id_str = (
+            effective_pack.manifest.get("id")
+            if isinstance(getattr(effective_pack, "manifest", None), dict)
+            else None
+        )
+        version = (
+            effective_pack.manifest.get("version")
+            if isinstance(getattr(effective_pack, "manifest", None), dict)
+            else None
+        )
         if pack_id_str and version:
             row = (
                 db.query(SignalPack.id)
@@ -209,9 +213,7 @@ async def run_scan_company_full(
     if analysis is not None:
         score_company(db, company_id, analysis, pack=effective_pack, pack_id=effective_pack_id)
     changed = (
-        _analysis_changed(prev_analysis, analysis, db, pack=effective_pack)
-        if analysis
-        else False
+        _analysis_changed(prev_analysis, analysis, db, pack=effective_pack) if analysis else False
     )
     return new_count, analysis, changed
 
@@ -272,9 +274,7 @@ async def run_scan_company_with_job(
         return job
 
     pack_id = job.pack_id if job.pack_id is not None else get_default_pack_id(db)
-    pack = (
-        resolve_pack(db, pack_id) if pack_id is not None else None
-    ) or get_default_pack(db)
+    pack = (resolve_pack(db, pack_id) if pack_id is not None else None) or get_default_pack(db)
     try:
         analysis = analyze_company(db, company_id, pack=pack, pack_id=pack_id)
         if analysis is not None:
@@ -299,9 +299,7 @@ async def run_scan_company_with_job(
 # ── Full scan ────────────────────────────────────────────────────────
 
 
-async def run_scan_all(
-    db: Session, workspace_id: str | UUID | None = None
-) -> JobRun:
+async def run_scan_all(db: Session, workspace_id: str | UUID | None = None) -> JobRun:
     """Run a scan across **all** companies.
 
     Creates a ``JobRun`` record to track progress. Individual company
@@ -321,9 +319,7 @@ async def run_scan_all(
     ws_id = workspace_id or DEFAULT_WORKSPACE_ID
     ws_uuid = UUID(str(ws_id)) if isinstance(ws_id, str) else ws_id
     pack_id = (
-        get_pack_for_workspace(db, ws_id)
-        if workspace_id is not None
-        else get_default_pack_id(db)
+        get_pack_for_workspace(db, ws_id) if workspace_id is not None else get_default_pack_id(db)
     ) or get_default_pack_id(db)
 
     job = JobRun(
@@ -336,11 +332,7 @@ async def run_scan_all(
     db.commit()
     db.refresh(job)
 
-    pack = (
-        resolve_pack(db, pack_id)
-        if pack_id is not None
-        else get_default_pack(db)
-    )
+    pack = resolve_pack(db, pack_id) if pack_id is not None else get_default_pack(db)
     companies = db.query(Company).all()
     companies_with_url = [c for c in companies if c.website_url]
     processed = 0

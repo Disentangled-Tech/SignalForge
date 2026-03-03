@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
 from app.models.app_settings import AppSettings
 from app.models.operator_profile import OperatorProfile
@@ -12,7 +12,6 @@ from app.services.settings_service import (
     update_app_settings,
     update_operator_profile,
 )
-
 
 # ── get_app_settings ─────────────────────────────────────────────────
 
@@ -155,10 +154,9 @@ class TestUpdateOperatorProfile:
         db = MagicMock()
         db.query.return_value.first.return_value = existing
 
-        result = update_operator_profile(db, "# Updated Profile")
+        update_operator_profile(db, "# Updated Profile")
 
         assert existing.content == "# Updated Profile"
         db.add.assert_not_called()
         db.commit.assert_called_once()
         db.refresh.assert_called_once()
-

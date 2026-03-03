@@ -59,16 +59,10 @@ def _get_adapters() -> list:
     ):
         adapters.append(NewsAPIAdapter())
     token = os.getenv("GITHUB_TOKEN", "").strip() or os.getenv("GITHUB_PAT", "").strip()
-    if (
-        os.getenv("INGEST_GITHUB_ENABLED", "").lower() in ("1", "true")
-        and token
-    ):
+    if os.getenv("INGEST_GITHUB_ENABLED", "").lower() in ("1", "true") and token:
         adapters.append(GitHubAdapter())
     dataset_id = os.getenv("INGEST_DELAWARE_SOCRATA_DATASET_ID", "").strip()
-    if (
-        os.getenv("INGEST_DELAWARE_SOCRATA_ENABLED", "").lower() in ("1", "true")
-        and dataset_id
-    ):
+    if os.getenv("INGEST_DELAWARE_SOCRATA_ENABLED", "").lower() in ("1", "true") and dataset_id:
         adapters.append(DelawareSocrataAdapter())
 
     # Dev fallback: when no adapters configured and DEBUG=true, use TestAdapter
@@ -99,8 +93,10 @@ def run_ingest_daily(
     """
     # Audit: set pack_id and workspace_id for consistency with scan jobs
     resolved_workspace = (
-        UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id
-    ) if workspace_id is not None else UUID(DEFAULT_WORKSPACE_ID)
+        (UUID(str(workspace_id)) if isinstance(workspace_id, str) else workspace_id)
+        if workspace_id is not None
+        else UUID(DEFAULT_WORKSPACE_ID)
+    )
     resolved_job_pack_id = pack_id or get_default_pack_id(db)
     if isinstance(resolved_job_pack_id, str):
         resolved_job_pack_id = UUID(str(resolved_job_pack_id)) if resolved_job_pack_id else None

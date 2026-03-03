@@ -155,6 +155,7 @@ def test_normalize_accepts_legacy_event_type_without_pack() -> None:
 
 def test_normalize_with_pack_no_taxonomy_uses_core() -> None:
     """When pack has no taxonomy signal_ids, validation uses core taxonomy (Milestone 4)."""
+
     class MockPackNoTaxonomy:
         taxonomy = None
 

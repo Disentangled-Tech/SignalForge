@@ -62,9 +62,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     """Create a signed JWT access token."""
     settings = get_settings()
     to_encode = data.copy()
-    expire = datetime.now(UTC) + (
-        expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    )
+    expire = datetime.now(UTC) + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
@@ -88,4 +86,3 @@ def get_user_from_token(db: Session, token: str) -> User | None:
     if username is None:
         return None
     return db.query(User).filter(User.username == username).first()
-

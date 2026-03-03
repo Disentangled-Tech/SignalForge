@@ -1,6 +1,5 @@
 """Alert model tests (Issue #84)."""
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Alert, Company

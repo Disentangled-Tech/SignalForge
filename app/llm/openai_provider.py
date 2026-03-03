@@ -134,4 +134,3 @@ class OpenAIProvider(LLMProvider):
             except APIError as exc:
                 logger.error("OpenAI API error: %s", exc)
                 raise
-

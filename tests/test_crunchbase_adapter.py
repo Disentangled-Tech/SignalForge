@@ -64,9 +64,7 @@ class TestCrunchbaseAdapterMockedHttp:
 
     @patch.dict("os.environ", {"CRUNCHBASE_API_KEY": "test-key"}, clear=False)
     @patch("app.ingestion.adapters.crunchbase_adapter.httpx")
-    def test_crunchbase_adapter_returns_raw_events_when_mocked(
-        self, mock_httpx: MagicMock
-    ) -> None:
+    def test_crunchbase_adapter_returns_raw_events_when_mocked(self, mock_httpx: MagicMock) -> None:
         """Mock HTTP returns RawEvents with valid shape and event_type_candidate."""
         entity = _make_funding_entity()
         mock_response = MagicMock()
@@ -141,8 +139,7 @@ class TestCrunchbaseAdapterRespectsSince:
         body = call_kwargs["json"]
         query = body.get("query", [])
         announced_predicates = [
-            q for q in query
-            if isinstance(q, dict) and q.get("field_id") == "announced_on"
+            q for q in query if isinstance(q, dict) and q.get("field_id") == "announced_on"
         ]
         assert len(announced_predicates) >= 1
         pred = announced_predicates[0]

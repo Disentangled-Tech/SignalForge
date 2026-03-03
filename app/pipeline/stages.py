@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Protocol
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -65,9 +67,7 @@ def _derive_stage(
     """Derive stage: populates signal_instances from SignalEvents (Phase 2)."""
     from app.pipeline.deriver_engine import run_deriver
 
-    return StageResult(
-        run_deriver(db, workspace_id=workspace_id, pack_id=pack_id)
-    )
+    return StageResult(run_deriver(db, workspace_id=workspace_id, pack_id=pack_id))
 
 
 def _update_lead_feed_stage(
@@ -98,9 +98,70 @@ def _daily_aggregation_stage(
     """Daily aggregation stage: ingest → derive → score (Issue #246, Phase 1)."""
     from app.services.aggregation.daily_aggregation import run_daily_aggregation
 
-    return StageResult(
-        run_daily_aggregation(db, workspace_id=workspace_id, pack_id=pack_id)
+    return StageResult(run_daily_aggregation(db, workspace_id=workspace_id, pack_id=pack_id))
+
+
+def _watchlist_seed_stage(
+    db: Session,
+    workspace_id: str,
+    pack_id: str | None,
+    **kwargs: Any,
+) -> StageResult:
+    """Watchlist seed stage: seed from bundles → derive → score (Issue #279 M3)."""
+    from app.models.job_run import JobRun
+    from app.services.watchlist_seeder import run_watchlist_seed
+
+    bundle_ids = kwargs.get("bundle_ids")
+    if not bundle_ids:
+        return StageResult(
+            {
+                "status": "failed",
+                "job_run_id": None,
+                "seed_result": {
+                    "companies_created": 0,
+                    "companies_matched": 0,
+                    "events_stored": 0,
+                    "events_skipped_duplicate": 0,
+                    "errors": ["bundle_ids required"],
+                },
+                "derive_result": {},
+                "score_result": {},
+                "error": "bundle_ids required",
+            }
+        )
+    pack_uuid = UUID(pack_id) if pack_id else None
+    idempotency_key = kwargs.get("idempotency_key")
+    ws_uuid = UUID(workspace_id) if workspace_id else None
+    job = JobRun(
+        job_type="watchlist_seed",
+        status="running",
+        workspace_id=ws_uuid,
+        idempotency_key=idempotency_key,
     )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    try:
+        result = run_watchlist_seed(
+            db,
+            bundle_ids=list(bundle_ids),
+            workspace_id=workspace_id,
+            pack_id=pack_uuid,
+        )
+        job.status = result["status"]
+        job.companies_processed = result.get("seed_result", {}).get("events_stored")
+        job.finished_at = datetime.now(UTC)
+        job.error_message = result.get("error")
+        db.commit()
+        out = dict(result)
+        out["job_run_id"] = job.id
+        return StageResult(out)
+    except Exception as exc:
+        job.status = "failed"
+        job.finished_at = datetime.now(UTC)
+        job.error_message = str(exc)
+        db.commit()
+        raise
 
 
 # Registry: job_type -> callable (db, workspace_id, pack_id, **kwargs) -> dict
@@ -110,4 +171,5 @@ STAGE_REGISTRY: dict[str, PipelineStage] = {
     "score": _score_stage,
     "update_lead_feed": _update_lead_feed_stage,
     "daily_aggregation": _daily_aggregation_stage,
+    "watchlist_seed": _watchlist_seed_stage,
 }

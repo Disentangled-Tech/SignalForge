@@ -63,4 +63,3 @@ def update_operator_profile(db: Session, content: str) -> OperatorProfile:
     db.commit()
     db.refresh(row)
     return row
-

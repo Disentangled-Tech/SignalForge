@@ -94,4 +94,3 @@ class BulkImportResponse(BaseModel):
     duplicates: int
     errors: int
     rows: list[BulkImportRow]
-

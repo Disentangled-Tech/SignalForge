@@ -59,9 +59,7 @@ def get_event_like_list_from_core_instances(
 
     if all_evidence_ids:
         # Batch load: one query for all evidence events in window (avoids N+1).
-        unique_ids = list(dict.fromkeys(all_evidence_ids))[
-            :MAX_EVIDENCE_EVENT_IDS_PER_COMPANY
-        ]
+        unique_ids = list(dict.fromkeys(all_evidence_ids))[:MAX_EVIDENCE_EVENT_IDS_PER_COMPANY]
         events_batch = (
             db.query(SignalEvent)
             .filter(

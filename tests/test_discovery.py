@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.services.page_discovery import _normalize_url, discover_pages
-
 
 # ---------------------------------------------------------------------------
 # URL normalization
@@ -65,11 +62,12 @@ class TestDiscoverPages:
             assert len(results) > 1
             urls = [r[0] for r in results]
             assert "https://example.com" in urls
-            for url, text, raw_html in results:
+            for _url, _text, raw_html in results:
                 assert raw_html == _SUBPAGE_HTML
 
     async def test_respects_max_5_limit(self):
         """Even if all paths return content, we cap at 5 pages."""
+
         async def _mock_fetch(url: str) -> str | None:
             return _SUBPAGE_HTML
 
@@ -168,6 +166,18 @@ class TestDiscoverPages:
                 expected = f"https://example.com{path}"
                 assert call_urls[i + 1] == expected
 
+    async def test_discovery_never_uses_check_robots_true(self):
+        """discover_pages must not pass check_robots=True; regression for robots-aware default."""
+        with patch("app.services.page_discovery.fetch_page", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = _HOMEPAGE_HTML
+
+            await discover_pages("https://example.com")
+
+            for call in mock_fetch.call_args_list:
+                assert call.kwargs.get("check_robots", False) is False
+                # Single positional arg (url) only; no second positional True
+                assert len(call[0]) == 1 or (len(call[0]) == 2 and call[0][1] is False)
+
 
 # ---------------------------------------------------------------------------
 # Valid page validation
@@ -186,12 +196,11 @@ class TestValidPageCriteria:
         assert _is_valid_page("<html>ok</html>", "x" * 50) is False
 
     def test_rejects_exactly_min_length_text_with_empty_html(self):
-        from app.services.page_discovery import _is_valid_page, MIN_TEXT_LENGTH
+        from app.services.page_discovery import MIN_TEXT_LENGTH, _is_valid_page
 
         assert _is_valid_page("", "x" * MIN_TEXT_LENGTH) is False
 
     def test_accepts_long_text_with_non_empty_html(self):
-        from app.services.page_discovery import _is_valid_page, MIN_TEXT_LENGTH
+        from app.services.page_discovery import MIN_TEXT_LENGTH, _is_valid_page
 
         assert _is_valid_page("<html>ok</html>", "x" * (MIN_TEXT_LENGTH + 1)) is True
-

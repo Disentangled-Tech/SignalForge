@@ -7,17 +7,19 @@ Create Date: 2026-02-18
 Normalized event store for readiness signals (Issue #81).
 Supports future ingestion adapters and v2 scoring engine.
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
+
 # revision identifiers, used by Alembic.
 revision: str = "b2c3d4e5f6a7"
-down_revision: Union[str, None] = "a1b2c3d4e5f6"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "a1b2c3d4e5f6"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -40,9 +42,7 @@ def upgrade() -> None:
         sa.Column("url", sa.String(length=2048), nullable=True),
         sa.Column("raw", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("confidence", sa.Float(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["company_id"], ["companies.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -66,10 +66,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DROP INDEX IF EXISTS uq_signal_events_source_source_event_id")
-    op.drop_index(
-        "ix_signal_events_event_type_event_time", table_name="signal_events"
-    )
-    op.drop_index(
-        "ix_signal_events_company_event_time", table_name="signal_events"
-    )
+    op.drop_index("ix_signal_events_event_type_event_time", table_name="signal_events")
+    op.drop_index("ix_signal_events_company_event_time", table_name="signal_events")
     op.drop_table("signal_events")

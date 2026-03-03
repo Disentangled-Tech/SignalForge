@@ -49,14 +49,10 @@ def main() -> None:
             website_url=args.website_url.strip() if args.website_url else None,
             founder_name=args.founder_name.strip() if args.founder_name else None,
             founder_linkedin_url=(
-                args.founder_linkedin_url.strip()
-                if args.founder_linkedin_url
-                else None
+                args.founder_linkedin_url.strip() if args.founder_linkedin_url else None
             ),
             company_linkedin_url=(
-                args.company_linkedin_url.strip()
-                if args.company_linkedin_url
-                else None
+                args.company_linkedin_url.strip() if args.company_linkedin_url else None
             ),
             notes=args.notes.strip() if args.notes else None,
         )
