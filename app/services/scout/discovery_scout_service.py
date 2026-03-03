@@ -106,7 +106,10 @@ async def run(
     run_id = str(uuid.uuid4())
     planner = QueryPlanner()
     queries, query_families = planner.plan_with_families(
-        icp_definition, core_rubric=None, pack_id=pack_id
+        icp_definition,
+        core_rubric=None,
+        pack_id=pack_id,
+        denylist=denylist,
     )
 
     urls_to_fetch: list[str] = []
