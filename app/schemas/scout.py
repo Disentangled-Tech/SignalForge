@@ -106,6 +106,19 @@ class ScoutRunResult(BaseModel):
     metadata: ScoutRunMetadata
 
 
+# ── Scout analytics (GET /internal/scout_analytics) ───────────────────────────
+
+
+class ScoutAnalyticsResponse(BaseModel):
+    """Aggregate yield metrics from scout_runs for a workspace (read-only)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: uuid.UUID
+    runs_count: int = Field(..., ge=0, description="Number of scout runs in scope")
+    total_bundles: int = Field(..., ge=0, description="Total evidence bundles across those runs")
+
+
 def evidence_bundle_json_schema() -> dict[str, Any]:
     """Return JSON schema for EvidenceBundle (for LLM output validation)."""
     return EvidenceBundle.model_json_schema()
