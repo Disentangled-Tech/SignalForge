@@ -227,6 +227,101 @@ def test_plan_with_families_same_queries_as_plan_when_same_inputs() -> None:
     assert plan_queries_list == with_families_queries
 
 
+# ── M2: Denylist excludes domain-targeting queries ───────────────────────────
+
+
+def test_denylist_filters_queries_containing_site_denylisted_domain() -> None:
+    """When a generated query contains site:<denylist_domain>, it is excluded from results."""
+    # Config that produces a query containing site:evil.com
+    config_with_site = [
+        {"id": "default", "label": "Default", "templates": []},
+        {
+            "id": "test",
+            "label": "Test",
+            "templates": ["{icp} site:evil.com", "{icp} hiring"],
+        },
+    ]
+    with patch(
+        "app.scout.query_planner.load_query_families_config",
+        return_value=config_with_site,
+    ):
+        planner = QueryPlanner(max_queries=20)
+        queries_no_deny = planner.plan(
+            icp="startup",
+            core_rubric=_minimal_core_rubric(),
+            denylist=None,
+        )
+        queries_with_deny = planner.plan(
+            icp="startup",
+            core_rubric=_minimal_core_rubric(),
+            denylist=["evil.com"],
+        )
+    # Without denylist, "startup site:evil.com" may appear
+    assert any("site:evil.com" in q for q in queries_no_deny)
+    # With denylist, no query should target evil.com
+    assert not any("site:evil.com" in q for q in queries_with_deny)
+    assert len(queries_with_deny) < len(queries_no_deny)
+
+
+def test_plan_with_families_denylist_filters_queries_and_families_together() -> None:
+    """plan_with_families(..., denylist=[...]) returns same-length queries and families after filter."""
+    config_with_site = [
+        {"id": "default", "label": "Default", "templates": []},
+        {
+            "id": "test",
+            "label": "Test",
+            "templates": ["{icp} site:blocked.com", "{icp} launch"],
+        },
+    ]
+    with patch(
+        "app.scout.query_planner.load_query_families_config",
+        return_value=config_with_site,
+    ):
+        planner = QueryPlanner(max_queries=20)
+        queries, families = planner.plan_with_families(
+            icp="startup",
+            core_rubric=_minimal_core_rubric(),
+            denylist=["blocked.com"],
+        )
+    assert len(queries) == len(families)
+    assert not any("site:blocked.com" in q for q in queries)
+
+
+def test_denylist_filters_subdomain_site_queries() -> None:
+    """With denylist=["evil.com"], a query containing site:blog.evil.com is excluded (subdomain)."""
+    config_with_subdomain = [
+        {"id": "default", "label": "Default", "templates": []},
+        {
+            "id": "test",
+            "label": "Test",
+            "templates": ["{icp} site:blog.evil.com", "{icp} hiring"],
+        },
+    ]
+    with patch(
+        "app.scout.query_planner.load_query_families_config",
+        return_value=config_with_subdomain,
+    ):
+        planner = QueryPlanner(max_queries=20)
+        queries = planner.plan(
+            icp="startup",
+            core_rubric=_minimal_core_rubric(),
+            denylist=["evil.com"],
+        )
+    assert not any("site:blog.evil.com" in q for q in queries)
+
+
+def test_denylist_tld_like_co_uk_does_not_block_evil_co_uk() -> None:
+    """Denylist co.uk matches only site:co.uk exactly; site:evil.co.uk is not excluded (TLD-like rule)."""
+    from app.scout.query_planner import _query_targets_denylisted_domain
+
+    # blocked "co.uk" should not match "evil.co.uk" (would over-block all .co.uk)
+    assert _query_targets_denylisted_domain("search site:evil.co.uk", ["co.uk"]) is False
+    # exact match still blocked
+    assert _query_targets_denylisted_domain("search site:co.uk", ["co.uk"]) is True
+    # evil.com still matches subdomains (blog.evil.com)
+    assert _query_targets_denylisted_domain("search site:blog.evil.com", ["evil.com"]) is True
+
+
 # ── query_families loader: validation and error paths (coverage ≥85%) ─────────
 
 
