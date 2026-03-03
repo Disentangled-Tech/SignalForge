@@ -232,9 +232,7 @@ class TestRouter:
         """When llm_provider=anthropic and API key is set, returns AnthropicProvider."""
         with patch("app.llm.anthropic_provider.Anthropic"):
             provider = get_llm_provider(
-                settings=_make_settings(
-                    llm_provider="anthropic", llm_model_reasoning="claude-3-5-sonnet"
-                )
+                settings=_make_settings(llm_provider="anthropic", llm_model_reasoning="claude-3-5-sonnet")
             )
         assert isinstance(provider, AnthropicProvider)
         assert provider.model == "claude-3-5-sonnet"
@@ -245,7 +243,9 @@ class TestRouter:
             ValueError,
             match="LLM_API_KEY or ANTHROPIC_API_KEY required for Anthropic provider",
         ):
-            get_llm_provider(settings=_make_settings(llm_provider="anthropic", llm_api_key=None))
+            get_llm_provider(
+                settings=_make_settings(llm_provider="anthropic", llm_api_key=None)
+            )
 
     def test_anthropic_caches_by_role(self):
         """Anthropic provider is cached per role (anthropic:role)."""
