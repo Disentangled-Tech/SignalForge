@@ -9,7 +9,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.evidence.store import list_scout_bundle_ids_for_workspace, quarantine_verification_failure, store_evidence_bundle
+from app.evidence.store import (
+    list_scout_bundle_ids_for_workspace,
+    quarantine_verification_failure,
+    store_evidence_bundle,
+)
 from app.models import (
     EvidenceBundle as EvidenceBundleORM,
 )
