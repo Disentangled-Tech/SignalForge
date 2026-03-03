@@ -58,7 +58,12 @@ When enabled, the Scout run calls the **Evidence Extractor** per validated bundl
 
 ## Optional Event Interpretation (Issue #281)
 
-When enabled (future wiring), the Scout run can call an **LLM Event Interpretation** step per validated bundle before the Extractor: the LLM classifies evidence into Core Event candidates; output is taxonomy-validated and passed as `raw_extraction` to the existing Extractor. Interpretation is pack-agnostic (no new event types; pack selection does not alter result). See [ADR-011](../rules/ADR-011-LLM-Event-Interpretation.md) and Architecture Contract §4.
+When enabled (e.g. via config or run option), the Scout run can classify evidence into **core events** using an LLM interpretation step before or as part of extraction. The interpretation layer:
+
+- **Input:** Raw content (e.g. evidence text, diff summary) plus optional evidence items for source_refs.
+- **Output:** A list of **Core Event candidates** only; each `event_type` must be from the [core taxonomy](app/core_taxonomy/taxonomy.yaml). No new event types are invented—validation uses `is_valid_core_event_type` and drops any unknown type.
+- **Pack-agnostic:** Pack selection does not alter interpretation result; the prompt and validation use the core taxonomy only. See Architecture Contract §4 (LLM Boundary Rules).
+- **Reuse:** The same interpretation contract is shared by Scout (evidence → events) and the Diff-Based Monitor (ChangeEvent → events). See [event-interpretation.md](event-interpretation.md) and [ADR-011](../rules/ADR-011-LLM-Event-Interpretation.md).
 
 ## Optional Verification Gate (Issue #278)
 
@@ -76,6 +81,7 @@ When enabled, the Scout run validates each evidence bundle (and optional structu
 | Source filter | `app/scout/sources.py` — `is_source_allowed()`, `filter_allowed_sources()` |
 | Query planner | `app/scout/query_planner.py` — `QueryPlanner`, `plan_queries()` |
 | Config | `app/config.py` — `scout_source_allowlist`, `scout_source_denylist`, `scout_run_extractor`, `scout_verification_gate_enabled` |
+| Event interpretation | `app/interpretation/` (schemas), `app/monitor/interpretation.py` (ChangeEvent → CoreEventCandidate); see [event-interpretation.md](event-interpretation.md) |
 
 DiscoveryScoutService, persistence models, and the internal API are added in earlier milestones (M2–M5). This doc describes the full design; see the implementation plan for step-by-step milestones.
 

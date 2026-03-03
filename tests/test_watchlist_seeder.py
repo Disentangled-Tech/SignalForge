@@ -299,6 +299,69 @@ def test_seed_from_bundles_no_events_in_payload_appends_error(db: Session) -> No
     assert "no events" in result.errors[0]
 
 
+def test_seed_from_bundles_accepts_core_event_candidates_only(db: Session) -> None:
+    """M2: structured_payload shaped as ExtractionResult (core_event_candidates, no events key) is accepted and events stored."""
+    from app.extractor.schemas import ExtractionResult
+
+    scout_bundle = ScoutEvidenceBundle(
+        candidate_company_name="ExtractionResult Co",
+        company_website="https://extractionresult.example.com",
+        why_now_hypothesis="",
+        evidence=[_make_scout_item("https://example.com/p", "snippet")],
+    )
+    company = ExtractionEntityCompany(
+        name="ExtractionResult Co",
+        domain="extractionresult.example.com",
+        website_url="https://extractionresult.example.com",
+    )
+    events = [
+        CoreEventCandidate(
+            event_type="funding_raised",
+            event_time=datetime(2026, 2, 15, 10, 0, 0, tzinfo=UTC),
+            title="Series A",
+            summary="Raised",
+            url=None,
+            confidence=0.9,
+            source_refs=[],
+        ),
+    ]
+    extraction = ExtractionResult(
+        company=company,
+        person=None,
+        core_event_candidates=events,
+        version="1.0",
+    )
+    raw_payload = extraction.model_dump(mode="json")
+    assert "core_event_candidates" in raw_payload
+    assert "events" not in raw_payload
+
+    records = store_evidence_bundle(
+        db,
+        run_id="run-extraction-result",
+        scout_version="scout-v1",
+        bundles=[scout_bundle],
+        run_context={"run_id": "run-extraction-result"},
+        raw_model_output=None,
+        structured_payloads=[raw_payload],
+    )
+    bundle_id = records[0].id
+
+    result = seed_from_bundles(db, [bundle_id])
+    assert result.errors == []
+    assert result.companies_created == 1
+    assert result.events_stored == 1
+    row = (
+        db.query(SignalEvent)
+        .filter(
+            SignalEvent.source == "watchlist_seeder",
+            SignalEvent.evidence_bundle_id == bundle_id,
+        )
+        .first()
+    )
+    assert row is not None
+    assert row.event_type == "funding_raised"
+
+
 def test_seed_from_bundles_invalid_payload_appends_error(db: Session) -> None:
     """Bundle with invalid structured_payload (e.g. wrong shape) appends error."""
     bundle = EvidenceBundleORM(

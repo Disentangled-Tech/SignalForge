@@ -15,6 +15,7 @@ from app.schemas.core_events import (
     CoreEventCandidate,
     ExtractionEntityCompany,
     StructuredExtractionPayload,
+    get_events_from_payload,
 )
 from app.schemas.seeder import SeedFromBundlesResult
 from app.services.company_resolver import resolve_or_create_company
@@ -92,8 +93,34 @@ def seed_from_bundles(
             result.errors.append(f"Bundle {bundle_id} has no structured_payload")
             continue
 
+        # M2: Accept both StructuredExtractionPayload (events) and ExtractionResult
+        # (core_event_candidates) shapes. Build normalized dict with only allowed keys
+        # so model_validate does not fail on extra keys (e.g. core_event_candidates).
+        if ("events" in raw and not isinstance(raw.get("events"), list)) or (
+            "core_event_candidates" in raw and not isinstance(raw.get("core_event_candidates"), list)
+        ):
+            result.errors.append(
+                f"Bundle {bundle_id} invalid structured_payload: events/core_event_candidates must be a list"
+            )
+            continue
+        events_list = get_events_from_payload(raw)
+        persons_list = raw.get("persons")
+        if not isinstance(persons_list, list) and isinstance(raw.get("person"), dict):
+            persons_list = [raw["person"]]
+        elif not isinstance(persons_list, list):
+            persons_list = []
+        claims_list = raw.get("claims")
+        if not isinstance(claims_list, list):
+            claims_list = []
+        normalized = {
+            "version": raw.get("version", "1.0"),
+            "events": events_list,
+            "company": raw.get("company"),
+            "persons": persons_list,
+            "claims": claims_list,
+        }
         try:
-            payload = StructuredExtractionPayload.model_validate(raw)
+            payload = StructuredExtractionPayload.model_validate(normalized)
         except Exception as e:
             result.errors.append(f"Bundle {bundle_id} invalid structured_payload: {e!s}")
             continue
