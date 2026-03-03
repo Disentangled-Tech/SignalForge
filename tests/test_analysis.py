@@ -78,13 +78,13 @@ def _make_mock_db(
 
 
 def _make_company(**overrides):
-    defaults = dict(
-        id=1,
-        name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        notes="Early stage startup",
-    )
+    defaults = {
+        "id": 1,
+        "name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "notes": "Early stage startup",
+    }
     defaults.update(overrides)
     c = MagicMock(spec=Company)
     for k, v in defaults.items():

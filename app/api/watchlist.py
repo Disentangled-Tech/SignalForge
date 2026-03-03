@@ -27,11 +27,11 @@ def api_add_to_watchlist(
     """Add a company to the watchlist."""
     try:
         result = add_to_watchlist(db, data.company_id, data.reason)
-    except WatchlistConflictError:
+    except WatchlistConflictError as err:
         raise HTTPException(
             status_code=409,
             detail="Company is already on the watchlist",
-        )
+        ) from err
     if result is None:
         raise HTTPException(status_code=404, detail="Company not found")
     return {"company_id": result.company_id, "added_at": result.added_at.isoformat()}

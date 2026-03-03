@@ -32,10 +32,14 @@ def save_snapshot(
         content_hash = _compute_hash(content_text or "")
     if fetched_at is None:
         fetched_at = datetime.now(UTC)
-    existing = db.query(PageSnapshot).filter(
-        PageSnapshot.company_id == company_id,
-        PageSnapshot.url == url,
-    ).first()
+    existing = (
+        db.query(PageSnapshot)
+        .filter(
+            PageSnapshot.company_id == company_id,
+            PageSnapshot.url == url,
+        )
+        .first()
+    )
     if existing:
         existing.content_hash = content_hash
         existing.content_text = content_text

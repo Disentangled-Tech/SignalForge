@@ -125,7 +125,11 @@ def test_run_scout_creates_scout_runs_row_no_companies_or_events(
     response = client_with_db.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "Fintech startup", "page_fetch_limit": 5, "workspace_id": str(ws.id)},
+        json={
+            "icp_definition": "Fintech startup",
+            "page_fetch_limit": 5,
+            "workspace_id": str(ws.id),
+        },
     )
 
     assert response.status_code == 200
@@ -220,7 +224,11 @@ def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
     r3 = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "B2B SaaS", "page_fetch_limit": 101, "workspace_id": str(TEST_WORKSPACE_ID)},
+        json={
+            "icp_definition": "B2B SaaS",
+            "page_fetch_limit": 101,
+            "workspace_id": str(TEST_WORKSPACE_ID),
+        },
     )
     assert r3.status_code == 422
 
@@ -228,6 +236,10 @@ def test_run_scout_invalid_body_returns_422(client: TestClient) -> None:
     r4 = client.post(
         "/internal/run_scout",
         headers={"X-Internal-Token": VALID_TOKEN},
-        json={"icp_definition": "B2B SaaS", "page_fetch_limit": -1, "workspace_id": str(TEST_WORKSPACE_ID)},
+        json={
+            "icp_definition": "B2B SaaS",
+            "page_fetch_limit": -1,
+            "workspace_id": str(TEST_WORKSPACE_ID),
+        },
     )
     assert r4.status_code == 422

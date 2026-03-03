@@ -217,9 +217,7 @@ def test_check_fact_domain_match_returns_code_when_no_evidence_url_matches() -> 
         evidence_count=1,
     )
     # _minimal_bundle(evidence_count=1) uses https://example.com/p1, domain example.com != acme.example.com
-    assert check_fact_domain_match(bundle, None) == [
-        VerificationReasonCode.FACT_DOMAIN_MISMATCH
-    ]
+    assert check_fact_domain_match(bundle, None) == [VerificationReasonCode.FACT_DOMAIN_MISMATCH]
 
 
 def test_check_fact_domain_match_normalizes_www() -> None:
@@ -270,7 +268,9 @@ def test_check_fact_founder_primary_source_accepts_founder_entity_type() -> None
     bundle = _minimal_bundle(evidence_count=1)
     payload = {
         "persons": [{"name": "Jane"}],
-        "claims": [{"entity_type": "founder", "field": "name", "value": "Jane", "source_refs": [0]}],
+        "claims": [
+            {"entity_type": "founder", "field": "name", "value": "Jane", "source_refs": [0]}
+        ],
     }
     assert check_fact_founder_primary_source(bundle, payload) == []
 
@@ -390,3 +390,27 @@ def test_check_event_rules_skip_non_dict_entries_in_events() -> None:
     payload_no_dicts = {"events": ["skip", 0, None]}
     assert check_event_type_in_taxonomy(bundle, payload_no_dicts) == []
     assert check_event_required_fields(bundle, payload_no_dicts) == []
+
+
+def test_get_events_accepts_core_event_candidates_key() -> None:
+    """M2: When structured_payload has core_event_candidates only (no events), event rules run on it."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {
+        "core_event_candidates": [
+            {"event_type": "funding_raised", "confidence": 0.9, "source_refs": [0]}
+        ]
+    }
+    assert check_event_type_in_taxonomy(bundle, payload) == []
+    assert check_event_timestamped_citation(bundle, payload) == []
+    assert check_event_required_fields(bundle, payload) == []
+
+
+def test_get_events_prefers_events_over_core_event_candidates() -> None:
+    """M2: When both events and core_event_candidates present, events is used (prefer canonical key)."""
+    bundle = _minimal_bundle(evidence_count=1)
+    payload = {
+        "events": [{"event_type": "funding_raised", "confidence": 0.9, "source_refs": [0]}],
+        "core_event_candidates": [{"event_type": "not_in_taxonomy", "confidence": 0.8}],
+    }
+    assert check_event_type_in_taxonomy(bundle, payload) == []
+    assert check_event_required_fields(bundle, payload) == []

@@ -189,7 +189,9 @@ def test_run_scout_request_requires_icp_definition() -> None:
     """RunScoutRequest requires non-empty icp_definition."""
     from tests.test_constants import TEST_WORKSPACE_ID
 
-    RunScoutRequest(icp_definition="Seed-stage B2B", page_fetch_limit=10, workspace_id=TEST_WORKSPACE_ID)
+    RunScoutRequest(
+        icp_definition="Seed-stage B2B", page_fetch_limit=10, workspace_id=TEST_WORKSPACE_ID
+    )
     with pytest.raises(ValidationError):
         RunScoutRequest(icp_definition="", page_fetch_limit=10, workspace_id=TEST_WORKSPACE_ID)
     with pytest.raises(ValidationError):

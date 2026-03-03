@@ -62,7 +62,7 @@ class TestDiscoverPages:
             assert len(results) > 1
             urls = [r[0] for r in results]
             assert "https://example.com" in urls
-            for url, text, raw_html in results:
+            for _url, _text, raw_html in results:
                 assert raw_html == _SUBPAGE_HTML
 
     async def test_respects_max_5_limit(self):

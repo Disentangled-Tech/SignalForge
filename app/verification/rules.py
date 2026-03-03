@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from app.core_taxonomy.loader import is_valid_signal_id
+from app.schemas.core_events import get_events_from_payload
 from app.verification.schemas import VerificationReasonCode
 
 if TYPE_CHECKING:
@@ -49,10 +50,12 @@ def _normalize_domain(url: str) -> str | None:
 
 
 def _get_events(structured_payload: dict | None) -> list[dict[str, Any]]:
-    """Return list of event dicts from structured_payload; empty if missing or not a list."""
-    if not structured_payload or not isinstance(structured_payload.get("events"), list):
-        return []
-    return [e for e in structured_payload["events"] if isinstance(e, dict)]
+    """Return list of event dicts from structured_payload.
+
+    Accepts both 'events' and 'core_event_candidates' (ExtractionResult shape).
+    Prefers 'events' when both keys present. Empty if missing or not a list.
+    """
+    return get_events_from_payload(structured_payload)
 
 
 def check_event_type_in_taxonomy(
@@ -94,9 +97,7 @@ def check_event_timestamped_citation(
         if not isinstance(source_refs, list):
             reason_codes.append(VerificationReasonCode.EVENT_MISSING_TIMESTAMPED_CITATION)
             break
-        has_valid_ref = any(
-            isinstance(i, int) and 0 <= i < evidence_len for i in source_refs
-        )
+        has_valid_ref = any(isinstance(i, int) and 0 <= i < evidence_len for i in source_refs)
         if not has_valid_ref:
             reason_codes.append(VerificationReasonCode.EVENT_MISSING_TIMESTAMPED_CITATION)
             break
@@ -117,9 +118,7 @@ def check_event_required_fields(
         event_type = event.get("event_type")
         confidence = event.get("confidence")
         has_event_type = (
-            event_type is not None
-            and isinstance(event_type, str)
-            and event_type.strip() != ""
+            event_type is not None and isinstance(event_type, str) and event_type.strip() != ""
         )
         # Reject bool (subclass of int); require numeric only per CoreEventCandidate
         has_confidence = (
@@ -217,7 +216,9 @@ def _is_jobs_or_ats_url(url: str) -> bool:
         if "jobs." in netloc or ".jobs" in netloc:
             return True
         return False
-    except Exception:  # TODO(#278): catch specific exceptions or re-raise to avoid swallowing logic bugs
+    except (
+        Exception
+    ):  # TODO(#278): catch specific exceptions or re-raise to avoid swallowing logic bugs
         return False
 
 

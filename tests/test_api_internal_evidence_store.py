@@ -207,7 +207,12 @@ def test_store_evidence_duplicate_same_run_id_creates_multiple_rows(
                 "missing_information": [],
             }
         ],
-        "metadata": {"model_version": "gpt-4o", "tokens_used": None, "latency_ms": None, "page_fetch_count": 0},
+        "metadata": {
+            "model_version": "gpt-4o",
+            "tokens_used": None,
+            "latency_ms": None,
+            "page_fetch_count": 0,
+        },
         "run_context": {"run_id": run_id},
         "raw_model_output": None,
     }
@@ -287,7 +292,12 @@ def test_list_evidence_bundles_for_workspace_returns_only_for_that_workspace(
                     "missing_information": [],
                 }
             ],
-            "metadata": {"model_version": "gpt-4o", "tokens_used": None, "latency_ms": None, "page_fetch_count": 0},
+            "metadata": {
+                "model_version": "gpt-4o",
+                "tokens_used": None,
+                "latency_ms": None,
+                "page_fetch_count": 0,
+            },
             "run_context": {"run_id": run_id},
             "raw_model_output": None,
         }
@@ -363,7 +373,12 @@ def test_store_evidence_with_verification_failing_bundle_quarantined_not_stored(
                 "missing_information": [],
             },
         ],
-        "metadata": {"model_version": "gpt-4o", "tokens_used": None, "latency_ms": None, "page_fetch_count": 0},
+        "metadata": {
+            "model_version": "gpt-4o",
+            "tokens_used": None,
+            "latency_ms": None,
+            "page_fetch_count": 0,
+        },
         "run_context": {"run_id": run_id},
         "raw_model_output": None,
         "run_verification": True,
@@ -400,7 +415,9 @@ def test_store_evidence_with_verification_failing_bundle_quarantined_not_stored(
     assert list_resp.status_code == 200
     entries = list_resp.json()["entries"]
     assert len(entries) >= 1
-    quarantine_entry = next((e for e in entries if e.get("payload", {}).get("run_id") == run_id), None)
+    quarantine_entry = next(
+        (e for e in entries if e.get("payload", {}).get("run_id") == run_id), None
+    )
     assert quarantine_entry is not None
     assert quarantine_entry["payload"].get("reason_codes") is not None
     assert "EVENT_TYPE_UNKNOWN" in quarantine_entry["payload"]["reason_codes"]
@@ -432,7 +449,12 @@ def test_store_evidence_with_verification_all_pass_all_stored(
                 "missing_information": [],
             },
         ],
-        "metadata": {"model_version": "gpt-4o", "tokens_used": None, "latency_ms": None, "page_fetch_count": 0},
+        "metadata": {
+            "model_version": "gpt-4o",
+            "tokens_used": None,
+            "latency_ms": None,
+            "page_fetch_count": 0,
+        },
         "run_context": {"run_id": run_id},
         "raw_model_output": None,
         "run_verification": True,

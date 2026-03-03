@@ -63,6 +63,7 @@ async def _run_with_mocks(
     allowlist: list[str] | None = None,
     page_fetch_limit: int = 10,
     run_extractor: bool | None = None,
+    run_interpretation: bool | None = None,
 ):
     """Run scout with mocked fetch and LLM. workspace_id is required for tenant scoping."""
     if llm_response is None:
@@ -91,6 +92,7 @@ async def _run_with_mocks(
             page_fetch_limit=page_fetch_limit,
             workspace_id=workspace_id,
             run_extractor=run_extractor,
+            run_interpretation=run_interpretation,
         )
 
 
@@ -274,7 +276,9 @@ async def test_output_schema_has_no_pack_specific_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scout_run_with_extractor_disabled_calls_store_with_structured_payloads_none() -> None:
+async def test_scout_run_with_extractor_disabled_calls_store_with_structured_payloads_none() -> (
+    None
+):
     """With run_extractor=False (explicit), store_evidence_bundle receives structured_payloads=None.
 
     Passing run_extractor=False makes the test independent of SCOUT_RUN_EXTRACTOR env.
@@ -336,7 +340,9 @@ async def test_scout_run_with_extractor_enabled_calls_store_with_structured_payl
 
 
 @pytest.mark.asyncio
-async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_none_payloads() -> None:
+async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_none_payloads() -> (
+    None
+):
     """When run_extractor=True but no bundles validated, store_evidence_bundle receives structured_payloads=None."""
     mock_db = _mock_db_session()
     bad_json = json.dumps({"bundles": []})
@@ -359,6 +365,114 @@ async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_n
         )
     assert len(store_kwargs) == 1
     assert store_kwargs[0].get("structured_payloads") is None
+
+
+# --- M4: Optional Scout interpretation (LLM Event Interpretation) ---
+
+
+@pytest.mark.asyncio
+async def test_scout_run_with_interpretation_enabled_structured_payload_has_core_event_candidates() -> (
+    None
+):
+    """With run_extractor=True and run_interpretation=True, structured_payload contains non-empty core_event_candidates when LLM returns valid events."""
+    from app.schemas.core_events import CoreEventCandidate
+
+    core_signal_ids = __import__(
+        "app.core_taxonomy.loader", fromlist=["get_core_signal_ids"]
+    ).get_core_signal_ids()
+    valid_event_type = next(iter(core_signal_ids))
+    mock_candidates = [
+        CoreEventCandidate(
+            event_type=valid_event_type,
+            confidence=0.9,
+            source_refs=[0],
+            summary="Hiring engineers.",
+        )
+    ]
+
+    mock_db = _mock_db_session()
+    store_kwargs: list[dict] = []
+
+    def capture_store(*args: object, **kwargs: object) -> list:
+        store_kwargs.append(dict(kwargs))
+        return []
+
+    with (
+        patch(
+            "app.services.scout.discovery_scout_service.store_evidence_bundle",
+            side_effect=capture_store,
+        ),
+        patch(
+            "app.services.scout.discovery_scout_service.interpret_bundle_to_core_events",
+            return_value=mock_candidates,
+        ),
+    ):
+        await _run_with_mocks(
+            mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
+            seed_urls=["https://example.com"],
+            run_extractor=True,
+            run_interpretation=True,
+        )
+    assert len(store_kwargs) == 1
+    payloads = store_kwargs[0].get("structured_payloads")
+    assert payloads is not None
+    assert len(payloads) == 1
+    assert payloads[0]["core_event_candidates"]
+    assert len(payloads[0]["core_event_candidates"]) == 1
+    assert payloads[0]["core_event_candidates"][0]["event_type"] == valid_event_type
+
+
+@pytest.mark.asyncio
+async def test_scout_run_interpretation_pack_id_does_not_alter_result() -> None:
+    """Interpretation is not given pack_id; pack selection does not alter interpretation result."""
+    from app.schemas.core_events import CoreEventCandidate
+
+    core_signal_ids = __import__(
+        "app.core_taxonomy.loader", fromlist=["get_core_signal_ids"]
+    ).get_core_signal_ids()
+    valid_event_type = next(iter(core_signal_ids))
+    mock_candidates = [
+        CoreEventCandidate(
+            event_type=valid_event_type,
+            confidence=0.85,
+            source_refs=[0],
+            summary="Funding round.",
+        )
+    ]
+
+    mock_db = _mock_db_session()
+    store_kwargs: list[dict] = []
+
+    def capture_store(*args: object, **kwargs: object) -> list:
+        store_kwargs.append(dict(kwargs))
+        return []
+
+    interpret_mock = MagicMock(return_value=mock_candidates)
+
+    with (
+        patch(
+            "app.services.scout.discovery_scout_service.store_evidence_bundle",
+            side_effect=capture_store,
+        ),
+        patch(
+            "app.services.scout.discovery_scout_service.interpret_bundle_to_core_events",
+            side_effect=interpret_mock,
+        ),
+    ):
+        await _run_with_mocks(
+            mock_db,
+            workspace_id=TEST_WORKSPACE_ID,
+            seed_urls=["https://example.com"],
+            run_extractor=True,
+            run_interpretation=True,
+        )
+    # interpret_bundle_to_core_events is called with (bundle, llm_provider=...); no pack_id
+    assert interpret_mock.call_count == 1
+    call_args = interpret_mock.call_args
+    assert len(call_args[0]) == 1  # single positional arg (bundle)
+    assert call_args[1].get("llm_provider") is not None
+    assert "pack_id" not in call_args[1]
 
 
 @pytest.mark.asyncio
@@ -467,12 +581,15 @@ async def test_scout_run_with_verification_enabled_quarantines_failures_stores_p
     settings.scout_run_extractor = False
     settings.scout_verification_gate_enabled = True
 
-    with patch(
-        "app.services.scout.discovery_scout_service.get_settings",
-        return_value=settings,
-    ), patch(
-        "app.services.scout.discovery_scout_service.verify_bundles",
-        side_effect=mock_verify_bundles,
+    with (
+        patch(
+            "app.services.scout.discovery_scout_service.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "app.services.scout.discovery_scout_service.verify_bundles",
+            side_effect=mock_verify_bundles,
+        ),
     ):
         run_id, bundles, _ = await _run_with_mocks(
             db,
@@ -495,4 +612,6 @@ async def test_scout_run_with_verification_enabled_quarantines_failures_stores_p
     assert len(quarantine_rows) == 1
     assert quarantine_rows[0].payload.get("reason_codes") == ["EVENT_TYPE_UNKNOWN"]
     assert quarantine_rows[0].payload.get("bundle_index") == 1
-    assert "Fail Co" in str(quarantine_rows[0].payload.get("bundle", {}).get("candidate_company_name", ""))
+    assert "Fail Co" in str(
+        quarantine_rows[0].payload.get("bundle", {}).get("candidate_company_name", "")
+    )

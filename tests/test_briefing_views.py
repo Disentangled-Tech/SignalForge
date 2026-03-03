@@ -43,22 +43,22 @@ def _make_user() -> MagicMock:
 def _make_company(id: int = 1, **overrides) -> MagicMock:
     """Create a mock Company."""
     now = datetime.now(UTC)
-    defaults = dict(
-        id=id,
-        name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        founder_linkedin_url=None,
-        company_linkedin_url=None,
-        source="manual",
-        target_profile_match=False,
-        current_stage="mvp_building",
-        notes=None,
-        cto_need_score=85,
-        created_at=now,
-        updated_at=now,
-        last_scan_at=None,
-    )
+    defaults = {
+        "id": id,
+        "name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "founder_linkedin_url": None,
+        "company_linkedin_url": None,
+        "source": "manual",
+        "target_profile_match": False,
+        "current_stage": "mvp_building",
+        "notes": None,
+        "cto_need_score": 85,
+        "created_at": now,
+        "updated_at": now,
+        "last_scan_at": None,
+    }
     defaults.update(overrides)
     mock = MagicMock(spec=Company)
     for k, v in defaults.items():
@@ -68,17 +68,17 @@ def _make_company(id: int = 1, **overrides) -> MagicMock:
 
 def _make_analysis(id: int = 1, **overrides) -> MagicMock:
     """Create a mock AnalysisRecord."""
-    defaults = dict(
-        id=id,
-        company_id=1,
-        source_type="full_analysis",
-        stage="mvp_building",
-        stage_confidence=80,
-        pain_signals_json={},
-        evidence_bullets=[],
-        explanation="Test explanation",
-        created_at=datetime.now(UTC),
-    )
+    defaults = {
+        "id": id,
+        "company_id": 1,
+        "source_type": "full_analysis",
+        "stage": "mvp_building",
+        "stage_confidence": 80,
+        "pain_signals_json": {},
+        "evidence_bullets": [],
+        "explanation": "Test explanation",
+        "created_at": datetime.now(UTC),
+    }
     defaults.update(overrides)
     mock = MagicMock(spec=AnalysisRecord)
     for k, v in defaults.items():
@@ -90,20 +90,20 @@ def _make_briefing_item(id: int = 1, **overrides) -> MagicMock:
     """Create a mock BriefingItem with company and analysis."""
     company = overrides.pop("company", _make_company())
     analysis = overrides.pop("analysis", _make_analysis())
-    defaults = dict(
-        id=id,
-        company_id=company.id,
-        analysis_id=analysis.id,
-        why_now="Recent funding round",
-        risk_summary="Early stage, may not convert",
-        suggested_angle="Technical advisor for scaling",
-        outreach_subject="Congrats on the raise",
-        outreach_message="Hi Jane, I noticed your company just raised.",
-        briefing_date=date.today(),
-        created_at=datetime.now(UTC),
-        company=company,
-        analysis=analysis,
-    )
+    defaults = {
+        "id": id,
+        "company_id": company.id,
+        "analysis_id": analysis.id,
+        "why_now": "Recent funding round",
+        "risk_summary": "Early stage, may not convert",
+        "suggested_angle": "Technical advisor for scaling",
+        "outreach_subject": "Congrats on the raise",
+        "outreach_message": "Hi Jane, I noticed your company just raised.",
+        "briefing_date": date.today(),
+        "created_at": datetime.now(UTC),
+        "company": company,
+        "analysis": analysis,
+    }
     defaults.update(overrides)
     mock = MagicMock(spec=BriefingItem)
     for k, v in defaults.items():
@@ -332,7 +332,7 @@ class TestBriefingGenerate:
         job_run_chain.first.return_value = job_without_error
         mock_db.query.return_value.filter.return_value.order_by.return_value = job_run_chain
 
-        with patch("app.api.briefing_views.generate_briefing", create=True) as mock_gen:
+        with patch("app.api.briefing_views.generate_briefing", create=True):
             resp = client.post("/briefing/generate", follow_redirects=False)
 
         assert resp.status_code == 303
@@ -350,7 +350,7 @@ class TestBriefingGenerate:
         job_run_chain.first.return_value = job_with_error
         mock_db.query.return_value.filter.return_value.order_by.return_value = job_run_chain
 
-        with patch("app.api.briefing_views.generate_briefing", create=True) as mock_gen:
+        with patch("app.api.briefing_views.generate_briefing", create=True):
             resp = client.post("/briefing/generate", follow_redirects=False)
 
         assert resp.status_code == 303
