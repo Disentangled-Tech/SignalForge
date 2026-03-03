@@ -8,6 +8,7 @@ Supports query families and rotation (Issue #282). No DB, no HTTP. Scout path on
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.core_taxonomy.loader import load_core_taxonomy
@@ -53,6 +54,52 @@ def _get_pack_emphasis(pack_id: str) -> list[str]:
         return [str(x).strip() for x in emphasis if x and isinstance(x, str)]
     except (OSError, ValueError, TypeError):
         return []
+
+
+# Regex to find site: operator and domain in a query (e.g. "site:example.com" or "site: sub.example.com").
+_SITE_OPERATOR_RE = re.compile(r"site:\s*([a-zA-Z0-9._-]+)", re.IGNORECASE)
+
+
+def _blocked_matches_domain(domain: str, blocked: str) -> bool:
+    """Return True if domain is blocked or a subdomain of blocked.
+
+    When blocked is two-label with a two-letter suffix (e.g. co.uk), only exact match
+    is used so that denylisting co.uk does not block every *.co.uk (e.g. evil.co.uk).
+    """
+    if domain == blocked:
+        return True
+    # Avoid over-matching TLD-like entries: e.g. blocked "co.uk" should not match "evil.co.uk"
+    if "." in blocked:
+        parts = blocked.split(".")
+        if len(parts) == 2 and len(parts[1]) == 2:
+            return False  # exact match already handled above
+    return domain.endswith("." + blocked)
+
+
+def _query_targets_denylisted_domain(query: str, denylist: list[str]) -> bool:
+    """Return True if query contains site:<domain> and domain is denylisted (or subdomain of one).
+
+    Used to exclude queries that would target denylisted sources at plan time. URL-level
+    filtering remains the authority in filter_allowed_sources (sources.py).
+
+    TLD-like denylist entries (e.g. co.uk): only exact match; subdomains of evil.com
+    (e.g. blog.evil.com) are matched when evil.com is denylisted.
+    """
+    if not denylist or not isinstance(query, str):
+        return False
+    denylist_normalized = frozenset(d.strip().lower() for d in denylist if d and isinstance(d, str))
+    if not denylist_normalized:
+        return False
+    for match in _SITE_OPERATOR_RE.finditer(query):
+        domain = match.group(1).strip().lower()
+        if not domain:
+            continue
+        if domain in denylist_normalized:
+            return True
+        for blocked in denylist_normalized:
+            if _blocked_matches_domain(domain, blocked):
+                return True
+    return False
 
 
 def _round_robin_by_family(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -167,8 +214,12 @@ class QueryPlanner:
         icp: str,
         core_rubric: dict[str, Any] | None = None,
         pack_id: str | None = None,
+        denylist: list[str] | None = None,
     ) -> tuple[list[str], list[str]]:
         """Produce diversified queries with family tags; rotation applied.
+
+        When denylist is provided, queries containing site:<denylisted_domain> are excluded.
+        URL-level filtering remains in filter_allowed_sources (sources.py).
 
         Returns:
             (queries, families): same-length lists; families interleaved (round-robin).
@@ -184,6 +235,14 @@ class QueryPlanner:
             pack_id=pack_id,
             max_queries=self._max_queries,
         )
+        if denylist:
+            pairs = [
+                (q, f)
+                for q, f in pairs
+                if not _query_targets_denylisted_domain(q, denylist)
+            ]
+            if not pairs and icp and not _query_targets_denylisted_domain(icp, denylist):
+                pairs = [(icp, DEFAULT_FAMILY_ID)]
         queries = [q for q, _ in pairs]
         families = [f for _, f in pairs]
         return (queries, families)
@@ -193,6 +252,7 @@ class QueryPlanner:
         icp: str,
         core_rubric: dict[str, Any] | None = None,
         pack_id: str | None = None,
+        denylist: list[str] | None = None,
     ) -> list[str]:
         """Produce a diversified list of search query strings.
 
@@ -201,6 +261,8 @@ class QueryPlanner:
             core_rubric: Core taxonomy dict (signal_ids, dimensions). If None, loads
                 from load_core_taxonomy().
             pack_id: Optional pack id for emphasis hints (scout_emphasis in pack.json).
+            denylist: Optional list of domains to exclude; queries containing site:<domain>
+                are dropped. URL filtering remains in filter_allowed_sources.
 
         Returns:
             Non-empty list of deduplicated query strings (no DB, no HTTP).
@@ -209,6 +271,7 @@ class QueryPlanner:
             icp=icp,
             core_rubric=core_rubric,
             pack_id=pack_id,
+            denylist=denylist,
         )
         return queries
 
@@ -218,10 +281,15 @@ def plan_queries(
     core_rubric: dict[str, Any] | None = None,
     pack_id: str | None = None,
     max_queries: int = 30,
+    denylist: list[str] | None = None,
 ) -> list[str]:
-    """Convenience: plan diversified search queries (QueryPlanner().plan())."""
+    """Convenience: plan diversified search queries (QueryPlanner().plan()).
+
+    When denylist is provided, queries containing site:<denylisted_domain> are excluded.
+    """
     return QueryPlanner(max_queries=max_queries).plan(
         icp=icp,
         core_rubric=core_rubric,
         pack_id=pack_id,
+        denylist=denylist,
     )

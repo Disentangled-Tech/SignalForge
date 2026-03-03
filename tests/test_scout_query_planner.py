@@ -131,3 +131,46 @@ def test_plan_no_duplicate_queries() -> None:
         core_rubric=_minimal_core_rubric(),
     )
     assert len(queries) == len(set(queries)), "Queries should be deduplicated"
+
+
+# ── M2: Denylist in planner ───────────────────────────────────────────────────
+
+
+def test_plan_queries_denylist_none_unchanged_behavior() -> None:
+    """plan_queries(..., denylist=None) has same result as no denylist (backward compatible)."""
+    rubric = _minimal_core_rubric()
+    without = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+    )
+    with_none = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+        denylist=None,
+    )
+    assert with_none == without
+
+
+def test_plan_queries_denylist_empty_unchanged_behavior() -> None:
+    """plan_queries(..., denylist=[]) has same result as denylist=None (no filtering)."""
+    rubric = _minimal_core_rubric()
+    with_none = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+        denylist=None,
+    )
+    with_empty = plan_queries(
+        icp="B2B fintech",
+        core_rubric=rubric,
+        denylist=[],
+    )
+    assert with_empty == with_none
+
+
+def test_plan_denylist_none_unchanged_behavior() -> None:
+    """QueryPlanner.plan(..., denylist=None) has same result as no denylist."""
+    planner = QueryPlanner()
+    rubric = _minimal_core_rubric()
+    without = planner.plan(icp="SaaS", core_rubric=rubric)
+    with_none = planner.plan(icp="SaaS", core_rubric=rubric, denylist=None)
+    assert with_none == without
