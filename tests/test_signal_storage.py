@@ -57,7 +57,7 @@ class TestStoreSignal:
         company = _make_company()
         db = _make_query_mock(existing_record=None, company=company)
 
-        result = store_signal(
+        store_signal(
             db,
             company_id=1,
             source_url="https://acme.example.com/blog",
@@ -158,7 +158,7 @@ class TestStoreSignal:
         company = _make_company()
         db = _make_query_mock(existing_record=None, company=company)
 
-        result = store_signal(
+        store_signal(
             db,
             company_id=1,
             source_url="https://acme.example.com",

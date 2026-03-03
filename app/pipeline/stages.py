@@ -113,14 +113,22 @@ def _watchlist_seed_stage(
 
     bundle_ids = kwargs.get("bundle_ids")
     if not bundle_ids:
-        return StageResult({
-            "status": "failed",
-            "job_run_id": None,
-            "seed_result": {"companies_created": 0, "companies_matched": 0, "events_stored": 0, "events_skipped_duplicate": 0, "errors": ["bundle_ids required"]},
-            "derive_result": {},
-            "score_result": {},
-            "error": "bundle_ids required",
-        })
+        return StageResult(
+            {
+                "status": "failed",
+                "job_run_id": None,
+                "seed_result": {
+                    "companies_created": 0,
+                    "companies_matched": 0,
+                    "events_stored": 0,
+                    "events_skipped_duplicate": 0,
+                    "errors": ["bundle_ids required"],
+                },
+                "derive_result": {},
+                "score_result": {},
+                "error": "bundle_ids required",
+            }
+        )
     pack_uuid = UUID(pack_id) if pack_id else None
     idempotency_key = kwargs.get("idempotency_key")
     ws_uuid = UUID(workspace_id) if workspace_id else None

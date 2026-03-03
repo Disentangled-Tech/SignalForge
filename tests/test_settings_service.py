@@ -154,7 +154,7 @@ class TestUpdateOperatorProfile:
         db = MagicMock()
         db.query.return_value.first.return_value = existing
 
-        result = update_operator_profile(db, "# Updated Profile")
+        update_operator_profile(db, "# Updated Profile")
 
         assert existing.content == "# Updated Profile"
         db.add.assert_not_called()

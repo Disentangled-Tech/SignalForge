@@ -38,13 +38,13 @@ _LONG_MESSAGE_RESPONSE = json.dumps(
 
 
 def _make_company(**overrides):
-    defaults = dict(
-        id=1,
-        name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        notes="Early stage startup",
-    )
+    defaults = {
+        "id": 1,
+        "name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "notes": "Early stage startup",
+    }
     defaults.update(overrides)
     c = MagicMock(spec=Company)
     for k, v in defaults.items():
@@ -53,19 +53,19 @@ def _make_company(**overrides):
 
 
 def _make_analysis(**overrides):
-    defaults = dict(
-        id=10,
-        company_id=1,
-        stage="scaling_team",
-        stage_confidence=80,
-        pain_signals_json={
+    defaults = {
+        "id": 10,
+        "company_id": 1,
+        "stage": "scaling_team",
+        "stage_confidence": 80,
+        "pain_signals_json": {
             "top_risks": ["hiring", "founder burnout"],
             "most_likely_next_problem": "Scaling the engineering team",
             "recommended_conversation_angle": "Engineering hiring strategy",
         },
-        evidence_bullets=["Hiring 3 engineers", "Series A raised"],
-        explanation="Needs help",
-    )
+        "evidence_bullets": ["Hiring 3 engineers", "Series A raised"],
+        "explanation": "Needs help",
+    }
     defaults.update(overrides)
     a = MagicMock(spec=AnalysisRecord)
     for k, v in defaults.items():

@@ -274,7 +274,9 @@ async def test_output_schema_has_no_pack_specific_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scout_run_with_extractor_disabled_calls_store_with_structured_payloads_none() -> None:
+async def test_scout_run_with_extractor_disabled_calls_store_with_structured_payloads_none() -> (
+    None
+):
     """With run_extractor=False (explicit), store_evidence_bundle receives structured_payloads=None.
 
     Passing run_extractor=False makes the test independent of SCOUT_RUN_EXTRACTOR env.
@@ -336,7 +338,9 @@ async def test_scout_run_with_extractor_enabled_calls_store_with_structured_payl
 
 
 @pytest.mark.asyncio
-async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_none_payloads() -> None:
+async def test_scout_run_with_extractor_enabled_empty_bundles_calls_store_with_none_payloads() -> (
+    None
+):
     """When run_extractor=True but no bundles validated, store_evidence_bundle receives structured_payloads=None."""
     mock_db = _mock_db_session()
     bad_json = json.dumps({"bundles": []})
@@ -467,12 +471,15 @@ async def test_scout_run_with_verification_enabled_quarantines_failures_stores_p
     settings.scout_run_extractor = False
     settings.scout_verification_gate_enabled = True
 
-    with patch(
-        "app.services.scout.discovery_scout_service.get_settings",
-        return_value=settings,
-    ), patch(
-        "app.services.scout.discovery_scout_service.verify_bundles",
-        side_effect=mock_verify_bundles,
+    with (
+        patch(
+            "app.services.scout.discovery_scout_service.get_settings",
+            return_value=settings,
+        ),
+        patch(
+            "app.services.scout.discovery_scout_service.verify_bundles",
+            side_effect=mock_verify_bundles,
+        ),
     ):
         run_id, bundles, _ = await _run_with_mocks(
             db,
@@ -495,4 +502,6 @@ async def test_scout_run_with_verification_enabled_quarantines_failures_stores_p
     assert len(quarantine_rows) == 1
     assert quarantine_rows[0].payload.get("reason_codes") == ["EVENT_TYPE_UNKNOWN"]
     assert quarantine_rows[0].payload.get("bundle_index") == 1
-    assert "Fail Co" in str(quarantine_rows[0].payload.get("bundle", {}).get("candidate_company_name", ""))
+    assert "Fail Co" in str(
+        quarantine_rows[0].payload.get("bundle", {}).get("candidate_company_name", "")
+    )

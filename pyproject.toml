@@ -61,8 +61,17 @@ ignore = ["E501", "B008"]  # B008: Depends/Query in defaults is FastAPI standard
 "app/models/scout_run.py" = ["F821", "UP037"]
 "app/models/scout_evidence_bundle.py" = ["F821", "UP037"]
 "app/models/page_snapshot.py" = ["F821", "UP037"]
-# str, Enum pattern used elsewhere used elsewhere (e.g. CompanySource)
+"app/models/alert.py" = ["F821", "UP037"]
+"app/models/briefing_item.py" = ["F821", "UP037"]
+"app/models/company_alias.py" = ["F821", "UP037"]
+"app/models/engagement_snapshot.py" = ["F821", "UP037"]
+"app/models/outreach_recommendation.py" = ["F821", "UP037"]
+"app/models/readiness_snapshot.py" = ["F821", "UP037"]
+"app/models/signal_record.py" = ["F821", "UP037"]
+"app/models/watchlist.py" = ["F821", "UP037"]
+# str, Enum pattern used elsewhere (e.g. CompanySource)
 "app/llm/router.py" = ["UP042"]
+"app/schemas/company.py" = ["UP042"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -56,16 +56,16 @@ _VALID_OUTREACH_RESULT = {
 
 def _make_company(**overrides):
     now = datetime.now(UTC)
-    defaults = dict(
-        id=1,
-        name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        notes="Early stage startup",
-        cto_need_score=75,
-        current_stage="scaling_team",
-        last_scan_at=now - timedelta(days=2),
-    )
+    defaults = {
+        "id": 1,
+        "name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "notes": "Early stage startup",
+        "cto_need_score": 75,
+        "current_stage": "scaling_team",
+        "last_scan_at": now - timedelta(days=2),
+    }
     defaults.update(overrides)
     c = MagicMock(spec=Company)
     for k, v in defaults.items():
@@ -74,20 +74,20 @@ def _make_company(**overrides):
 
 
 def _make_analysis(**overrides):
-    defaults = dict(
-        id=10,
-        company_id=1,
-        stage="scaling_team",
-        stage_confidence=80,
-        pain_signals_json={
+    defaults = {
+        "id": 10,
+        "company_id": 1,
+        "stage": "scaling_team",
+        "stage_confidence": 80,
+        "pain_signals_json": {
             "top_risks": ["hiring"],
             "most_likely_next_problem": "Scaling",
             "recommended_conversation_angle": "Hiring strategy",
         },
-        evidence_bullets=["Hiring 3 engineers"],
-        explanation="Needs help",
-        created_at=datetime.now(UTC),
-    )
+        "evidence_bullets": ["Hiring 3 engineers"],
+        "explanation": "Needs help",
+        "created_at": datetime.now(UTC),
+    }
     defaults.update(overrides)
     a = MagicMock(spec=AnalysisRecord)
     for k, v in defaults.items():

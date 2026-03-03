@@ -217,9 +217,7 @@ def test_check_fact_domain_match_returns_code_when_no_evidence_url_matches() -> 
         evidence_count=1,
     )
     # _minimal_bundle(evidence_count=1) uses https://example.com/p1, domain example.com != acme.example.com
-    assert check_fact_domain_match(bundle, None) == [
-        VerificationReasonCode.FACT_DOMAIN_MISMATCH
-    ]
+    assert check_fact_domain_match(bundle, None) == [VerificationReasonCode.FACT_DOMAIN_MISMATCH]
 
 
 def test_check_fact_domain_match_normalizes_www() -> None:
@@ -270,7 +268,9 @@ def test_check_fact_founder_primary_source_accepts_founder_entity_type() -> None
     bundle = _minimal_bundle(evidence_count=1)
     payload = {
         "persons": [{"name": "Jane"}],
-        "claims": [{"entity_type": "founder", "field": "name", "value": "Jane", "source_refs": [0]}],
+        "claims": [
+            {"entity_type": "founder", "field": "name", "value": "Jane", "source_refs": [0]}
+        ],
     }
     assert check_fact_founder_primary_source(bundle, payload) == []
 

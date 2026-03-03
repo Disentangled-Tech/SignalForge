@@ -56,6 +56,10 @@ When enabled, the Scout run calls the **Evidence Extractor** per validated bundl
 - **Override:** The service `run()` (and `DiscoveryScoutService.run()`) accept an optional parameter `run_extractor: bool | None = None`. If provided (True/False), it overrides the config value for that run; if `None`, config is used. The internal `POST /internal/run_scout` endpoint does not pass `run_extractor`, so production behavior is entirely config-driven.
 - **Structured payload shape:** When the extractor runs, each bundle’s `structured_payload` in the Evidence Store has the ExtractionResult shape: `company` (normalized company), `person` (optional), `core_event_candidates` (list of core-event candidates, taxonomy-validated), and `version` (payload version string). See `app/extractor/schemas.py` and [evidence-store.md](evidence-store.md).
 
+## Optional Event Interpretation (Issue #281)
+
+When enabled (future wiring), the Scout run can call an **LLM Event Interpretation** step per validated bundle before the Extractor: the LLM classifies evidence into Core Event candidates; output is taxonomy-validated and passed as `raw_extraction` to the existing Extractor. Interpretation is pack-agnostic (no new event types; pack selection does not alter result). See [ADR-011](../rules/ADR-011-LLM-Event-Interpretation.md) and Architecture Contract §4.
+
 ## Optional Verification Gate (Issue #278)
 
 When enabled, the Scout run validates each evidence bundle (and optional structured payload) against the pack-agnostic Verification Gate before writing to the Evidence Store. Bundles that fail verification are quarantined with structured `reason_codes` and are **not** stored; only passing bundles are sent to `store_evidence_bundle`.

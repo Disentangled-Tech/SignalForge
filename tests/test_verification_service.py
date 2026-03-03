@@ -73,7 +73,9 @@ def test_verify_bundles_returns_one_result_per_bundle() -> None:
     """verify_bundles returns list of VerificationResult in same order as bundles."""
     b1 = _minimal_bundle(name="First", evidence_count=0)
     b2 = _bundle_with_matching_domain(
-        name="Second", website="https://second.example.com", evidence_url="https://second.example.com/p"
+        name="Second",
+        website="https://second.example.com",
+        evidence_url="https://second.example.com/p",
     )
     results = verify_bundles([b1, b2])
     assert len(results) == 2
@@ -83,8 +85,12 @@ def test_verify_bundles_returns_one_result_per_bundle() -> None:
 
 def test_verify_bundles_with_structured_payloads_aligned_by_index() -> None:
     """verify_bundles uses structured_payloads[i] for bundle i when provided."""
-    b1 = _bundle_with_matching_domain(name="A", website="https://a.example.com", evidence_url="https://a.example.com/p")
-    b2 = _bundle_with_matching_domain(name="B", website="https://b.example.com", evidence_url="https://b.example.com/p")
+    b1 = _bundle_with_matching_domain(
+        name="A", website="https://a.example.com", evidence_url="https://a.example.com/p"
+    )
+    b2 = _bundle_with_matching_domain(
+        name="B", website="https://b.example.com", evidence_url="https://b.example.com/p"
+    )
     payloads = [{"events": []}, {"events": [], "company": {"name": "B", "domain": "b.example.com"}}]
     results = verify_bundles([b1, b2], structured_payloads=payloads)
     assert len(results) == 2

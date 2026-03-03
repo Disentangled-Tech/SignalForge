@@ -40,14 +40,14 @@ def _make_settings(**overrides) -> SimpleNamespace:
     """Create mock settings with SMTP defaults."""
     from tests.test_constants import TEST_SMTP_PASSWORD
 
-    defaults = dict(
-        smtp_host="smtp.example.com",
-        smtp_port=587,
-        smtp_user="user@example.com",
-        smtp_password=TEST_SMTP_PASSWORD,
-        smtp_from="noreply@example.com",
-        briefing_email_to="boss@example.com",
-    )
+    defaults = {
+        "smtp_host": "smtp.example.com",
+        "smtp_port": 587,
+        "smtp_user": "user@example.com",
+        "smtp_password": TEST_SMTP_PASSWORD,
+        "smtp_from": "noreply@example.com",
+        "briefing_email_to": "boss@example.com",
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 

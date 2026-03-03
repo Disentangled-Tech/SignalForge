@@ -514,9 +514,7 @@ def test_seed_then_derive_then_score_creates_snapshots(
     company = db.query(Company).filter(Company.domain == "integrate.example.com").first()
     assert company is not None
 
-    derive_result = run_deriver(
-        db, pack_id=fractional_cto_pack_id, company_ids=[company.id]
-    )
+    derive_result = run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
     assert derive_result["status"] == "completed"
     assert derive_result["instances_upserted"] >= 1
     assert derive_result["events_processed"] >= 1
@@ -588,10 +586,12 @@ def test_seed_derive_same_core_instances_across_packs(
 
     core_before = {
         (si.entity_id, si.signal_id)
-        for si in db.query(SignalInstance).filter(
+        for si in db.query(SignalInstance)
+        .filter(
             SignalInstance.entity_id == company.id,
             SignalInstance.pack_id == core_pack_id,
-        ).all()
+        )
+        .all()
     }
     assert len(core_before) >= 1
 
@@ -602,10 +602,12 @@ def test_seed_derive_same_core_instances_across_packs(
 
     core_after = {
         (si.entity_id, si.signal_id)
-        for si in db.query(SignalInstance).filter(
+        for si in db.query(SignalInstance)
+        .filter(
             SignalInstance.entity_id == company.id,
             SignalInstance.pack_id == core_pack_id,
-        ).all()
+        )
+        .all()
     }
     assert core_after == core_before, "Core SignalInstances must be identical across pack scoring"
 

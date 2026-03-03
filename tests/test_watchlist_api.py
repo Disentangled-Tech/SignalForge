@@ -118,7 +118,7 @@ class TestWatchlistList:
     def test_list_watchlist_empty(self, db: Session, api_client: TestClient) -> None:
         """GET when empty returns 200 with items=[]."""
         # Isolate: deactivate all watchlist entries so list is empty
-        db.query(Watchlist).filter(Watchlist.is_active == True).update({"is_active": False})
+        db.query(Watchlist).filter(Watchlist.is_active).update({"is_active": False})
         db.commit()
 
         response = api_client.get("/api/watchlist")

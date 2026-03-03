@@ -31,23 +31,23 @@ from app.services.company import (
 def _make_company(**overrides) -> MagicMock:
     """Create a mock Company model instance with sensible defaults."""
     now = datetime.now(UTC)
-    defaults = dict(
-        id=1,
-        name="Acme Corp",
-        domain=None,
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        founder_linkedin_url=None,
-        company_linkedin_url=None,
-        source="manual",
-        target_profile_match=False,
-        current_stage=None,
-        notes=None,
-        cto_need_score=None,
-        created_at=now,
-        updated_at=now,
-        last_scan_at=None,
-    )
+    defaults = {
+        "id": 1,
+        "name": "Acme Corp",
+        "domain": None,
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "founder_linkedin_url": None,
+        "company_linkedin_url": None,
+        "source": "manual",
+        "target_profile_match": False,
+        "current_stage": None,
+        "notes": None,
+        "cto_need_score": None,
+        "created_at": now,
+        "updated_at": now,
+        "last_scan_at": None,
+    }
     defaults.update(overrides)
     mock = MagicMock(spec=Company)
     for k, v in defaults.items():

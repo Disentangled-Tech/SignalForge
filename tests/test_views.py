@@ -37,22 +37,22 @@ def _make_mock_company(**overrides):
     from app.models.company import Company
 
     now = datetime.now(UTC)
-    defaults = dict(
-        id=1,
-        name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        founder_linkedin_url=None,
-        company_linkedin_url=None,
-        source="manual",
-        target_profile_match=False,
-        current_stage="scaling_team",
-        notes=None,
-        cto_need_score=75,
-        created_at=now,
-        updated_at=now,
-        last_scan_at=now,
-    )
+    defaults = {
+        "id": 1,
+        "name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "founder_linkedin_url": None,
+        "company_linkedin_url": None,
+        "source": "manual",
+        "target_profile_match": False,
+        "current_stage": "scaling_team",
+        "notes": None,
+        "cto_need_score": 75,
+        "created_at": now,
+        "updated_at": now,
+        "last_scan_at": now,
+    }
     defaults.update(overrides)
     mock = MagicMock(spec=Company)
     for k, v in defaults.items():
@@ -65,22 +65,22 @@ def _make_company_read(**overrides):
     from app.schemas.company import CompanyRead
 
     now = datetime.now(UTC)
-    defaults = dict(
-        id=1,
-        company_name="Acme Corp",
-        website_url="https://acme.example.com",
-        founder_name="Jane Doe",
-        founder_linkedin_url=None,
-        company_linkedin_url=None,
-        source="manual",
-        target_profile_match=None,
-        current_stage="scaling_team",
-        notes=None,
-        cto_need_score=75,
-        created_at=now,
-        updated_at=now,
-        last_scan_at=now,
-    )
+    defaults = {
+        "id": 1,
+        "company_name": "Acme Corp",
+        "website_url": "https://acme.example.com",
+        "founder_name": "Jane Doe",
+        "founder_linkedin_url": None,
+        "company_linkedin_url": None,
+        "source": "manual",
+        "target_profile_match": None,
+        "current_stage": "scaling_team",
+        "notes": None,
+        "cto_need_score": 75,
+        "created_at": now,
+        "updated_at": now,
+        "last_scan_at": now,
+    }
     defaults.update(overrides)
     return CompanyRead(**defaults)
 
@@ -779,8 +779,8 @@ class TestCompanyDetail:
         assert "Acme Corp" in resp.text
 
     @patch("app.api.views.get_company")
-    def test_detail_renders(self, mock_get, views_client, mock_db_session):
-        """GET /companies/1 renders company info."""
+    def test_detail_renders_with_setup_mock(self, mock_get, views_client, mock_db_session):
+        """GET /companies/1 renders company info (alternate setup via _setup_query_mock)."""
         company = _make_company_read()
         mock_get.return_value = company
         self._setup_query_mock(mock_db_session)

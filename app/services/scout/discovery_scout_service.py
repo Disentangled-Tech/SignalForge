@@ -189,9 +189,7 @@ async def run(
     use_extractor = run_extractor if run_extractor is not None else settings.scout_run_extractor
     structured_payloads: list[dict | None] | None = None
     if use_extractor and validated:
-        structured_payloads = [
-            extract(vb).model_dump(mode="json") for vb in validated
-        ]
+        structured_payloads = [extract(vb).model_dump(mode="json") for vb in validated]
 
     # M3 (Issue #278): Verification Gate — when enabled, verify then quarantine failures, store only passing.
     bundles_to_store = validated
@@ -207,7 +205,9 @@ async def run(
                     bundle_index=i,
                     bundle_dict=validated[i].model_dump(mode="json"),
                     structured_payload=(
-                        structured_payloads[i] if structured_payloads and i < len(structured_payloads) else None
+                        structured_payloads[i]
+                        if structured_payloads and i < len(structured_payloads)
+                        else None
                     ),
                     reason_codes=r.reason_codes,
                 )

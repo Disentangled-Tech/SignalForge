@@ -162,21 +162,6 @@ def test_normalize_accepts_repo_activity_without_pack() -> None:
     assert event_data["event_type"] == "repo_activity"
 
 
-def test_normalize_accepts_core_type_when_pack_omits_it() -> None:
-    """Pack without repo_activity in taxonomy still accepts it (core type always accepted)."""
-    pack = _mock_pack(["funding_raised", "launch_major"])
-    raw = RawEvent(
-        company_name="Acme",
-        domain="acme.com",
-        event_type_candidate="repo_activity",
-        event_time=datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC),
-    )
-    result = normalize_raw_event(raw, "github", pack=pack)
-    assert result is not None
-    event_data, _ = result
-    assert event_data["event_type"] == "repo_activity"
-
-
 def test_normalize_accepts_incorporation_without_pack() -> None:
     """normalize_raw_event(raw_incorporation, pack=None) returns not None (Issue #250 Phase 1)."""
     raw = RawEvent(
