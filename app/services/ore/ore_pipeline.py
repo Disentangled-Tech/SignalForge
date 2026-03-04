@@ -10,7 +10,8 @@ from app.models import Company, OutreachRecommendation, ReadinessSnapshot
 from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
-from app.services.ore.draft_generator import generate_ore_draft, get_ore_playbook
+from app.services.ore.draft_generator import generate_ore_draft
+from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
@@ -47,7 +48,7 @@ def generate_ore_recommendation(
         return None
 
     pack = resolve_pack(db, pack_id)
-    playbook = get_ore_playbook(pack)
+    playbook = get_ore_playbook(pack, playbook_name=DEFAULT_PLAYBOOK_NAME)
 
     snapshot = (
         db.query(ReadinessSnapshot)
@@ -101,12 +102,22 @@ def generate_ore_recommendation(
         )
 
     # M4: Playbook eligibility by sensitivity. Reuse playbook from above.
-    allowed_levels = playbook.get("sensitivity_levels") if isinstance(playbook.get("sensitivity_levels"), list) else None
-    if gate.should_generate_draft and allowed_levels and sensitivity_level and sensitivity_level not in allowed_levels:
+    allowed_levels = (
+        playbook.get("sensitivity_levels")
+        if isinstance(playbook.get("sensitivity_levels"), list)
+        else None
+    )
+    if (
+        gate.should_generate_draft
+        and allowed_levels
+        and sensitivity_level
+        and sensitivity_level not in allowed_levels
+    ):
         gate = PolicyGateResult(
             recommendation_type="Soft Value Share",
             should_generate_draft=False,
-            safeguards_triggered=(gate.safeguards_triggered or []) + ["Playbook excludes sensitivity level"],
+            safeguards_triggered=(gate.safeguards_triggered or [])
+            + ["Playbook excludes sensitivity level"],
         )
 
     draft_variants: list[dict] = []
@@ -173,6 +184,7 @@ def generate_ore_recommendation(
         existing.strategy_notes = None
         existing.safeguards_triggered = gate.safeguards_triggered or None
         existing.generation_version = generation_version
+        existing.playbook_id = DEFAULT_PLAYBOOK_NAME
         db.commit()
         db.refresh(existing)
         return existing
@@ -188,6 +200,7 @@ def generate_ore_recommendation(
         safeguards_triggered=gate.safeguards_triggered or None,
         generation_version=generation_version,
         pack_id=pack_id,
+        playbook_id=DEFAULT_PLAYBOOK_NAME,
     )
     db.add(rec)
     db.commit()
