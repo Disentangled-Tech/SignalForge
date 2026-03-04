@@ -65,9 +65,9 @@ class TestGetEventLikeListFromCoreInstances:
         assert getattr(result[0], "confidence", None) == 0.9
 
     def test_resolves_evidence_events_when_present(
-        self, db: Session, core_pack_id: uuid.UUID, fractional_cto_pack_id: uuid.UUID
+        self, db: Session, core_pack_id: uuid.UUID
     ) -> None:
-        """When evidence_event_ids is set, resolves to SignalEvents."""
+        """When evidence_event_ids is set, resolves to SignalEvents (same pack as instance)."""
         company = Company(name="EvidenceCo", website_url="https://evidence.example.com")
         db.add(company)
         db.commit()
@@ -79,7 +79,7 @@ class TestGetEventLikeListFromCoreInstances:
             event_type="funding_raised",
             event_time=_days_ago(3),
             confidence=0.85,
-            pack_id=fractional_cto_pack_id,
+            pack_id=core_pack_id,
         )
         db.add(ev)
         db.commit()
@@ -126,9 +126,9 @@ class TestGetEventLikeListFromCoreInstances:
         assert len(result) == 0
 
     def test_deduplicates_evidence_events_shared_across_instances(
-        self, db: Session, core_pack_id: uuid.UUID, fractional_cto_pack_id: uuid.UUID
+        self, db: Session, core_pack_id: uuid.UUID
     ) -> None:
-        """Same SignalEvent in two instances' evidence is only included once."""
+        """Same SignalEvent in two instances' evidence is only included once (same pack)."""
         company = Company(name="DedupCo", website_url="https://dedup.example.com")
         db.add(company)
         db.commit()
@@ -140,7 +140,7 @@ class TestGetEventLikeListFromCoreInstances:
             event_type="funding_raised",
             event_time=_days_ago(5),
             confidence=0.9,
-            pack_id=fractional_cto_pack_id,
+            pack_id=core_pack_id,
         )
         db.add(ev)
         db.commit()
@@ -161,6 +161,41 @@ class TestGetEventLikeListFromCoreInstances:
         result = get_event_like_list_from_core_instances(db, company.id, date.today(), core_pack_id)
         assert len(result) == 1
         assert result[0].event_type == "funding_raised"
+
+    def test_excludes_evidence_events_from_other_pack(
+        self, db: Session, core_pack_id: uuid.UUID, fractional_cto_pack_id: uuid.UUID
+    ) -> None:
+        """Evidence events in a different pack are not loaded (M2 pack isolation)."""
+        company = Company(name="OtherPackEvCo", website_url="https://otherpackev.example.com")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        ev = SignalEvent(
+            company_id=company.id,
+            source="test",
+            event_type="funding_raised",
+            event_time=_days_ago(3),
+            confidence=0.85,
+            pack_id=fractional_cto_pack_id,
+        )
+        db.add(ev)
+        db.commit()
+        db.refresh(ev)
+
+        inst = SignalInstance(
+            entity_id=company.id,
+            signal_id="funding_raised",
+            pack_id=core_pack_id,
+            last_seen=ev.event_time,
+            confidence=0.85,
+            evidence_event_ids=[ev.id],
+        )
+        db.add(inst)
+        db.commit()
+
+        result = get_event_like_list_from_core_instances(db, company.id, date.today(), core_pack_id)
+        assert len(result) == 0
 
     def test_ignores_instances_from_other_pack(
         self, db: Session, core_pack_id: uuid.UUID, fractional_cto_pack_id: uuid.UUID

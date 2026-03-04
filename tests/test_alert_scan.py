@@ -21,6 +21,7 @@ def _create_snapshots(
     """Create a readiness snapshot for a company."""
     if pack_id is None:
         from app.services.pack_resolver import get_default_pack_id
+
         pack_id = get_default_pack_id(db)
     snap = ReadinessSnapshot(
         company_id=company_id,
@@ -227,3 +228,30 @@ class TestRunAlertScan:
             result = run_alert_scan(db, as_of=as_of)
 
         assert result["alerts_created"] == 0
+
+    def test_run_alert_scan_only_considers_specified_pack(
+        self, db: Session, fractional_cto_pack_id, bookkeeping_pack_id
+    ) -> None:
+        """M2 (Issue #193): run_alert_scan with pack_id only considers snapshots in that pack."""
+        company = Company(name="PackScopeCo", website_url="https://packscope.example.com")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        as_of = date.today()
+        prev_date = as_of - timedelta(days=1)
+
+        # Pack A: delta 20 (50 -> 70) — will trigger alert
+        _create_snapshots(db, company.id, prev_date, 50, pack_id=fractional_cto_pack_id)
+        _create_snapshots(db, company.id, as_of, 70, pack_id=fractional_cto_pack_id)
+        # Pack B: delta 5 (40 -> 45) — no alert
+        _create_snapshots(db, company.id, prev_date, 40, pack_id=bookkeeping_pack_id)
+        _create_snapshots(db, company.id, as_of, 45, pack_id=bookkeeping_pack_id)
+
+        result_a = run_alert_scan(db, as_of=as_of, pack_id=fractional_cto_pack_id)
+        result_b = run_alert_scan(db, as_of=as_of, pack_id=bookkeeping_pack_id)
+
+        assert result_a["status"] == "completed"
+        assert result_a["alerts_created"] >= 1
+        assert result_b["status"] == "completed"
+        assert result_b["alerts_created"] == 0
