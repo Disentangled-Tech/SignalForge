@@ -849,6 +849,225 @@ class TestValidatePackSchemaPlaybooks:
         )
 
 
+class TestValidatePlaybookOptionalOreKeys:
+    """Optional ORE playbook keys (Issue #176 M1): validate type when present."""
+
+    def test_playbook_with_all_optional_ore_keys_passes(self) -> None:
+        """Playbook with opening_templates, value_statements, forbidden_phrases, tone passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "test"},
+                "ctas": ["CTA"],
+                "opening_templates": ["Hi {{name}},"],
+                "value_statements": ["We help teams scale."],
+                "forbidden_phrases": ["I saw you", "surveillance"],
+                "tone": "professional and warm",
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_playbook_tone_dict_passes(self) -> None:
+        """Playbook with tone as dict (e.g. per recommendation_type) passes."""
+        from app.packs.schemas import validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "test"},
+                "ctas": ["CTA"],
+                "tone": {"default": "professional", "Soft Value Share": "gentle"},
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_playbook_forbidden_phrases_not_list_raises(self) -> None:
+        """Playbook with forbidden_phrases not a list raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "forbidden_phrases": "I saw you",
+            }
+        }
+        with pytest.raises(ValidationError, match="forbidden_phrases must be a list"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_forbidden_phrases_non_string_item_raises(self) -> None:
+        """Playbook with forbidden_phrases containing non-string raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "forbidden_phrases": ["I saw you", 123],
+            }
+        }
+        with pytest.raises(ValidationError, match="forbidden_phrases.*must be a string"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_opening_templates_not_list_raises(self) -> None:
+        """Playbook with opening_templates not a list raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "opening_templates": "Hi there",
+            }
+        }
+        with pytest.raises(ValidationError, match="opening_templates must be a list"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_value_statements_not_list_raises(self) -> None:
+        """Playbook with value_statements not a list raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "value_statements": "one value",
+            }
+        }
+        with pytest.raises(ValidationError, match="value_statements must be a list"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_tone_not_string_or_dict_raises(self) -> None:
+        """Playbook with tone not string or dict raises ValidationError."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "tone": ["professional"],
+            }
+        }
+        with pytest.raises(ValidationError, match="tone must be a string or dict"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_optional_ore_keys_validated_when_no_recommendation_boundaries(self) -> None:
+        """Optional ORE key validation runs even when esl_policy has no recommendation_boundaries.
+
+        When valid_recommendation_types is empty, sensitivity_levels/recommendation_types
+        checks are skipped, but _validate_playbook_optional_ore_keys still runs.
+        """
+        from app.packs.schemas import validate_pack_schema
+
+        esl_policy_no_boundaries = {"svi_event_types": ["funding_raised"]}
+        playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "test"},
+                "ctas": ["CTA"],
+                "forbidden_phrases": ["x"],
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=esl_policy_no_boundaries,
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_fractional_cto_v1_playbook_still_validates(self) -> None:
+        """Existing fractional_cto_v1 ore_outreach (pattern_frames, value_assets, ctas only) still passes (M1)."""
+        from app.packs.schemas import validate_pack_schema
+
+        # Same shape as packs/fractional_cto_v1/playbooks/ore_outreach.yaml
+        playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {
+                    "momentum": "When a team's pace picks up, tech decisions that worked earlier can start costing more.",
+                    "complexity": "When products add integrations/AI/enterprise asks, systems often need a stabilization pass.",
+                    "pressure": "When timelines get tighter, it helps to reduce decision load and get a clean plan.",
+                    "leadership_gap": "When there isn't a dedicated technical owner yet, teams often benefit from a short-term systems guide.",
+                },
+                "value_assets": [
+                    "2-page Tech Inflection Checklist",
+                    "30-minute 'what's breaking next' map",
+                    "5 questions to reduce tech chaos",
+                ],
+                "ctas": [
+                    "Want me to send that checklist?",
+                    "Open to a 15-min compare-notes call?",
+                    "If helpful, I can share a one-page approach—want it?",
+                ],
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_fractional_cto_v1_pack_loads_with_m1_validation(self) -> None:
+        """load_pack(fractional_cto_v1) succeeds so playbook validation still passes (M1)."""
+        from pathlib import Path
+
+        from app.packs.loader import load_pack
+
+        pack_dir = Path(__file__).resolve().parent.parent / "packs" / "fractional_cto_v1"
+        if not pack_dir.is_dir():
+            pytest.skip("fractional_cto_v1 pack not in repo")
+        pack = load_pack("fractional_cto_v1", "1")
+        assert "ore_outreach" in pack.playbooks
+        assert "pattern_frames" in pack.playbooks["ore_outreach"]
+
+
 class TestValidatePackSchemaStrictSemver:
     """Version semver validation when strict_semver=True (Issue #190)."""
 

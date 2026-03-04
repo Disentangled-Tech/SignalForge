@@ -5,7 +5,7 @@ Fetched HTML is converted to plain text by a single shared utility so that scan,
 ## Implementation
 
 - **Module:** `app/services/extractor.py`
-- **Function:** `extract_text(html: str) -> str`
+- **Function:** `extract_text(html: str | None, *, max_length: int | None = None) -> str` — returns `""` for `None` or empty input; optional `max_length` overrides the default 8000-character cap when provided.
 
 ## Behavior
 

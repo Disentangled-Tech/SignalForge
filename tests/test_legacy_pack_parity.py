@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 import yaml
-from sqlalchemy import and_, delete
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.models import Company, EngagementSnapshot, ReadinessSnapshot, SignalEvent, SignalInstance
@@ -192,13 +192,17 @@ class TestRecommendationBandParity:
 
 
 class TestEmergingCompaniesParityPackVsLegacy:
-    """Same fixture data: pack snapshots vs legacy (pack_id=NULL) → same entity set."""
+    """Same fixture data: pack snapshots vs legacy path → same entity set.
+
+    After Issue #193, \"legacy\" means pack_id=None → default pack resolution,
+    not rows with pack_id=NULL (NOT NULL enforced on snapshot/event tables).
+    """
 
     @pytest.mark.integration
     def test_same_fixture_pack_vs_legacy_snapshots_same_entity_set(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Fixed fixture: pack_id=cto vs pack_id=NULL snapshots → same surfaced entities."""
+        """Fixed fixture: pack path vs legacy (pack_id=None → default pack) → same surfaced entities."""
         companies = [
             Company(
                 name=f"Parity Co {i}",
@@ -238,28 +242,6 @@ class TestEmergingCompaniesParityPackVsLegacy:
             )
             db.add(es)
 
-        # Legacy snapshots (pack_id=NULL)
-        for i, c in enumerate(companies):
-            rs = ReadinessSnapshot(
-                company_id=c.id,
-                as_of=_PARITY_AS_OF,
-                momentum=70,
-                complexity=60,
-                pressure=55,
-                leadership_gap=40,
-                composite=composites[i],
-                pack_id=None,
-            )
-            db.add(rs)
-            es = EngagementSnapshot(
-                company_id=c.id,
-                as_of=_PARITY_AS_OF,
-                esl_score=esl_scores[i],
-                engagement_type="Standard Outreach",
-                cadence_blocked=False,
-                pack_id=None,
-            )
-            db.add(es)
         db.commit()
 
         # Pack path: get_emerging_companies with pack_id=cto
@@ -272,10 +254,7 @@ class TestEmergingCompaniesParityPackVsLegacy:
         )
         pack_entity_ids = {c.id for _, _, c in result_pack}
 
-        # Legacy path: get_emerging_companies with pack_id=None uses default pack,
-        # which matches both cto and NULL. To isolate legacy-only, we'd need a
-        # separate pack. For parity: both paths should surface the same 5 companies.
-        # When pack_filter includes NULL, we get legacy rows. Assert entity set.
+        # Legacy path: pack_id=None → default pack (same as cto). Issue #193: no pack_id=NULL rows.
         result_legacy = get_emerging_companies(
             db,
             _PARITY_AS_OF,
@@ -304,7 +283,7 @@ class TestEmergingCompaniesParityPackVsLegacy:
     def test_same_fixture_pack_vs_legacy_same_ordering_within_tolerance(
         self, db: Session, fractional_cto_pack_id
     ) -> None:
-        """Fixed fixture: pack-only vs legacy-only → same ordering (OutreachScore desc)."""
+        """Fixed fixture: pack path vs legacy (pack_id=None → default pack) → same ordering (OutreachScore desc)."""
         companies = [
             Company(
                 name=f"Order Co {i}",
@@ -354,48 +333,7 @@ class TestEmergingCompaniesParityPackVsLegacy:
         )
         pack_scores = [round(rs.composite * es.esl_score) for rs, es, _ in result_pack]
 
-        # Remove pack snapshots, add legacy-only (pack_id=NULL)
-        db.execute(
-            delete(ReadinessSnapshot).where(
-                and_(
-                    ReadinessSnapshot.as_of == _PARITY_AS_OF,
-                    ReadinessSnapshot.pack_id == fractional_cto_pack_id,
-                )
-            )
-        )
-        db.execute(
-            delete(EngagementSnapshot).where(
-                and_(
-                    EngagementSnapshot.as_of == _PARITY_AS_OF,
-                    EngagementSnapshot.pack_id == fractional_cto_pack_id,
-                )
-            )
-        )
-        db.commit()
-
-        for i, c in enumerate(companies):
-            rs = ReadinessSnapshot(
-                company_id=c.id,
-                as_of=_PARITY_AS_OF,
-                momentum=70,
-                complexity=60,
-                pressure=55,
-                leadership_gap=40,
-                composite=composites[i],
-                pack_id=None,
-            )
-            db.add(rs)
-            es = EngagementSnapshot(
-                company_id=c.id,
-                as_of=_PARITY_AS_OF,
-                esl_score=esl_scores[i],
-                engagement_type="Standard Outreach",
-                cadence_blocked=False,
-                pack_id=None,
-            )
-            db.add(es)
-        db.commit()
-
+        # Legacy path: pack_id=None → default pack (same data). Issue #193: no pack_id=NULL rows.
         result_legacy = get_emerging_companies(
             db,
             _PARITY_AS_OF,
@@ -732,6 +670,7 @@ class TestIngestDeriveScoreParity:
                         event_type="funding_raised",
                         event_time=ev1_time,
                         confidence=0.9,
+                        pack_id=fractional_cto_pack_id,
                     ),
                     SignalEvent(
                         company_id=company.id,
@@ -739,6 +678,7 @@ class TestIngestDeriveScoreParity:
                         event_type="cto_role_posted",
                         event_time=ev2_time,
                         confidence=0.7,
+                        pack_id=fractional_cto_pack_id,
                     ),
                 ]
             )
