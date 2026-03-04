@@ -131,6 +131,22 @@ def test_outreach_recommendations_has_pack_id_and_playbook_id(db: Session) -> No
 
 
 @pytest.mark.integration
+def test_outreach_recommendations_unique_includes_pack_id(db: Session) -> None:
+    """outreach_recommendations unique constraint is (company_id, as_of, pack_id) (Issue #115 M3)."""
+    result = db.execute(
+        text(
+            """
+            SELECT constraint_name FROM information_schema.table_constraints
+            WHERE table_schema = 'public' AND table_name = 'outreach_recommendations'
+            AND constraint_type = 'UNIQUE'
+            """
+        )
+    )
+    names = [r[0] for r in result.fetchall()]
+    assert "uq_outreach_recommendations_company_as_of_pack" in names
+
+
+@pytest.mark.integration
 def test_readiness_snapshots_unique_includes_pack_id(db: Session) -> None:
     """readiness_snapshots unique constraint is (company_id, as_of, pack_id)."""
     result = db.execute(
