@@ -124,6 +124,8 @@ def generate_ore_recommendation(
                     # Mark for manual review — still store with empty draft
                     draft_variants = [draft]  # Store original, strategy_notes will flag
 
+    # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
+    generation_version = (pack.manifest.get("version") or "1")[:64]
     rec = OutreachRecommendation(
         company_id=company_id,
         as_of=as_of,
@@ -133,6 +135,7 @@ def generate_ore_recommendation(
         draft_variants=draft_variants if draft_variants else None,
         strategy_notes=None,
         safeguards_triggered=gate.safeguards_triggered or None,
+        generation_version=generation_version,
         pack_id=pack_id,
     )
     db.add(rec)
