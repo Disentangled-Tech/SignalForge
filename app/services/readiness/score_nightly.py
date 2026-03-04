@@ -11,7 +11,6 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import JobRun, SignalEvent, Watchlist
@@ -74,12 +73,7 @@ def run_score_nightly(
             SignalEvent.event_time >= cutoff_dt,
         ]
         if resolved_pack_id is not None:
-            event_filters.append(
-                or_(
-                    SignalEvent.pack_id == resolved_pack_id,
-                    SignalEvent.pack_id.is_(None),
-                )
-            )
+            event_filters.append(SignalEvent.pack_id == resolved_pack_id)
         ids_from_events = {
             row[0]
             for row in db.query(SignalEvent.company_id).filter(*event_filters).distinct().all()

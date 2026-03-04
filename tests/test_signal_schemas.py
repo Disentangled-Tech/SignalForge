@@ -59,7 +59,7 @@ def test_signal_event_to_company_signal_event_read(db: Session) -> None:
     assert schema.summary == "Raised $10M"
     assert schema.url == "https://example.com/funding"
     assert schema.confidence == 0.85
-    assert schema.pack_id is None
+    assert schema.pack_id is not None  # store_signal_event fills default pack when omitted (M1)
 
 
 def test_signal_event_to_company_signal_event_read_with_pack_id(

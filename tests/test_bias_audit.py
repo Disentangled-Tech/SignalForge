@@ -39,7 +39,12 @@ def _create_company(
     return c
 
 
-def _create_engagement_snapshot(db: Session, company_id: int, as_of: date) -> EngagementSnapshot:
+def _create_engagement_snapshot(
+    db: Session, company_id: int, as_of: date, pack_id=None
+) -> EngagementSnapshot:
+    if pack_id is None:
+        from app.services.pack_resolver import get_default_pack_id
+        pack_id = get_default_pack_id(db)
     db.add(
         ReadinessSnapshot(
             company_id=company_id,
@@ -49,6 +54,7 @@ def _create_engagement_snapshot(db: Session, company_id: int, as_of: date) -> En
             pressure=50,
             leadership_gap=50,
             composite=50,
+            pack_id=pack_id,
         )
     )
     es = EngagementSnapshot(
@@ -57,6 +63,7 @@ def _create_engagement_snapshot(db: Session, company_id: int, as_of: date) -> En
         esl_score=0.8,
         engagement_type="Direct Value Share",
         cadence_blocked=False,
+        pack_id=pack_id,
     )
     db.add(es)
     db.commit()
@@ -69,7 +76,11 @@ def _create_signal_event(
     company_id: int,
     event_type: str,
     event_time: datetime | None = None,
+    pack_id=None,
 ) -> SignalEvent:
+    if pack_id is None:
+        from app.services.pack_resolver import get_default_pack_id
+        pack_id = get_default_pack_id(db)
     if event_time is None:
         event_time = datetime.now(UTC) - timedelta(days=1)
     ev = SignalEvent(
@@ -77,6 +88,7 @@ def _create_signal_event(
         source="test",
         event_type=event_type,
         event_time=event_time,
+        pack_id=pack_id,
     )
     db.add(ev)
     db.commit()

@@ -127,7 +127,7 @@ class TestWatchlistList:
         assert data["items"] == []
 
     def test_list_watchlist_with_composite_and_delta(
-        self, db: Session, api_client: TestClient
+        self, db: Session, api_client: TestClient, fractional_cto_pack_id
     ) -> None:
         """GET returns items with latest_composite and delta_7d."""
         company = Company(name="DeltaCo", website_url="https://delta.example.com")
@@ -150,6 +150,7 @@ class TestWatchlistList:
             pressure=60,
             leadership_gap=55,
             composite=72,
+            pack_id=fractional_cto_pack_id,
         )
         snap_prev = ReadinessSnapshot(
             company_id=company.id,
@@ -159,6 +160,7 @@ class TestWatchlistList:
             pressure=55,
             leadership_gap=50,
             composite=62,
+            pack_id=fractional_cto_pack_id,
         )
         db.add(snap_today)
         db.add(snap_prev)

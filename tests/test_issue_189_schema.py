@@ -119,7 +119,7 @@ def test_outreach_recommendations_has_pack_id_and_playbook_id(db: Session) -> No
             """
             SELECT column_name FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'outreach_recommendations'
-            AND column_name IN ('pack_id', 'playbook_id')
+            AND column_name IN ('pack_id', 'playbook_id', 'generation_version')
             ORDER BY column_name
             """
         )
@@ -127,6 +127,7 @@ def test_outreach_recommendations_has_pack_id_and_playbook_id(db: Session) -> No
     cols = [r[0] for r in result.fetchall()]
     assert "pack_id" in cols
     assert "playbook_id" in cols
+    assert "generation_version" in cols
 
 
 @pytest.mark.integration

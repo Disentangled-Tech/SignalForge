@@ -48,12 +48,14 @@ def get_ore_playbook(pack: Pack | None) -> dict[str, Any]:
             "pattern_frames": PATTERN_FRAMES,
             "value_assets": VALUE_ASSETS,
             "ctas": CTAS,
+            "sensitivity_levels": None,
         }
     playbook = pack.playbooks.get("ore_outreach") or {}
     return {
         "pattern_frames": playbook.get("pattern_frames") or PATTERN_FRAMES,
         "value_assets": playbook.get("value_assets") or VALUE_ASSETS,
         "ctas": playbook.get("ctas") or CTAS,
+        "sensitivity_levels": playbook.get("sensitivity_levels"),  # optional; None or [] = allow all (M4)
     }
 
 

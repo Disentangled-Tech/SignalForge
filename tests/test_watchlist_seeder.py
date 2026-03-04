@@ -10,7 +10,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.evidence import store_evidence_bundle
-from app.models import Company, ReadinessSnapshot, SignalEvent, SignalInstance
+from app.ingestion.event_storage import store_signal_event
+from app.models import Company, ReadinessSnapshot, SignalEvent, SignalInstance, Watchlist
 from app.models import EvidenceBundle as EvidenceBundleORM
 from app.pipeline.deriver_engine import run_deriver
 from app.schemas.core_events import (
@@ -644,6 +645,23 @@ def test_seed_derive_same_core_instances_across_packs(
     seed_from_bundles(db, [bundle_id])
     company = db.query(Company).filter(Company.domain == "packparity.example.com").first()
     assert company is not None
+    db.add(Watchlist(company_id=company.id, is_active=True))
+    db.commit()
+
+    # So second_pack has an event and gets a snapshot (M1: seed stores only default pack).
+    store_signal_event(
+        db,
+        company_id=company.id,
+        source="watchlist_seeder",
+        source_event_id=f"{bundle_id}:second_pack",
+        event_type="funding_raised",
+        event_time=datetime(2026, 2, 14, 10, 0, 0, tzinfo=UTC),
+        title="Seed Pack Parity",
+        summary="Funding",
+        url=None,
+        confidence=0.9,
+        pack_id=second_pack_id,
+    )
 
     run_deriver(db, pack_id=fractional_cto_pack_id, company_ids=[company.id])
 
