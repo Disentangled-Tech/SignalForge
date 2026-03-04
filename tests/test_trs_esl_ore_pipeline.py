@@ -14,6 +14,7 @@ from unittest.mock import patch
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot, SignalPack
+from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME
 
 # Critic-compliant draft for integration test (no surveillance, single CTA, opt-out)
 _ORE_DRAFT = {
@@ -109,6 +110,10 @@ def test_trs_esl_ore_pipeline_integration(db: Session) -> None:
     assert rec.company_id == company.id
     assert rec.as_of == as_of
     assert rec.pack_id == pack_id, "ORE pipeline must set pack_id on OutreachRecommendation"
+    # Issue #176 M2: playbook_id set by ORE pipeline (playbook name used to load)
+    assert rec.playbook_id == DEFAULT_PLAYBOOK_NAME, (
+        "ORE pipeline must set playbook_id on OutreachRecommendation"
+    )
     # Issue #115 M1: generation_version set from pack manifest
     assert rec.generation_version is not None
     assert rec.generation_version == "1", "fractional_cto_v1 pack version is 1"
@@ -248,8 +253,8 @@ def test_ore_playbook_sensitivity_excluded_no_draft(db: Session) -> None:
     db.add(snapshot)
     db.commit()
 
+    from app.services.ore.draft_generator import CTAS, PATTERN_FRAMES, VALUE_ASSETS
     from app.services.ore.ore_pipeline import generate_ore_recommendation
-    from app.services.ore.draft_generator import PATTERN_FRAMES, VALUE_ASSETS, CTAS
 
     # Playbook that only allows low/medium; entity has high → no draft
     restricted_playbook = {
@@ -309,7 +314,7 @@ def test_ore_playbook_sensitivity_included_draft_generated(db: Session) -> None:
     db.add(snapshot)
     db.commit()
 
-    from app.services.ore.draft_generator import PATTERN_FRAMES, VALUE_ASSETS, CTAS
+    from app.services.ore.draft_generator import CTAS, PATTERN_FRAMES, VALUE_ASSETS
 
     allowed_playbook = {
         "pattern_frames": PATTERN_FRAMES,
@@ -318,12 +323,15 @@ def test_ore_playbook_sensitivity_included_draft_generated(db: Session) -> None:
         "sensitivity_levels": ["low", "medium"],
     }
 
-    with patch(
-        "app.services.ore.ore_pipeline.get_ore_playbook",
-        return_value=allowed_playbook,
-    ), patch(
-        "app.services.ore.ore_pipeline.generate_ore_draft",
-        return_value=_ORE_DRAFT,
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=allowed_playbook,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
     ):
         from app.services.ore.ore_pipeline import generate_ore_recommendation
 
@@ -339,7 +347,11 @@ def test_ore_playbook_sensitivity_included_draft_generated(db: Session) -> None:
         )
 
     assert rec is not None
-    assert rec.recommendation_type in ("Low-Pressure Intro", "Standard Outreach", "Direct Strategic Outreach")
+    assert rec.recommendation_type in (
+        "Low-Pressure Intro",
+        "Standard Outreach",
+        "Direct Strategic Outreach",
+    )
     assert rec.draft_variants and len(rec.draft_variants) >= 1
 
 
@@ -388,7 +400,11 @@ def test_ore_playbook_no_sensitivity_levels_unchanged(db: Session) -> None:
         )
 
     assert rec is not None
-    assert rec.recommendation_type in ("Low-Pressure Intro", "Standard Outreach", "Direct Strategic Outreach")
+    assert rec.recommendation_type in (
+        "Low-Pressure Intro",
+        "Standard Outreach",
+        "Direct Strategic Outreach",
+    )
     assert rec.draft_variants and len(rec.draft_variants) >= 1
 
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.ore.playbook_schema import ORE_PLAYBOOK_OPTIONAL_KEYS, OREPlaybook
 
 
@@ -11,9 +9,15 @@ class TestOREPlaybookSchema:
     """ORE playbook TypedDict and optional keys constant."""
 
     def test_optional_keys_defined(self) -> None:
-        """ORE_PLAYBOOK_OPTIONAL_KEYS contains expected optional keys."""
+        """ORE_PLAYBOOK_OPTIONAL_KEYS contains expected optional keys (M1 includes sensitivity_levels)."""
         assert ORE_PLAYBOOK_OPTIONAL_KEYS == frozenset(
-            {"opening_templates", "value_statements", "forbidden_phrases", "tone"}
+            {
+                "opening_templates",
+                "value_statements",
+                "forbidden_phrases",
+                "tone",
+                "sensitivity_levels",
+            }
         )
 
     def test_ore_playbook_minimal_shape(self) -> None:
