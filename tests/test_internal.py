@@ -409,6 +409,41 @@ class TestRunAlertScan:
         assert data["alerts_created"] == 2
         assert data["companies_scanned"] == 10
         mock_alert_scan.assert_called_once()
+        # When workspace_id omitted, endpoint resolves pack and passes pack_id (Issue #193)
+        call_kwargs = mock_alert_scan.call_args[1]
+        assert "pack_id" in call_kwargs
+        assert call_kwargs["pack_id"] is not None
+
+    @patch("app.services.pack_resolver.get_pack_for_workspace", return_value=None)
+    @patch("app.services.pack_resolver.get_default_pack_id")
+    @patch("app.services.readiness.alert_scan.run_alert_scan")
+    def test_run_alert_scan_without_workspace_id_calls_with_resolved_pack_id(
+        self,
+        mock_alert_scan,
+        mock_get_default_pack_id,
+        _mock_get_pack_for_workspace,
+        client: TestClient,
+    ):
+        """POST /internal/run_alert_scan without workspace_id calls run_alert_scan with resolved default pack_id."""
+        import uuid
+
+        resolved_pack_id = uuid.uuid4()
+        mock_get_default_pack_id.return_value = resolved_pack_id
+        mock_alert_scan.return_value = {
+            "status": "completed",
+            "alerts_created": 0,
+            "companies_scanned": 0,
+        }
+
+        response = client.post(
+            "/internal/run_alert_scan",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        mock_alert_scan.assert_called_once()
+        call_kwargs = mock_alert_scan.call_args[1]
+        assert call_kwargs["pack_id"] == resolved_pack_id
 
     def test_run_alert_scan_missing_token_returns_422(self, client: TestClient):
         """POST /internal/run_alert_scan without token header returns 422."""
@@ -437,6 +472,61 @@ class TestRunAlertScan:
         data = response.json()
         assert data["status"] == "failed"
         assert "Alert scan error" in data["error"]
+
+
+# ── /internal/run_bias_audit ──────────────────────────────────────────
+
+
+class TestRunBiasAudit:
+    """POST /internal/run_bias_audit (Issue #112, workspace_id Issue #193)."""
+
+    @patch("app.services.bias_audit.run_bias_audit")
+    def test_run_bias_audit_without_workspace_id_calls_with_default_workspace_id(
+        self, mock_audit, client: TestClient
+    ):
+        """POST /internal/run_bias_audit without workspace_id calls run_bias_audit with DEFAULT_WORKSPACE_ID."""
+        from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+
+        mock_audit.return_value = {
+            "status": "completed",
+            "job_run_id": 1,
+            "report_id": 42,
+            "surfaced_count": 5,
+            "flags": [],
+        }
+
+        response = client.post(
+            "/internal/run_bias_audit",
+            headers={"X-Internal-Token": VALID_TOKEN},
+        )
+
+        assert response.status_code == 200
+        mock_audit.assert_called_once()
+        call_kwargs = mock_audit.call_args[1]
+        assert call_kwargs["workspace_id"] == DEFAULT_WORKSPACE_ID
+
+    @patch("app.services.bias_audit.run_bias_audit")
+    def test_run_bias_audit_with_workspace_id_passes_through(self, mock_audit, client: TestClient):
+        """POST /internal/run_bias_audit with workspace_id query param forwards it."""
+        workspace_id = "00000000-0000-0000-0000-000000000002"
+        mock_audit.return_value = {
+            "status": "completed",
+            "job_run_id": 1,
+            "report_id": 43,
+            "surfaced_count": 0,
+            "flags": [],
+        }
+
+        response = client.post(
+            "/internal/run_bias_audit",
+            headers={"X-Internal-Token": VALID_TOKEN},
+            params={"workspace_id": workspace_id},
+        )
+
+        assert response.status_code == 200
+        mock_audit.assert_called_once()
+        call_kwargs = mock_audit.call_args[1]
+        assert call_kwargs["workspace_id"] == workspace_id
 
 
 # ── /internal/run_monitor (M6, Issue #280) ───────────────────────────

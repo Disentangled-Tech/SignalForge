@@ -15,8 +15,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models import BiasReport, Company, EngagementSnapshot, JobRun, SignalEvent
+from app.pipeline.stages import DEFAULT_WORKSPACE_ID
 from app.services.analysis import ALLOWED_STAGES
-from app.services.pack_resolver import get_default_pack_id
+from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -135,21 +136,29 @@ def compute_stage_skew(db: Session, company_ids: list[int]) -> dict:
 def run_bias_audit(
     db: Session,
     report_month: date | None = None,
+    workspace_id: str | None = None,
     pack_id: UUID | None = None,
 ) -> dict:
-    """Run monthly bias audit (Issue #112). Pack-scoped reads (M2, Issue #193).
+    """Run monthly bias audit (Issue #112). Pack-scoped (Issue #193).
 
-    Creates JobRun, computes metrics, persists BiasReport, returns summary.
-    Default report_month is last month. When pack_id is None, uses default pack.
+    Creates JobRun, computes metrics, persists BiasReport keyed by (report_month, pack_id).
+    Default report_month is last month. When workspace_id is omitted, uses DEFAULT_WORKSPACE_ID.
+    Pack is resolved from workspace when pack_id is None.
     """
     if report_month is None:
         today = date.today()
         first = today.replace(day=1)
         report_month = (first - timedelta(days=1)).replace(day=1)
+
+    ws_id = workspace_id or DEFAULT_WORKSPACE_ID
     if pack_id is None:
-        pack_id = get_default_pack_id(db)
+        pack_id = get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
     if pack_id is None:
-        job = JobRun(job_type="bias_audit", status="running")
+        job = JobRun(
+            job_type="bias_audit",
+            status="running",
+            workspace_id=UUID(ws_id),
+        )
         db.add(job)
         db.commit()
         db.refresh(job)
@@ -166,7 +175,11 @@ def run_bias_audit(
             "error": "No default pack; bias audit requires pack-scoped data",
         }
 
-    job = JobRun(job_type="bias_audit", status="running")
+    job = JobRun(
+        job_type="bias_audit",
+        status="running",
+        workspace_id=UUID(ws_id),
+    )
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -201,7 +214,9 @@ def run_bias_audit(
         if max_stage_pct > BIAS_THRESHOLD_PCT:
             flags.append("stage_skew")
 
+        # Include pack_id in payload for traceability (Issue #193)
         payload = {
+            "pack_id": str(pack_id),
             "funding_concentration": funding,
             "alignment_skew": alignment,
             "stage_skew": stage,
@@ -212,8 +227,14 @@ def run_bias_audit(
             "threshold": BIAS_THRESHOLD_PCT,
         }
 
-        # Upsert: replace existing report for same month
-        existing = db.query(BiasReport).filter(BiasReport.report_month == report_month).first()
+        existing = (
+            db.query(BiasReport)
+            .filter(
+                BiasReport.report_month == report_month,
+                BiasReport.pack_id == pack_id,
+            )
+            .first()
+        )
         if existing:
             existing.surfaced_count = surfaced_count
             existing.payload = payload
@@ -223,6 +244,7 @@ def run_bias_audit(
         else:
             report = BiasReport(
                 report_month=report_month,
+                pack_id=pack_id,
                 surfaced_count=surfaced_count,
                 payload=payload,
             )
@@ -236,8 +258,9 @@ def run_bias_audit(
         db.commit()
 
         logger.info(
-            "Bias audit completed: report_month=%s surfaced=%d flags=%s",
+            "Bias audit completed: report_month=%s pack_id=%s surfaced=%d flags=%s",
             report_month,
+            pack_id,
             surfaced_count,
             flags,
         )

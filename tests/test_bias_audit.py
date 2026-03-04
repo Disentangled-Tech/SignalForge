@@ -272,6 +272,44 @@ class TestRunBiasAudit:
         count = db.query(BiasReport).filter(BiasReport.report_month == month).count()
         assert count == 1
 
+    def test_two_workspaces_same_month_produce_two_reports(
+        self,
+        db: Session,
+        fractional_cto_pack_id,
+        second_pack_id,
+    ) -> None:
+        """Two workspaces (different packs) for same month produce two BiasReport rows (Issue #193)."""
+        from uuid import uuid4
+
+        from app.models.workspace import Workspace
+
+        month = date(2040, 6, 1)
+        ws1_id = uuid4()
+        ws2_id = uuid4()
+        db.add(Workspace(id=ws1_id, name="W1", active_pack_id=fractional_cto_pack_id))
+        db.add(Workspace(id=ws2_id, name="W2", active_pack_id=second_pack_id))
+        db.commit()
+
+        c1 = _create_company(db, "Co1", alignment_ok_to_contact=True)
+        _create_engagement_snapshot(db, c1.id, date(2040, 6, 15), pack_id=fractional_cto_pack_id)
+        _create_engagement_snapshot(db, c1.id, date(2040, 6, 15), pack_id=second_pack_id)
+
+        result1 = run_bias_audit(db, report_month=month, workspace_id=str(ws1_id))
+        result2 = run_bias_audit(db, report_month=month, workspace_id=str(ws2_id))
+
+        assert result1["status"] == "completed"
+        assert result2["status"] == "completed"
+        assert result1["report_id"] != result2["report_id"]
+
+        reports = (
+            db.query(BiasReport)
+            .filter(BiasReport.report_month == month)
+            .order_by(BiasReport.pack_id)
+            .all()
+        )
+        assert len(reports) == 2
+        assert {r.pack_id for r in reports} == {fractional_cto_pack_id, second_pack_id}
+
 
 class TestInternalRunBiasAudit:
     @patch("app.services.bias_audit.run_bias_audit")
