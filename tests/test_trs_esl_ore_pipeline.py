@@ -4,6 +4,9 @@ Simulates: Company with TRS=82, StabilityModifier=0.5, Cooldown inactive, High a
 Expects: Recommendation capped at Soft Value Share, No surveillance language,
          Single CTA, OutreachScore computed correctly.
 Fixture strategy: Insert Company and ReadinessSnapshot directly (no SignalEvents).
+
+TODO(M4): When selector is wired in pipeline (Issue #117), add integration test that
+a snapshot with a clear dominant dimension yields pattern_frame from selector.
 """
 
 from __future__ import annotations

@@ -35,6 +35,8 @@ For each company surfaced in Weekly Review, ORE outputs a compact “outreach ki
 
 1) Inputs and Data Contract
 
+**ESL context (compute_esl_from_context).** The pipeline loads ESL from DB via `compute_esl_from_context(db, company_id, as_of, pack_id, core_pack_id)`. The return shape is documented in the implementation plan (Issue #122, §1.1.1) and typed as `EslContextResult` in `app/services/esl/engagement_snapshot_writer.py`. Keys include `esl_composite`, `recommendation_type`, `explain` (with `tone_constraint`, `esl_decision`, etc.), and **signal_ids** (M1, Issue #120): the entity’s signal set for the pack (or core pack when `core_pack_id` is set), used by the pack-aware critic. Consumers must not rely on undocumented keys.
+
 Required Inputs
  • Company: name, website, short description (if known)
  • Founder: name, role, contact options (if known)
