@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import Company, ReadinessSnapshot, Watchlist
+from app.services.watchlist_service import list_watchlist
 
 
 @pytest.fixture
@@ -175,6 +176,55 @@ class TestWatchlistList:
         assert our_item["company_name"] == "DeltaCo"
         assert our_item["latest_composite"] == 72
         assert our_item["delta_7d"] == 10  # 72 - 62
+
+    def test_list_watchlist_pack_scoped_returns_only_specified_pack_readiness(
+        self, db: Session, fractional_cto_pack_id, bookkeeping_pack_id
+    ) -> None:
+        """M2 (Issue #193): list_watchlist(pack_id=...) returns readiness only for that pack."""
+        company = Company(name="PackListCo", website_url="https://packlist.example.com")
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        entry = Watchlist(company_id=company.id, added_reason="Test", is_active=True)
+        db.add(entry)
+        db.commit()
+
+        today = date.today()
+        # Pack A: composite 80; Pack B: composite 50 (same company, same as_of)
+        snap_a = ReadinessSnapshot(
+            company_id=company.id,
+            as_of=today,
+            momentum=80,
+            complexity=80,
+            pressure=80,
+            leadership_gap=80,
+            composite=80,
+            pack_id=fractional_cto_pack_id,
+        )
+        snap_b = ReadinessSnapshot(
+            company_id=company.id,
+            as_of=today,
+            momentum=50,
+            complexity=50,
+            pressure=50,
+            leadership_gap=50,
+            composite=50,
+            pack_id=bookkeeping_pack_id,
+        )
+        db.add(snap_a)
+        db.add(snap_b)
+        db.commit()
+
+        items_a = list_watchlist(db, as_of=today, pack_id=fractional_cto_pack_id)
+        items_b = list_watchlist(db, as_of=today, pack_id=bookkeeping_pack_id)
+
+        our_a = next((i for i in items_a if i.company_id == company.id), None)
+        our_b = next((i for i in items_b if i.company_id == company.id), None)
+        assert our_a is not None
+        assert our_b is not None
+        assert our_a.latest_composite == 80
+        assert our_b.latest_composite == 50
 
 
 class TestWatchlistAuth:

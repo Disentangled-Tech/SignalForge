@@ -2,6 +2,10 @@
 
 Used by snapshot_writer when core_pack_id is set: "what signals exist" comes from
 core instances; evidence_event_ids (or last_seen fallback) supplies event_time for decay.
+
+Invariant (M2, Issue #193): Evidence events loaded by ID must belong to the same pack
+as the instances (core_pack_id). The batch load filters SignalEvent by pack_id to prevent
+cross-pack leakage; only events with pack_id == core_pack_id are included.
 """
 
 from __future__ import annotations
@@ -30,8 +34,9 @@ def get_event_like_list_from_core_instances(
     instance: if evidence_event_ids is present, resolve to SignalEvents (batched:
     one query per company for all evidence IDs, then dedupe); otherwise add one
     synthetic event with signal_id as event_type, last_seen as event_time, instance
-    confidence. Only events within (as_of - 365 days, as_of] are included. Evidence
+    confidence.     Only events within (as_of - 365 days, as_of] are included. Evidence
     IDs are capped at MAX_EVIDENCE_EVENT_IDS_PER_COMPANY to avoid oversized IN clauses.
+    Only SignalEvents with pack_id == core_pack_id are loaded (M2, Issue #193).
 
     Returns list of objects with .event_type, .event_time, .confidence (compatible
     with readiness_engine _EventLike protocol).
@@ -59,12 +64,14 @@ def get_event_like_list_from_core_instances(
 
     if all_evidence_ids:
         # Batch load: one query for all evidence events in window (avoids N+1).
+        # Pack-scoped: only load events in core pack to prevent cross-pack leakage (M2).
         unique_ids = list(dict.fromkeys(all_evidence_ids))[:MAX_EVIDENCE_EVENT_IDS_PER_COMPANY]
         events_batch = (
             db.query(SignalEvent)
             .filter(
                 SignalEvent.id.in_(unique_ids),
                 SignalEvent.event_time >= cutoff_dt,
+                SignalEvent.pack_id == core_pack_id,
             )
             .order_by(SignalEvent.event_time.desc())
             .all()

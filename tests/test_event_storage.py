@@ -232,3 +232,48 @@ def test_store_with_evidence_bundle_id(db: Session) -> None:
     assert result is not None
     assert result.evidence_bundle_id == bundle.id
     assert result.source == "watchlist_seeder"
+
+
+def test_same_source_event_id_different_packs_stores_two_events(
+    db: Session, fractional_cto_pack_id, bookkeeping_pack_id
+) -> None:
+    """M2 (Issue #193): Same (source, source_event_id) in two packs yields two rows (no cross-pack dedup)."""
+    company = Company(name="TwoPackCo", website_url="https://twopack.example.com")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    source_event_id = f"cross-pack-{uuid.uuid4().hex[:12]}"
+    r1 = store_signal_event(
+        db,
+        company_id=company.id,
+        source="test_crosspack",
+        source_event_id=source_event_id,
+        event_type="funding_raised",
+        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
+    )
+    r2 = store_signal_event(
+        db,
+        company_id=company.id,
+        source="test_crosspack",
+        source_event_id=source_event_id,
+        event_type="funding_raised",
+        event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        pack_id=bookkeeping_pack_id,
+    )
+
+    assert r1 is not None
+    assert r2 is not None
+    assert r1.id != r2.id
+    assert r1.pack_id == fractional_cto_pack_id
+    assert r2.pack_id == bookkeeping_pack_id
+    count = (
+        db.query(SignalEvent)
+        .filter(
+            SignalEvent.source == "test_crosspack",
+            SignalEvent.source_event_id == source_event_id,
+        )
+        .count()
+    )
+    assert count == 2

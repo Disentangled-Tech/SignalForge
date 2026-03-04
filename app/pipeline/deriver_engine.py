@@ -95,15 +95,15 @@ def run_deriver(
 ) -> dict[str, Any]:
     """Run deriver: read SignalEvents, apply core derivers, upsert signal_instances.
 
-    Issue #287 M2: Does not require a workspace pack. When pack_id is None, uses core pack
-    only. When pack_id is provided, still writes to core pack (passed pack used for JobRun
-    audit only). Events with company_id is None are skipped. No filter on SignalEvent.pack_id
-    (processes all events). Idempotent: re-run produces same signal_instances (upsert by
-    natural key). Creates JobRun record for audit.
+    Issue #287 M2: SignalEvent reads are pack-scoped (M2, Issue #193). When pack_id is None,
+    the read pack is the default pack (or core if no default); when pack_id is provided,
+    that pack is used. Writes always go to the core pack. JobRun.pack_id is the passed pack
+    or core for audit. Events with company_id is None are skipped. Idempotent: re-run
+    produces same signal_instances (upsert by natural key). Creates JobRun record for audit.
 
     Args:
         company_ids: Optional list of company IDs to scope events (test-only; not
-            exposed via API). When None, processes all events.
+            exposed via API). When None, processes all events in the read pack.
 
     Returns:
         dict with status, job_run_id, instances_upserted, events_processed, events_skipped
