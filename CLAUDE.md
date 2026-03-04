@@ -21,7 +21,7 @@ SignalForge is a single-user intelligence assistant that monitors startup compan
 - **Database:** PostgreSQL, SQLAlchemy 2.x ORM, Alembic migrations, psycopg3
 - **Validation:** Pydantic 2.x
 - **Templates:** Jinja2 (server-rendered, no SPA)
-- **LLM:** Supported providers: **openai**, **anthropic**; abstraction in `app/llm/`
+- **LLM:** **Anthropic** (Claude) only; abstraction in `app/llm/`. See `rules/ADR-012-LLM-Anthropic-Only.md`.
 - **HTTP client:** httpx (async)
 - **HTML parsing:** BeautifulSoup4
 - **Config:** PyYAML, python-dotenv
@@ -49,7 +49,7 @@ Server runs at `http://localhost:8000`.
 
 ### Key Environment Variables
 
-Supported LLM providers: **openai**, **anthropic**. Set `LLM_PROVIDER` to one of these. For Anthropic, set `LLM_API_KEY` (or `ANTHROPIC_API_KEY`) to your Claude API key.
+LLM is **Anthropic (Claude) only** (ADR-012). Set `LLM_PROVIDER=anthropic` and `LLM_API_KEY` (or `ANTHROPIC_API_KEY`) to your Claude API key.
 
 ```
 DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/signalforge_dev
@@ -193,6 +193,8 @@ scripts/            # CLI utilities
 rules/              # ADRs, TDD rules, design docs
 docs/               # Comprehensive documentation
 ```
+
+**HTML→text:** `app/services/extractor.py` is the shared extraction used by scan, Scout, and monitor (no pack-specific logic).
 
 ---
 

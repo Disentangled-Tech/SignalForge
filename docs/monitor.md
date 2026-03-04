@@ -4,7 +4,7 @@ The **Diff-Based Monitor** is a pack-agnostic pipeline that watches company web 
 
 ## What the Monitor Does
 
-1. **Fetch** — Robots-aware fetch of company pages (blog, careers, press, pricing, docs/changelog) so crawls respect robots.txt.
+1. **Fetch** — Robots-aware fetch of company pages (blog, careers, press, pricing, docs/changelog) so crawls respect robots.txt. Fetched HTML is converted to plain text via the shared [text extraction](text-extraction.md) utility (strip HTML, ~8k limit) before snapshot and diff.
 2. **Snapshot** — Store page content in a dedicated snapshot store keyed by `(company_id, url)`; one row per URL updated on each fetch (or append-only by fetch time, per implementation).
 3. **Diff** — Compare current content with the previous snapshot; produce a structured change event (before/after hash, diff summary, optional snippets).
 4. **Interpret** — LLM interprets each change event and outputs candidate core event types (e.g. `pricing_changed`, `product_launch_detected`); every type is validated against the core taxonomy; invalid types are dropped.

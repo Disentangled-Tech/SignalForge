@@ -80,3 +80,34 @@ def is_valid_signal_id(signal_id: str) -> bool:
         True if signal_id is a known core signal; False otherwise.
     """
     return signal_id in get_core_signal_ids()
+
+
+def get_core_signal_sensitivity(
+    signal_id: str,
+    taxonomy: dict[str, Any] | None = None,
+) -> str | None:
+    """Return the core taxonomy sensitivity level for a signal_id, if defined.
+
+    Reads the optional 'signals' map (signal_id -> { sensitivity?: "low"|"medium"|"high" }).
+    If taxonomy is provided, uses it and does not call load_core_taxonomy(); callers
+    looking up many signals in a loop should load once and pass taxonomy to avoid
+    repeated file reads (load_core_taxonomy is cached, but passing avoids lookup).
+
+    Args:
+        signal_id: The signal identifier to look up.
+        taxonomy: Optional pre-loaded taxonomy dict. If None, uses load_core_taxonomy().
+
+    Returns:
+        'low', 'medium', or 'high' when defined; None otherwise.
+    """
+    data = taxonomy if taxonomy is not None else load_core_taxonomy()
+    signals = data.get("signals")
+    if not isinstance(signals, dict):
+        return None
+    entry = signals.get(signal_id)
+    if not isinstance(entry, dict):
+        return None
+    sens = entry.get("sensitivity")
+    if sens in ("low", "medium", "high"):
+        return sens
+    return None

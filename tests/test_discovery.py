@@ -178,6 +178,34 @@ class TestDiscoverPages:
                 # Single positional arg (url) only; no second positional True
                 assert len(call[0]) == 1 or (len(call[0]) == 2 and call[0][1] is False)
 
+    async def test_discover_pages_extracted_text_contract_no_tags_under_8k(self):
+        """Integration: fetch → extract_text path yields plain text (no HTML tags, length ≤ 8k).
+
+        Ensures the shared text extraction contract (Issue #12) is satisfied at the
+        page_discovery call site: extracted content has no angle brackets and is
+        capped at MAX_TEXT_LENGTH (8000). Use >100 chars so page passes meaningful-content check.
+        """
+        from app.services.extractor import MAX_TEXT_LENGTH
+
+        meaningful = "Main content here with enough text to pass the minimum length. " * 3  # >100
+        html_with_tags = (
+            "<html><head><title>Title</title></head><body>"
+            "<nav>Nav</nav><main><p>" + meaningful + "</p><a href='/x'>Link</a></main>"
+            "</body></html>"
+        )
+        with patch("app.services.page_discovery.fetch_page", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = html_with_tags
+
+            results = await discover_pages("https://example.com")
+            assert len(results) >= 1
+
+            for url, text, _raw_html in results:
+                assert "<" not in text, f"Extracted text must not contain '<': {url}"
+                assert ">" not in text, f"Extracted text must not contain '>': {url}"
+                assert len(text) <= MAX_TEXT_LENGTH, (
+                    f"Extracted text length must be ≤ {MAX_TEXT_LENGTH}: {url} got {len(text)}"
+                )
+
 
 # ---------------------------------------------------------------------------
 # Valid page validation

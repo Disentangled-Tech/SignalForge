@@ -8,6 +8,8 @@ Branch 20260228 created scout_evidence_bundles with scout_run_id INTEGER FK to
 scout_runs.id; the ORM (ScoutEvidenceBundle) expects UUID FK to scout_runs.run_id.
 This migration aligns the schema with the ORM so run_scout and tests pass.
 Downgrade: deletes orphan bundles (run no longer exists) before backfill for clean reversible downgrade.
+Downgrade looks up the FK constraint by name from pg_constraint so it runs whether the FK was
+created with the standard name or an auto-generated name (e.g. from 20260227 branch).
 """
 
 from collections.abc import Sequence
@@ -94,14 +96,39 @@ def downgrade() -> None:
     if row is None or row[0] != "uuid":
         return
 
-    op.drop_constraint(
-        "scout_evidence_bundles_scout_run_id_fkey",
-        "scout_evidence_bundles",
-        type_="foreignkey",
+    # Drop FK by actual name: 20260227 branch may have created it with auto-generated name.
+    # IF EXISTS allows test_migration_20260238_* (which drops constraint to create orphan) to pass.
+    r2 = conn.execute(
+        sa.text(
+            "SELECT conname FROM pg_constraint c "
+            "JOIN pg_class t ON c.conrelid = t.oid "
+            "WHERE t.relname = 'scout_evidence_bundles' AND c.contype = 'f' "
+            "AND EXISTS (SELECT 1 FROM pg_attribute a "
+            "JOIN pg_class t2 ON a.attrelid = t2.oid WHERE t2.relname = 'scout_evidence_bundles' "
+            "AND a.attname = 'scout_run_id' AND a.attnum = ANY(c.conkey) AND NOT a.attisdropped)"
+        )
     )
+    fk_row = r2.fetchone()
+    if fk_row:
+        # conname comes from pg_constraint (system catalog); not user input. We escape
+        # double-quotes in the identifier for safe SQL quoting when dropping by name.
+        conname = str(fk_row[0])
+        conn.execute(
+            sa.text(
+                f'ALTER TABLE scout_evidence_bundles DROP CONSTRAINT IF EXISTS "{conname.replace(chr(34), chr(34) + chr(34))}"'
+            )
+        )
+    else:
+        conn.execute(
+            sa.text(
+                "ALTER TABLE scout_evidence_bundles "
+                "DROP CONSTRAINT IF EXISTS scout_evidence_bundles_scout_run_id_fkey"
+            )
+        )
     op.drop_index(
         "ix_scout_evidence_bundles_scout_run_id",
         table_name="scout_evidence_bundles",
+        if_exists=True,
     )
     op.add_column(
         "scout_evidence_bundles",

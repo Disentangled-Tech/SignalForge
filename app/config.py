@@ -33,16 +33,18 @@ class Settings:
     secret_key: str = ""
     internal_job_token: str = ""  # Required for /internal/* endpoints
 
-    # LLM — Supported providers: openai, anthropic. Role env vars use provider-specific model names.
+    # LLM — Anthropic (Claude) only. Role env vars use Claude model names.
     llm_provider: str = "anthropic"
     llm_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None  # ANTHROPIC_API_KEY or fallback to llm_api_key
-    llm_model: str = "gpt-4o-mini"
+    llm_model: str = "claude-3-5-haiku-20241022"
     # Model roles (issue #15): reasoning=analysis, json=cheap, outreach=conversational
-    llm_model_reasoning: str = "gpt-4o"
-    llm_model_json: str = "gpt-4o-mini"
-    llm_model_outreach: str = "gpt-4o-mini"
-    llm_model_scout: str = "gpt-4o"  # discovery scout evidence extraction (issue #275)
+    llm_model_reasoning: str = "claude-sonnet-4-20250514"
+    llm_model_json: str = "claude-3-5-haiku-20241022"
+    llm_model_outreach: str = "claude-3-5-haiku-20241022"
+    llm_model_scout: str = (
+        "claude-sonnet-4-20250514"  # discovery scout evidence extraction (issue #275)
+    )
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
