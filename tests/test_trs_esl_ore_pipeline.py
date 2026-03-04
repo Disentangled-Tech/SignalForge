@@ -408,6 +408,69 @@ def test_ore_playbook_no_sensitivity_levels_unchanged(db: Session) -> None:
     assert rec.draft_variants and len(rec.draft_variants) >= 1
 
 
+def test_ore_playbook_sensitivity_levels_case_insensitive(db: Session) -> None:
+    """Playbook sensitivity_levels comparison is case-insensitive (doc: allowed values case-insensitive)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="CaseInsensCo",
+        website_url="https://caseinsens.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 24)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=70,
+        complexity=65,
+        pressure=50,
+        leadership_gap=55,
+        composite=62,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    with patch(
+        "app.services.ore.ore_pipeline.get_ore_playbook",
+        return_value={
+            "pattern_frames": {"complexity": "When products add integrations..."},
+            "value_assets": ["2-page Tech Inflection Checklist"],
+            "ctas": ["Want me to send that checklist?"],
+            "forbidden_phrases": [],
+            "sensitivity_levels": ["high"],
+            "opening_templates": [],
+            "value_statements": [],
+            "tone": None,
+        },
+    ):
+        with patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ):
+            from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+            rec = generate_ore_recommendation(
+                db,
+                company_id=company.id,
+                as_of=as_of,
+                stability_modifier=0.9,
+                cooldown_active=False,
+                alignment_high=True,
+                sensitivity_level="High",
+            )
+
+    assert rec is not None
+    assert rec.draft_variants and len(rec.draft_variants) >= 1, (
+        "Entity sensitivity_level 'High' must match playbook ['high'] (case-insensitive)"
+    )
+
+
 def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -> None:
     """M3: Pipeline passes playbook forbidden_phrases to check_critic (Issue #176)."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()

@@ -152,17 +152,24 @@ def generate_ore_recommendation(
             pack=pack,
         )
 
-    # M4: Playbook eligibility by sensitivity. Reuse playbook from above.
+    # M4: Playbook eligibility by sensitivity (case-insensitive per playbook schema).
     allowed_levels = (
         playbook.get("sensitivity_levels")
         if isinstance(playbook.get("sensitivity_levels"), list)
         else None
     )
+    if allowed_levels:
+        allowed_levels_normalized = {
+            str(s).strip().lower() for s in allowed_levels if isinstance(s, str) and str(s).strip()
+        }
+    else:
+        allowed_levels_normalized = set()
     if (
         gate.should_generate_draft
-        and allowed_levels
+        and allowed_levels_normalized
         and sensitivity_level
-        and sensitivity_level not in allowed_levels
+        and isinstance(sensitivity_level, str)
+        and sensitivity_level.strip().lower() not in allowed_levels_normalized
     ):
         gate = PolicyGateResult(
             recommendation_type="Soft Value Share",

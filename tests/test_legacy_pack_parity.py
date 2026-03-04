@@ -18,7 +18,14 @@ import yaml
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.models import Company, EngagementSnapshot, ReadinessSnapshot, SignalEvent, SignalInstance
+from app.models import (
+    Company,
+    EngagementSnapshot,
+    OutreachRecommendation,
+    ReadinessSnapshot,
+    SignalEvent,
+    SignalInstance,
+)
 from app.services.briefing import get_emerging_companies
 from app.services.readiness.readiness_engine import compute_readiness
 from app.services.readiness.scoring_constants import (
@@ -775,3 +782,152 @@ class TestIngestDeriveScoreParity:
             for snap in snapshots:
                 assert 0 <= snap.composite <= 100
                 assert snap.explain is not None
+
+
+# Draft constraints for parity harness (TDD_rules, docs/ISSUE_LEGACY_PACK_PARITY_HARNESS.md)
+_ALLOWED_RECOMMENDATION_TYPES = frozenset(
+    {
+        "Observe Only",
+        "Soft Value Share",
+        "Low-Pressure Intro",
+        "Standard Outreach",
+        "Direct Strategic Outreach",
+    }
+)
+_SURVEILLANCE_PHRASES = (
+    "I noticed you",
+    "I saw that you",
+    "After your recent funding",
+    "You're hiring",
+)
+_CTA_PATTERNS = ("Want me to send", "Open to a", "If helpful", "would it help")
+
+
+class TestOutreachDraftConstraintsParity:
+    """Parity harness: when ORE path is exercised, assert draft constraints (tone, required elements, no forbidden phrases).
+
+    See docs/ISSUE_LEGACY_PACK_PARITY_HARNESS.md and rules/TDD_rules.md § Legacy-vs-Pack Parity Harness.
+    """
+
+    @pytest.mark.integration
+    def test_ore_parity_playbook_id_and_draft_constraints(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """ORE (fractional_cto_v1) sets playbook_id and stored drafts satisfy tone, required elements, no forbidden phrases."""
+        from unittest.mock import patch
+
+        from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+        from app.services.pack_resolver import resolve_pack
+
+        # Deterministic critic-compliant draft (no surveillance, single CTA, opt-out)
+        draft = {
+            "subject": "Quick question about ParityCo",
+            "message": (
+                "Hi Parity Founder,\n\n"
+                "When products add integrations and enterprise asks, systems often need a stabilization pass.\n\n"
+                "I have a 2-page Tech Inflection Checklist that might help. Want me to send that checklist? "
+                "No worries if now isn't the time."
+            ),
+        }
+
+        company = Company(
+            name="ParityCo",
+            website_url="https://parity-ore.example.com",
+            founder_name="Parity Founder",
+        )
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+        as_of = _PARITY_AS_OF
+        rs = ReadinessSnapshot(
+            company_id=company.id,
+            as_of=as_of,
+            momentum=70,
+            complexity=65,
+            pressure=50,
+            leadership_gap=55,
+            composite=62,
+            pack_id=fractional_cto_pack_id,
+        )
+        db.add(rs)
+        es = EngagementSnapshot(
+            company_id=company.id,
+            as_of=as_of,
+            esl_score=0.85,
+            engagement_type="Standard Outreach",
+            esl_decision="allow",
+            cadence_blocked=False,
+            pack_id=fractional_cto_pack_id,
+        )
+        db.add(es)
+        db.commit()
+
+        try:
+            with patch(
+                "app.services.ore.ore_pipeline.generate_ore_draft",
+                return_value=draft,
+            ):
+                rec = generate_ore_recommendation(
+                    db, company_id=company.id, as_of=as_of
+                )
+
+            assert rec is not None, "ORE must return OutreachRecommendation when snapshot exists"
+            # Same playbook chosen (parity harness assertion)
+            assert rec.playbook_id == DEFAULT_PLAYBOOK_NAME, (
+                f"ORE must set playbook_id to playbook name; got {rec.playbook_id!r}"
+            )
+            assert rec.pack_id == fractional_cto_pack_id
+
+            # Correct tone class: recommendation_type must be one of the allowed set
+            assert rec.recommendation_type in _ALLOWED_RECOMMENDATION_TYPES, (
+                f"recommendation_type must be allowed; got {rec.recommendation_type!r}"
+            )
+
+            variants = rec.draft_variants or []
+            if not variants:
+                # Observe Only or no draft generated — no draft constraints to check
+                return
+
+            pack = resolve_pack(db, fractional_cto_pack_id)
+            playbook = get_ore_playbook(pack, DEFAULT_PLAYBOOK_NAME)
+            forbidden_phrases = playbook.get("forbidden_phrases") or []
+
+            for i, v in enumerate(variants):
+                subject = v.get("subject", "")
+                message = v.get("message", "")
+                combined = f"{subject} {message}".lower()
+
+                # (3) Do not contain any pack forbidden phrases
+                for phrase in forbidden_phrases:
+                    if phrase and isinstance(phrase, str):
+                        assert phrase.lower() not in combined, (
+                            f"Draft variant {i} contains pack forbidden phrase {phrase!r}"
+                        )
+
+                # (4) Reference only allowed facts — no surveillance / raw observation text
+                for phrase in _SURVEILLANCE_PHRASES:
+                    assert phrase.lower() not in combined, (
+                        f"Draft variant {i} contains surveillance phrase {phrase!r}"
+                    )
+
+                # (2) Contain required elements: value and CTA (consent-based)
+                has_cta = any(cta.lower() in message.lower() for cta in _CTA_PATTERNS)
+                assert has_cta, (
+                    f"Draft variant {i} must contain at least one consent-based CTA pattern"
+                )
+                # Value: draft should offer something (pattern + value asset or similar)
+                assert len(message.strip()) >= 20, (
+                    f"Draft variant {i} must have substantive message (value/pattern)"
+                )
+        finally:
+            db.query(OutreachRecommendation).filter(
+                OutreachRecommendation.company_id == company.id,
+                OutreachRecommendation.as_of == as_of,
+                OutreachRecommendation.pack_id == fractional_cto_pack_id,
+            ).delete(synchronize_session="fetch")
+            db.execute(delete(EngagementSnapshot).where(EngagementSnapshot.company_id == company.id))
+            db.execute(delete(ReadinessSnapshot).where(ReadinessSnapshot.company_id == company.id))
+            db.delete(company)
+            db.commit()
