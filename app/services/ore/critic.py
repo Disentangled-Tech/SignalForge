@@ -52,6 +52,10 @@ def check_critic(
     message: str,
     *,
     forbidden_phrases: list[str] | None = None,
+    suppressed_signal_ids: set[str] | None = None,
+    tone_constraint: str | None = None,
+    pack_id: UUID | None = None,
+    allowed_signal_labels: list[str] | None = None,
 ) -> CriticResult:
     """Run critic checks on draft subject and message.
 
@@ -59,17 +63,42 @@ def check_critic(
     contain any of those phrases (case-insensitive). When None or empty, only
     core rules apply.
 
+    M2: When suppressed_signal_ids is provided and non-empty, draft must not
+    contain reference phrases for those signals (case-insensitive). Violations
+    are appended to violations (string) and violation_details (dict with
+    violation_type, signal_id, phrase). tone_constraint, pack_id,
+    allowed_signal_labels are accepted for pipeline wiring; tone-tier check in M4.
+
     Returns:
         CriticResult with passed=False and violations list if any rule fails.
     """
+    del tone_constraint, pack_id, allowed_signal_labels  # M4: tone check; logging uses pack_id
     combined = f"{subject} {message}"
+    lower_combined = combined.lower()
     violations: list[str] = []
+    violation_details: list[dict[str, Any]] = []
 
     if forbidden_phrases:
-        lower_text = combined.lower()
         for phrase in forbidden_phrases:
-            if phrase and phrase.lower() in lower_text:
+            if phrase and phrase.lower() in lower_combined:
                 violations.append(f"Pack forbidden phrase: {phrase!r}")
+
+    # M2: suppressed-signal mention check
+    if suppressed_signal_ids:
+        phrase_map = get_phrases_for_suppressed_signals(suppressed_signal_ids)
+        for signal_id, phrases in phrase_map.items():
+            for phrase in phrases:
+                if phrase and phrase.lower() in lower_combined:
+                    violations.append(
+                        f"Suppressed signal mention: draft references {signal_id!r} (phrase {phrase!r})"
+                    )
+                    violation_details.append(
+                        {
+                            "violation_type": "suppressed_signal",
+                            "signal_id": signal_id,
+                            "phrase": phrase,
+                        }
+                    )
 
     for p in _SURVEILLANCE_PATTERNS:
         if p.search(combined):
@@ -95,4 +124,5 @@ def check_critic(
     return CriticResult(
         passed=len(violations) == 0,
         violations=violations,
+        violation_details=violation_details,
     )

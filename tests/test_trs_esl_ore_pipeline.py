@@ -5,8 +5,7 @@ Expects: Recommendation capped at Soft Value Share, No surveillance language,
          Single CTA, OutreachScore computed correctly.
 Fixture strategy: Insert Company and ReadinessSnapshot directly (no SignalEvents).
 
-TODO(M4): When selector is wired in pipeline (Issue #117), add integration test that
-a snapshot with a clear dominant dimension yields pattern_frame from selector.
+Issue #121 M2: Pattern frame is selected by get_dominant_trs_dimension(snapshot).
 """
 
 from __future__ import annotations
@@ -541,6 +540,84 @@ def test_ore_playbook_sensitivity_levels_case_insensitive(db: Session) -> None:
     assert rec is not None
     assert rec.draft_variants and len(rec.draft_variants) >= 1, (
         "Entity sensitivity_level 'High' must match playbook ['high'] (case-insensitive)"
+    )
+
+
+def test_ore_pipeline_pattern_frame_from_dominant_dimension(db: Session) -> None:
+    """M2: Snapshot with pressure dominant yields draft with playbook's pressure pattern frame (Issue #121)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="PressureDomCo",
+        website_url="https://pressuredom.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    pressure_frame = "When timelines get tighter, it helps to reduce decision load and get a clean plan."
+    playbook_with_frames = {
+        "pattern_frames": {
+            "momentum": "Momentum framing text.",
+            "complexity": "When products add integrations...",
+            "pressure": pressure_frame,
+            "leadership_gap": "When there isn't a dedicated technical owner yet.",
+        },
+        "value_assets": ["2-page Tech Inflection Checklist"],
+        "ctas": ["Want me to send that checklist?"],
+        "forbidden_phrases": [],
+        "tone": None,
+    }
+
+    as_of = date(2026, 2, 25)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=10,
+        complexity=10,
+        pressure=95,
+        leadership_gap=10,
+        composite=35,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    draft_calls: list[list[object]] = []
+    draft_kwargs: list[dict] = []
+
+    def capture_draft(*args: object, **kwargs: object) -> dict:
+        draft_calls.append(list(args))
+        draft_kwargs.append(dict(kwargs))
+        return _ORE_DRAFT
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_frames,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            side_effect=capture_draft,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert len(draft_kwargs) >= 1, "Pipeline must call generate_ore_draft when gate allows"
+    assert draft_kwargs[0].get("pattern_frame") == pressure_frame, (
+        "Pipeline must pass playbook's pressure pattern frame when snapshot has pressure dominant"
     )
 
 
