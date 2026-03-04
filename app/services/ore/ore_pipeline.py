@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot
 from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
+from app.services.esl.esl_decision import CORE_BAN_SIGNAL_IDS
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
 from app.services.ore.dominant_dimension import get_dominant_trs_dimension
@@ -65,6 +66,24 @@ def _build_explainability_context(
         else ""
     )
     return (snippet, labels)
+
+
+def _no_reference_signal_ids(pack: "Pack") -> set[str]:
+    """Signal IDs that must not be referenced in ORE drafts (Issue #120 M3).
+
+    Union of core bans, pack blocked_signals, and both sides of prohibited_combinations.
+    """
+    policy = getattr(pack, "esl_policy", None) or {}
+    blocked = policy.get("blocked_signals") or []
+    blocked_set = {str(s) for s in blocked} if isinstance(blocked, list) else set()
+    prohibited = policy.get("prohibited_combinations") or []
+    prohibited_flat: set[str] = set()
+    if isinstance(prohibited, list):
+        for pair in prohibited:
+            if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                prohibited_flat.add(str(pair[0]))
+                prohibited_flat.add(str(pair[1]))
+    return CORE_BAN_SIGNAL_IDS | blocked_set | prohibited_flat
 
 
 def _resolve_ore_pack_id(
@@ -227,6 +246,7 @@ def generate_ore_recommendation(
     )
 
     draft_variants: list[dict] = []
+    strategy_notes_for_persist: str | dict | None = None
     if gate.should_generate_draft:
         # Pick pattern frame from dominant TRS dimension (Issue #121 M2).
         pattern_frames = playbook.get("pattern_frames") or {}
@@ -308,8 +328,14 @@ def generate_ore_recommendation(
                     if fallback_critic.passed:
                         draft_variants = [fallback]
                     else:
-                        # Mark for manual review — still store with empty draft
-                        draft_variants = [draft]  # Store original, strategy_notes will flag
+                        # Mark for manual review — still store original draft (Issue #120 M3)
+                        draft_variants = [draft]
+                        strategy_notes_for_persist = {
+                            "message": _strategy_notes_for_critic_failure(critic_result),
+                        }
+                        _log_critic_violations(
+                            critic_result, company_id=company_id, pack_id=resolved_pack_id
+                        )
 
     # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
     generation_version = (pack.manifest.get("version") or "1")[:64]
@@ -329,7 +355,7 @@ def generate_ore_recommendation(
         existing.outreach_score = outreach_score
         existing.channel = "LinkedIn DM"
         existing.draft_variants = draft_variants if draft_variants else None
-        existing.strategy_notes = None
+        existing.strategy_notes = strategy_notes_for_persist
         existing.safeguards_triggered = gate.safeguards_triggered or None
         existing.generation_version = generation_version
         existing.playbook_id = DEFAULT_PLAYBOOK_NAME
@@ -344,7 +370,7 @@ def generate_ore_recommendation(
         outreach_score=outreach_score,
         channel="LinkedIn DM",
         draft_variants=draft_variants if draft_variants else None,
-        strategy_notes=None,
+        strategy_notes=strategy_notes_for_persist,
         safeguards_triggered=gate.safeguards_triggered or None,
         generation_version=generation_version,
         pack_id=resolved_pack_id,
@@ -391,6 +417,277 @@ def get_or_create_ore_recommendation(
         pack_id=resolved_pack_id,
         workspace_id=None,
     )
+
+
+def regenerate_ore_draft(
+    db: Session,
+    company_id: int,
+    as_of: date,
+    *,
+    pack_id: UUID | None = None,
+    workspace_id: str | None = None,
+) -> OutreachRecommendation | None:
+    """Regenerate ORE draft for an existing recommendation (Issue #123 M2).
+
+    Loads the existing OutreachRecommendation by (company_id, as_of, resolved_pack_id),
+    re-runs policy gate with current ESL context, and if the gate allows draft generation:
+    generates a new draft (with critic), appends the current draft to draft_version_history,
+    increments draft_generation_number, and updates draft_variants to the new draft.
+
+    Returns the updated OutreachRecommendation, or None if no recommendation exists,
+    pack/snapshot/context cannot be resolved, or the policy gate blocks draft generation
+    (e.g. cooldown active or ESL suppress).
+    """
+    resolved_pack_id = _resolve_ore_pack_id(db, pack_id=pack_id, workspace_id=workspace_id)
+    if resolved_pack_id is None:
+        return None
+
+    existing = (
+        db.query(OutreachRecommendation)
+        .filter(
+            OutreachRecommendation.company_id == company_id,
+            OutreachRecommendation.as_of == as_of,
+            OutreachRecommendation.pack_id == resolved_pack_id,
+        )
+        .first()
+    )
+    if not existing:
+        return None
+
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        return None
+
+    pack = resolve_pack(db, resolved_pack_id)
+    if pack is None:
+        return None
+    playbook = get_ore_playbook(pack, playbook_name=DEFAULT_PLAYBOOK_NAME)
+
+    snapshot = (
+        db.query(ReadinessSnapshot)
+        .filter(
+            ReadinessSnapshot.company_id == company_id,
+            ReadinessSnapshot.as_of == as_of,
+            ReadinessSnapshot.pack_id == resolved_pack_id,
+        )
+        .first()
+    )
+    if not snapshot:
+        return None
+
+    ctx = compute_esl_from_context(db, company_id, as_of, pack_id=resolved_pack_id)
+    if not ctx:
+        return None
+
+    sm = ctx["stability_modifier"]
+    cooldown = ctx["cadence_blocked"]
+    align = ctx["alignment_high"]
+    esl_decision = ctx.get("esl_decision")
+    sensitivity_level = ctx.get("sensitivity_level")
+    tone_constraint_esl = None
+    explain = ctx.get("explain") or {}
+    if isinstance(explain.get("tone_constraint"), str):
+        tone_constraint_esl = explain["tone_constraint"]
+
+    if esl_decision == "suppress":
+        return None
+
+    gate = check_policy_gate(
+        cooldown_active=cooldown,
+        stability_modifier=sm,
+        alignment_high=align,
+        pack=pack,
+    )
+
+    allowed_levels = (
+        playbook.get("sensitivity_levels")
+        if isinstance(playbook.get("sensitivity_levels"), list)
+        else None
+    )
+    if allowed_levels:
+        allowed_levels_normalized = {
+            str(s).strip().lower() for s in allowed_levels if isinstance(s, str) and str(s).strip()
+        }
+    else:
+        allowed_levels_normalized = set()
+    if (
+        gate.should_generate_draft
+        and allowed_levels_normalized
+        and sensitivity_level
+        and isinstance(sensitivity_level, str)
+        and sensitivity_level.strip().lower() not in allowed_levels_normalized
+    ):
+        gate = PolicyGateResult(
+            recommendation_type="Soft Value Share",
+            should_generate_draft=False,
+            safeguards_triggered=(gate.safeguards_triggered or [])
+            + ["Playbook excludes sensitivity level"],
+        )
+
+    if not gate.should_generate_draft:
+        return None
+
+    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    no_ref_signal_ids = _no_reference_signal_ids(pack)
+    entity_signal_ids = ctx.get("signal_ids") or set()
+    suppressed_signal_ids_for_critic = entity_signal_ids & no_ref_signal_ids
+
+    pattern_frames = playbook.get("pattern_frames") or {}
+    value_assets = playbook.get("value_assets") or []
+    ctas = playbook.get("ctas") or []
+    dominant = get_dominant_trs_dimension(
+        snapshot.momentum,
+        snapshot.complexity,
+        snapshot.pressure,
+        snapshot.leadership_gap,
+    )
+    pattern_frame = pattern_frames.get(dominant, pattern_frames.get("momentum", ""))
+    value_asset = value_assets[0] if value_assets else ""
+    cta = ctas[0] if ctas else ""
+    tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
+
+    draft = generate_ore_draft(
+        company=company,
+        recommendation_type=gate.recommendation_type,
+        pattern_frame=pattern_frame,
+        value_asset=value_asset,
+        cta=cta,
+        pack=pack,
+        explainability_snippet=explainability_snippet,
+        top_signal_labels=top_signal_labels,
+        tone_constraint=tone_constraint_esl,
+        tone_definition=tone_def or None,
+    )
+
+    candidate_draft = draft
+    used_polish = False
+    if playbook.get("enable_ore_polish") is True:
+        polished = polish_ore_draft(
+            draft.get("subject", ""),
+            draft.get("message", ""),
+            tone_definition=tone_def or None,
+            sensitivity_level=sensitivity_level,
+            forbidden_phrases=playbook.get("forbidden_phrases") or [],
+            allowed_framing_labels=top_signal_labels,
+            pack=pack,
+        )
+        if polished.get("subject") or polished.get("message"):
+            candidate_draft = polished
+            used_polish = True
+
+    forbidden_phrases = playbook.get("forbidden_phrases") or []
+    critic_kwargs = {
+        "forbidden_phrases": forbidden_phrases,
+        "suppressed_signal_ids": suppressed_signal_ids_for_critic or None,
+        "tone_constraint": tone_constraint_esl,
+        "pack_id": resolved_pack_id,
+        "allowed_signal_labels": top_signal_labels or None,
+    }
+    if not (candidate_draft.get("subject") or candidate_draft.get("message")):
+        return None
+    critic_result = check_critic(
+        candidate_draft.get("subject", ""),
+        candidate_draft.get("message", ""),
+        **critic_kwargs,
+    )
+    if critic_result.passed:
+        new_draft = candidate_draft
+    else:
+        if used_polish:
+            candidate_draft = draft
+            critic_result = check_critic(
+                draft.get("subject", ""),
+                draft.get("message", ""),
+                **critic_kwargs,
+            )
+        if critic_result.passed:
+            new_draft = candidate_draft
+        else:
+            fallback = _build_critic_compliant_fallback(
+                company=company,
+                value_asset=value_asset,
+                cta=cta,
+            )
+            fallback_critic = check_critic(
+                fallback.get("subject", ""),
+                fallback.get("message", ""),
+                **critic_kwargs,
+            )
+            if fallback_critic.passed:
+                new_draft = fallback
+            else:
+                new_draft = draft
+                _log_critic_violations(
+                    critic_result, company_id=company_id, pack_id=resolved_pack_id
+                )
+
+    # Archive current draft to version history before replacing (Issue #123)
+    current_variants = existing.draft_variants or []
+    history = list(existing.draft_version_history or [])
+    if current_variants:
+        current_draft = current_variants[0]
+        history.append(
+            {
+                "version": existing.draft_generation_number,
+                "subject": current_draft.get("subject", ""),
+                "message": current_draft.get("message", ""),
+                "created_at_utc": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    existing.draft_version_history = history if history else None
+    existing.draft_generation_number = existing.draft_generation_number + 1
+    existing.draft_variants = [new_draft]
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+
+def _log_critic_violations(
+    critic_result: object,
+    *,
+    company_id: int,
+    pack_id: UUID,
+) -> None:
+    """Log ORE critic violations for auditing (Issue #120 M3): violation_type, pack_id, signal_id."""
+    from app.services.ore.critic import CriticResult
+
+    if not isinstance(critic_result, CriticResult) or critic_result.passed:
+        return
+    details = critic_result.violation_details or []
+    for v in details:
+        logger.warning(
+            "ORE critic violation: type=%s pack_id=%s company_id=%s",
+            v.get("type", "unknown"),
+            pack_id,
+            company_id,
+            extra={
+                "violation_type": v.get("type"),
+                "pack_id": str(pack_id),
+                "signal_id": v.get("signal_id"),
+                "company_id": company_id,
+            },
+        )
+    if not details and critic_result.violations:
+        logger.warning(
+            "ORE critic violation: pack_id=%s company_id=%s violations=%s",
+            pack_id,
+            company_id,
+            critic_result.violations,
+            extra={"pack_id": str(pack_id), "company_id": company_id},
+        )
+
+
+def _strategy_notes_for_critic_failure(critic_result: object) -> str:
+    """Build strategy_notes message when storing draft that failed critic (Issue #120 M3)."""
+    from app.services.ore.critic import CriticResult
+
+    if not isinstance(critic_result, CriticResult) or critic_result.passed:
+        return "Manual Review: critic check"
+    parts = [f"Manual Review: {v}" for v in (critic_result.violations or [])[:3]]
+    if (critic_result.violations or [])[3:]:
+        parts.append("...")
+    return "; ".join(parts) if parts else "Manual Review: critic violations"
 
 
 def _build_critic_compliant_fallback(
