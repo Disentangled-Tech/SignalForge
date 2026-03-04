@@ -34,3 +34,7 @@ svi_event_types:
 blocked_signals:
   - financial_distress
 prohibited_combinations: []
+
+# Issue #148 M6: sensitivity_mapping for UI badge (financial_distress → high)
+sensitivity_mapping:
+  financial_distress: high
