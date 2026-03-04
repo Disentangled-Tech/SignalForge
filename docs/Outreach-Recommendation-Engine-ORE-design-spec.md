@@ -99,7 +99,7 @@ Pack playbooks may define **forbidden_phrases** (a list of strings). The critic 
 
 Pack-driven playbooks and sensitivity (Issue #176)
 
-ORE is pack-driven: the active pack supplies the playbook (e.g. playbooks/ore_outreach.yaml), including pattern_frames, value_assets, ctas, optional opening_templates, value_statements, forbidden_phrases, and tone. The critic applies pack forbidden_phrases in addition to core rules. Sensitivity gating is prompt-only: tone_constraint (e.g. "Soft Value Share") and playbook tone definitions are passed as TONE_INSTRUCTION so the LLM stays within the allowed tier; sensitivity_level is never sent to the LLM. See docs/playbook-draft-engine.md for YAML shape, loader, and data flow.
+ORE is pack-driven: the active pack supplies the playbook (e.g. playbooks/ore_outreach.yaml), including pattern_frames, value_assets, ctas, optional opening_templates, value_statements, forbidden_phrases, and tone. The critic applies pack forbidden_phrases in addition to core rules. Sensitivity gating is prompt-only: tone_constraint (e.g. "Soft Value Share") and playbook tone definitions are passed as TONE_INSTRUCTION so the LLM stays within the allowed tier; sensitivity_level is never sent to the LLM. Optional **enable_ore_polish** (Issue #119) defaults to false for backward compatibility; when true, ORE runs an LLM polish step before the critic and falls back to the original draft if the polished draft fails. See docs/playbook-draft-engine.md for YAML shape, loader, and data flow.
 
 ⸻
 

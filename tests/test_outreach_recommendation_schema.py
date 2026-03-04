@@ -280,6 +280,57 @@ def test_outreach_recommendation_read_from_orm_attributes() -> None:
     assert read.created_at == datetime(2026, 3, 4, 12, 0, 0, tzinfo=UTC)
 
 
+@pytest.mark.integration
+def test_outreach_recommendation_strategy_notes_roundtrip_jsonb(
+    db: Session,
+) -> None:
+    """strategy_notes dict persists and refetches from DB; OutreachRecommendationRead validates (Issue #120 M3)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    assert pack is not None
+    company = Company(
+        name="RoundtripCo",
+        website_url="https://roundtrip.example.com",
+        founder_name="Roundtrip Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    notes = {"message": "Manual Review: test"}
+    rec = OutreachRecommendation(
+        company_id=company.id,
+        as_of=date(2026, 3, 6),
+        recommendation_type="Standard Outreach",
+        outreach_score=60,
+        channel="LinkedIn DM",
+        draft_variants=[{"subject": "S", "message": "M"}],
+        strategy_notes=notes,
+        safeguards_triggered=None,
+        generation_version="1",
+        pack_id=pack.id,
+        playbook_id="default",
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+
+    found = (
+        db.query(OutreachRecommendation)
+        .filter(
+            OutreachRecommendation.company_id == company.id,
+            OutreachRecommendation.as_of == rec.as_of,
+            OutreachRecommendation.pack_id == pack.id,
+        )
+        .first()
+    )
+    assert found is not None
+    assert found.strategy_notes == notes
+
+    read = OutreachRecommendationRead.model_validate(found)
+    assert read.strategy_notes == notes
+    assert (read.strategy_notes or {}).get("message") == "Manual Review: test"
+
+
 def test_outreach_recommendation_read_roundtrip_from_dict() -> None:
     """OutreachRecommendationRead validates from dict (future API payload)."""
     payload = {
