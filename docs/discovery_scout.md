@@ -48,6 +48,14 @@ No `signal_id`, `event_type`, or pack-specific fields. JSON schema is available 
 - **Internal endpoint:** `POST /internal/run_scout` with body: `icp_definition`, `workspace_id` (required), optional `exclusion_rules`, `pack_id`, `page_fetch_limit`. Requires `X-Internal-Token` header.
 - **Config:** Set `SCOUT_SOURCE_ALLOWLIST` and/or `SCOUT_SOURCE_DENYLIST` (comma-separated domains) in environment or via `app/config.py` to restrict which sources are fetched.
 
+### User-facing UI
+
+Authenticated users can trigger Scout runs and view results via session auth (no internal token):
+
+- **GET /scout** — List Scout runs for the current workspace (workspace-scoped).
+- **GET /scout/runs/{run_id}** — Run detail: run metadata and evidence bundles (candidate name, website, hypothesis, evidence). No `raw_llm_output` is exposed. 404 if the run does not exist or belongs to another workspace.
+- **POST /scout/runs** — Trigger a Scout run (form: `icp_definition` required; optional `exclusion_rules`, `page_fetch_limit`). Workspace is resolved from request and access is enforced.
+
 ## Query planning (Issue #282)
 
 The Query Planner produces a diversified list of search query strings from ICP, core taxonomy (signal rubric), and optional pack emphasis. It is **pack-agnostic** for structure: family definitions and template config live in core (`app/scout/`); pack `scout_emphasis` only adds optional keywords.

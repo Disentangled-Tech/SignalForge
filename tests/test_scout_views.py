@@ -109,31 +109,6 @@ def test_scout_run_new_authenticated_returns_form(
 
 
 @pytest.mark.integration
-def test_scout_run_new_authenticated_returns_form(
-    client_with_db: TestClient,
-    db,
-) -> None:
-    """GET /scout/new when authenticated returns 200 with ICP form."""
-    user = User(username="scout_new_user")
-    user.set_password(TEST_PASSWORD)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    from app.api.deps import require_ui_auth
-    from app.main import app
-
-    app.dependency_overrides[require_ui_auth] = lambda: user
-    try:
-        resp = client_with_db.get("/scout/new", follow_redirects=False)
-        assert resp.status_code == 200
-        assert "icp_definition" in resp.text or "New Scout run" in resp.text
-        assert "scout/runs" in resp.text
-    finally:
-        app.dependency_overrides.pop(require_ui_auth, None)
-
-
-@pytest.mark.integration
 @patch("app.api.views.get_settings")
 @patch("app.api.scout_views.get_settings")
 def test_scout_list_authenticated_shows_runs(
