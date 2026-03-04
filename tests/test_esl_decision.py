@@ -8,6 +8,7 @@ from app.services.esl.esl_decision import (
     CORE_BAN_SIGNAL_IDS,
     ESLDecisionResult,
     evaluate_esl_decision,
+    get_effective_sensitivity_level,
 )
 
 
@@ -178,6 +179,17 @@ class TestEvaluateEslDecisionSensitivityMapping:
         result = evaluate_esl_decision(signal_ids={"funding_raised"}, pack=pack)
         assert result.sensitivity_level is None
 
+    def test_core_taxonomy_sensitivity_when_pack_has_no_mapping(self) -> None:
+        """When pack has no sensitivity_mapping, core taxonomy sensitivity is used (M2)."""
+        pack = _pack({})
+        result = evaluate_esl_decision(
+            signal_ids={"founder_urgency_language"},
+            pack=pack,
+        )
+        assert result.decision == "allow"
+        # Core taxonomy has founder_urgency_language: medium
+        assert result.sensitivity_level == "medium"
+
 
 class TestEvaluateEslDecisionFractionalCto:
     """Fractional CTO pack (empty blocked/prohibited) → allow."""
@@ -245,3 +257,109 @@ class TestCoreBanSignalIds:
     def test_core_ban_empty_phase1(self) -> None:
         """CORE_BAN_SIGNAL_IDS is empty for Phase 1."""
         assert CORE_BAN_SIGNAL_IDS == frozenset()
+
+
+class TestGetEffectiveSensitivityLevel:
+    """get_effective_sensitivity_level: core default + pack mapping merge (Issue #148 M2)."""
+
+    def test_pack_only_returns_mapping_level(self) -> None:
+        """Pack sensitivity_mapping only (core_taxonomy None) → same as legacy."""
+        policy = {"sensitivity_mapping": {"distress_mentioned": "high"}}
+        assert get_effective_sensitivity_level(
+            signal_ids={"funding_raised", "distress_mentioned"},
+            core_taxonomy=None,
+            esl_policy=policy,
+        ) == "high"
+
+    def test_pack_only_no_overlap_returns_none(self) -> None:
+        """Pack mapping with no overlapping signals → None."""
+        policy = {"sensitivity_mapping": {"other_signal": "high"}}
+        assert get_effective_sensitivity_level(
+            signal_ids={"funding_raised"},
+            core_taxonomy=None,
+            esl_policy=policy,
+        ) is None
+
+    def test_core_only_returns_core_level(self) -> None:
+        """Core taxonomy sensitivity only (no pack mapping) → core level."""
+        core = {
+            "signal_ids": ["founder_urgency_language", "funding_raised"],
+            "signals": {"founder_urgency_language": {"sensitivity": "medium"}},
+        }
+        assert get_effective_sensitivity_level(
+            signal_ids={"founder_urgency_language"},
+            core_taxonomy=core,
+            esl_policy={},
+        ) == "medium"
+
+    def test_core_only_no_sensitivity_in_core_returns_none(self) -> None:
+        """Core has signals map but signal has no sensitivity → None."""
+        core = {
+            "signal_ids": ["funding_raised"],
+            "signals": {"funding_raised": {}},
+        }
+        assert get_effective_sensitivity_level(
+            signal_ids={"funding_raised"},
+            core_taxonomy=core,
+            esl_policy={},
+        ) is None
+
+    def test_pack_overrides_core_for_same_signal(self) -> None:
+        """Pack sensitivity_mapping overrides core for same signal_id."""
+        core = {
+            "signal_ids": ["founder_urgency_language"],
+            "signals": {"founder_urgency_language": {"sensitivity": "low"}},
+        }
+        policy = {"sensitivity_mapping": {"founder_urgency_language": "high"}}
+        assert get_effective_sensitivity_level(
+            signal_ids={"founder_urgency_language"},
+            core_taxonomy=core,
+            esl_policy=policy,
+        ) == "high"
+
+    def test_merge_highest_wins(self) -> None:
+        """Multiple levels → highest wins (high > medium > low)."""
+        core = {
+            "signal_ids": ["a", "b", "c"],
+            "signals": {"a": {"sensitivity": "low"}, "b": {"sensitivity": "medium"}},
+        }
+        policy = {"sensitivity_mapping": {"c": "high"}}
+        assert get_effective_sensitivity_level(
+            signal_ids={"a", "b", "c"},
+            core_taxonomy=core,
+            esl_policy=policy,
+        ) == "high"
+
+    def test_merge_core_only_highest_wins(self) -> None:
+        """Core-only multiple levels → highest wins."""
+        core = {
+            "signal_ids": ["a", "b"],
+            "signals": {"a": {"sensitivity": "medium"}, "b": {"sensitivity": "low"}},
+        }
+        assert get_effective_sensitivity_level(
+            signal_ids={"a", "b"},
+            core_taxonomy=core,
+            esl_policy={},
+        ) == "medium"
+
+    def test_empty_signal_ids_returns_none(self) -> None:
+        """Empty signal_ids → None."""
+        policy = {"sensitivity_mapping": {"x": "high"}}
+        assert get_effective_sensitivity_level(
+            signal_ids=set(),
+            core_taxonomy=None,
+            esl_policy=policy,
+        ) is None
+
+    def test_invalid_pack_level_ignored(self) -> None:
+        """Pack level not in low/medium/high is ignored (valid level still wins)."""
+        core = {
+            "signal_ids": ["a"],
+            "signals": {"a": {"sensitivity": "medium"}},
+        }
+        policy = {"sensitivity_mapping": {"a": "invalid", "b": "high"}}
+        assert get_effective_sensitivity_level(
+            signal_ids={"a", "b"},
+            core_taxonomy=core,
+            esl_policy=policy,
+        ) == "high"
