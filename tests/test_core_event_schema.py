@@ -227,7 +227,9 @@ def test_get_events_from_payload_returns_events_key() -> None:
 def test_get_events_from_payload_returns_core_event_candidates_when_no_events() -> None:
     """get_events_from_payload returns list from 'core_event_candidates' when 'events' missing (M2)."""
     payload = {"core_event_candidates": [{"event_type": "cto_role_posted", "confidence": 0.8}]}
-    assert get_events_from_payload(payload) == [{"event_type": "cto_role_posted", "confidence": 0.8}]
+    assert get_events_from_payload(payload) == [
+        {"event_type": "cto_role_posted", "confidence": 0.8}
+    ]
 
 
 def test_get_events_from_payload_prefers_events_over_core_event_candidates() -> None:

@@ -635,7 +635,9 @@ async def run_scout_endpoint(
 async def list_scout_runs(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
-    workspace_id: str = Query(..., description="Workspace ID (required). Lists only runs for this tenant."),
+    workspace_id: str = Query(
+        ..., description="Workspace ID (required). Lists only runs for this tenant."
+    ),
 ):
     """List scout runs for a workspace. workspace_id is required for tenant scoping.
 

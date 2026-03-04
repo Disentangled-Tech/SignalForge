@@ -236,11 +236,7 @@ class QueryPlanner:
             max_queries=self._max_queries,
         )
         if denylist:
-            pairs = [
-                (q, f)
-                for q, f in pairs
-                if not _query_targets_denylisted_domain(q, denylist)
-            ]
+            pairs = [(q, f) for q, f in pairs if not _query_targets_denylisted_domain(q, denylist)]
             if not pairs and icp and not _query_targets_denylisted_domain(icp, denylist):
                 pairs = [(icp, DEFAULT_FAMILY_ID)]
         queries = [q for q, _ in pairs]

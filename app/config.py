@@ -33,8 +33,7 @@ class Settings:
     secret_key: str = ""
     internal_job_token: str = ""  # Required for /internal/* endpoints
 
-    # LLM (Anthropic / Claude only)
-    # Role env vars (LLM_MODEL_REASONING, LLM_MODEL_JSON, etc.) use Claude model names.
+    # LLM — Supported providers: openai, anthropic. Role env vars use provider-specific model names.
     llm_provider: str = "anthropic"
     llm_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None  # ANTHROPIC_API_KEY or fallback to llm_api_key
