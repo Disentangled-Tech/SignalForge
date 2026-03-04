@@ -446,6 +446,9 @@ def regenerate_ore_draft(
     Returns the updated OutreachRecommendation, or None if no recommendation exists,
     pack/snapshot/context cannot be resolved, or the policy gate blocks draft generation
     (e.g. cooldown active or ESL suppress).
+
+    TODO(Issue #123 M3): When exposing via POST .../regenerate, enforce authz so callers
+    can only regenerate for companies (and optionally workspaces) they are allowed to access.
     """
     resolved_pack_id = _resolve_ore_pack_id(db, pack_id=pack_id, workspace_id=workspace_id)
     if resolved_pack_id is None:
