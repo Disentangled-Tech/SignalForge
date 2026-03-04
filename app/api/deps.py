@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db.session import get_db  # re-export
 from app.models.user import User
 from app.services.auth import get_user_from_token
@@ -14,6 +15,7 @@ __all__ = [
     "get_current_user",
     "require_auth",
     "require_ui_auth",
+    "require_workspace_access",
     "validate_uuid_param_or_422",
 ]
 
@@ -101,3 +103,21 @@ def require_ui_auth(
             headers={"Location": "/login"},
         )
     return user
+
+
+def require_workspace_access(db: Session, user: User, workspace_id: str | None) -> None:
+    """Raise 403 if user does not have access to workspace (multi-tenant).
+
+    Only enforced when multi_workspace_enabled and workspace_id is not None.
+    Use from API routes that accept workspace_id so callers cannot use another
+    tenant's workspace for pack resolution or data access.
+    """
+    if not get_settings().multi_workspace_enabled or workspace_id is None:
+        return
+    from app.services.workspace_access import user_has_access_to_workspace
+
+    if not user_has_access_to_workspace(db, user, workspace_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this workspace",
+        )
