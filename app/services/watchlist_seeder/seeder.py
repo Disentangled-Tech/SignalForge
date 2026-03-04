@@ -97,7 +97,8 @@ def seed_from_bundles(
         # (core_event_candidates) shapes. Build normalized dict with only allowed keys
         # so model_validate does not fail on extra keys (e.g. core_event_candidates).
         if ("events" in raw and not isinstance(raw.get("events"), list)) or (
-            "core_event_candidates" in raw and not isinstance(raw.get("core_event_candidates"), list)
+            "core_event_candidates" in raw
+            and not isinstance(raw.get("core_event_candidates"), list)
         ):
             result.errors.append(
                 f"Bundle {bundle_id} invalid structured_payload: events/core_event_candidates must be a list"

@@ -325,7 +325,7 @@ def test_migration_20260238_scout_bundle_run_id_uuid_up_down_and_orphan_cleanup(
     assert result.returncode == 0, f"downgrade to 20260236 failed: {result.stderr}"
 
     # Upgrade to 20260238 (scout_run_id becomes UUID)
-    result = _run_alembic_env("upgrade", "20260238_scout_bundle_run_uuid", timeout=90)
+    result = _run_alembic_env("upgrade", "20260238_scout_run_id_uuid", timeout=90)
     assert result.returncode == 0, f"upgrade to 20260238 failed: {result.stderr}"
 
     with engine.connect() as conn:
@@ -364,9 +364,7 @@ def test_migration_20260238_scout_bundle_run_id_uuid_up_down_and_orphan_cleanup(
     assert result.returncode == 0, f"downgrade with orphan failed: {result.stderr}"
 
     with engine.connect() as conn:
-        count = conn.execute(
-            text("SELECT COUNT(*) FROM scout_evidence_bundles")
-        ).scalar()
+        count = conn.execute(text("SELECT COUNT(*) FROM scout_evidence_bundles")).scalar()
         assert count == 0, "Orphan bundle must be deleted by downgrade"
         r = conn.execute(
             text(

@@ -65,9 +65,7 @@ def _format_evidence_block(evidence: list) -> str:
         return "(no evidence items)"
     lines = []
     for i, item in enumerate(evidence):
-        snippet = (getattr(item, "quoted_snippet", None) or "").strip() or getattr(
-            item, "url", ""
-        )
+        snippet = (getattr(item, "quoted_snippet", None) or "").strip() or getattr(item, "url", "")
         lines.append(f"[{i}] {snippet}")
     return "\n".join(lines)
 
@@ -268,9 +266,7 @@ def interpret_bundle_to_core_events(
         source_refs_raw = item.get("source_refs")
         if isinstance(source_refs_raw, list):
             source_refs = [
-                r
-                for r in source_refs_raw
-                if isinstance(r, int) and 0 <= r < evidence_len
+                r for r in source_refs_raw if isinstance(r, int) and 0 <= r < evidence_len
             ]
         else:
             source_refs = []
