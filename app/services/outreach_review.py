@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.company import Company
@@ -78,15 +77,7 @@ def get_weekly_review_companies(
 
     as_of_dt = datetime.combine(as_of, datetime.min.time()).replace(tzinfo=UTC)
 
-    # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
-    pack_match = or_(
-        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
-        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
-    )
-    pack_filter = or_(
-        ReadinessSnapshot.pack_id == pack_id,
-        ReadinessSnapshot.pack_id.is_(None),
-    )
+    pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
         .join(
@@ -96,7 +87,7 @@ def get_weekly_review_companies(
             & pack_match,
         )
         .options(joinedload(ReadinessSnapshot.company))
-        .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
+        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_id)
         .all()
     )
 

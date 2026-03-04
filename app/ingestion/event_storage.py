@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.signal_event import SignalEvent
+from app.services.pack_resolver import get_default_pack_id
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,14 @@ def store_signal_event(
                 source_event_id,
             )
             return None
+
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        logger.warning(
+            "Cannot store signal event: no pack_id and no default pack (run migrations)."
+        )
+        return None
 
     if evidence_bundle_id is not None:
         logger.debug(

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
@@ -66,29 +65,19 @@ def get_company_score(
     if pack_uuid is None:
         pack_uuid = get_default_pack_id(db)
 
-    # 1. Try ReadinessSnapshot: pack_id match or NULL (legacy) when querying for default
-    default_pack_uuid = get_default_pack_id(db)
-    pack_filter = (
-        or_(
-            ReadinessSnapshot.pack_id == pack_uuid,
-            (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
+    # 1. Try ReadinessSnapshot (pack_id is NOT NULL after M1)
+    if pack_uuid is None:
+        snapshot = None
+    else:
+        snapshot = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company_id,
+                ReadinessSnapshot.pack_id == pack_uuid,
+            )
+            .order_by(ReadinessSnapshot.as_of.desc())
+            .first()
         )
-        if pack_uuid is not None and default_pack_uuid is not None
-        else (
-            ReadinessSnapshot.pack_id == pack_uuid
-            if pack_uuid is not None
-            else ReadinessSnapshot.pack_id.is_(None)
-        )
-    )
-    snapshot = (
-        db.query(ReadinessSnapshot)
-        .filter(
-            ReadinessSnapshot.company_id == company_id,
-            pack_filter,
-        )
-        .order_by(ReadinessSnapshot.as_of.desc())
-        .first()
-    )
     if snapshot is not None:
         return snapshot.composite
 
@@ -121,28 +110,18 @@ def get_company_score_with_band(
     if pack_uuid is None:
         pack_uuid = get_default_pack_id(db)
 
-    default_pack_uuid = get_default_pack_id(db)
-    pack_filter = (
-        or_(
-            ReadinessSnapshot.pack_id == pack_uuid,
-            (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
+    if pack_uuid is None:
+        snapshot = None
+    else:
+        snapshot = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id == company_id,
+                ReadinessSnapshot.pack_id == pack_uuid,
+            )
+            .order_by(ReadinessSnapshot.as_of.desc())
+            .first()
         )
-        if pack_uuid is not None and default_pack_uuid is not None
-        else (
-            ReadinessSnapshot.pack_id == pack_uuid
-            if pack_uuid is not None
-            else ReadinessSnapshot.pack_id.is_(None)
-        )
-    )
-    snapshot = (
-        db.query(ReadinessSnapshot)
-        .filter(
-            ReadinessSnapshot.company_id == company_id,
-            pack_filter,
-        )
-        .order_by(ReadinessSnapshot.as_of.desc())
-        .first()
-    )
     if snapshot is not None:
         band = _band_from_explain(snapshot.explain)
         return snapshot.composite, band
@@ -177,29 +156,19 @@ def get_company_scores_batch(
         pack_uuid = get_default_pack_id(db)
 
     default_pack_uuid = get_default_pack_id(db)
-    pack_filter = (
-        or_(
-            ReadinessSnapshot.pack_id == pack_uuid,
-            (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
+    # 1. Batch fetch ReadinessSnapshots (pack_id is NOT NULL after M1)
+    if pack_uuid is None:
+        snapshots = []
+    else:
+        snapshots = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id.in_(company_ids),
+                ReadinessSnapshot.pack_id == pack_uuid,
+            )
+            .order_by(ReadinessSnapshot.company_id, ReadinessSnapshot.as_of.desc())
+            .all()
         )
-        if pack_uuid is not None and default_pack_uuid is not None
-        else (
-            ReadinessSnapshot.pack_id == pack_uuid
-            if pack_uuid is not None
-            else ReadinessSnapshot.pack_id.is_(None)
-        )
-    )
-
-    # 1. Batch fetch ReadinessSnapshots; keep latest (max as_of) per company
-    snapshots = (
-        db.query(ReadinessSnapshot)
-        .filter(
-            ReadinessSnapshot.company_id.in_(company_ids),
-            pack_filter,
-        )
-        .order_by(ReadinessSnapshot.company_id, ReadinessSnapshot.as_of.desc())
-        .all()
-    )
     latest_by_company: dict[int, ReadinessSnapshot] = {}
     for s in snapshots:
         if s.company_id not in latest_by_company:
@@ -248,28 +217,18 @@ def get_company_scores_and_bands_batch(
         pack_uuid = get_default_pack_id(db)
 
     default_pack_uuid = get_default_pack_id(db)
-    pack_filter = (
-        or_(
-            ReadinessSnapshot.pack_id == pack_uuid,
-            (ReadinessSnapshot.pack_id.is_(None)) & (pack_uuid == default_pack_uuid),
+    if pack_uuid is None:
+        snapshots = []
+    else:
+        snapshots = (
+            db.query(ReadinessSnapshot)
+            .filter(
+                ReadinessSnapshot.company_id.in_(company_ids),
+                ReadinessSnapshot.pack_id == pack_uuid,
+            )
+            .order_by(ReadinessSnapshot.company_id, ReadinessSnapshot.as_of.desc())
+            .all()
         )
-        if pack_uuid is not None and default_pack_uuid is not None
-        else (
-            ReadinessSnapshot.pack_id == pack_uuid
-            if pack_uuid is not None
-            else ReadinessSnapshot.pack_id.is_(None)
-        )
-    )
-
-    snapshots = (
-        db.query(ReadinessSnapshot)
-        .filter(
-            ReadinessSnapshot.company_id.in_(company_ids),
-            pack_filter,
-        )
-        .order_by(ReadinessSnapshot.company_id, ReadinessSnapshot.as_of.desc())
-        .all()
-    )
     latest_by_company: dict[int, ReadinessSnapshot] = {}
     for s in snapshots:
         if s.company_id not in latest_by_company:

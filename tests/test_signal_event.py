@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 from app.models import Company, SignalEvent
 
 
-def test_signal_event_model_creation(db: Session) -> None:
+def test_signal_event_model_creation(db: Session, fractional_cto_pack_id) -> None:
     """SignalEvent model can be instantiated with required fields; assert defaults."""
     event = SignalEvent(
         source="crunchbase",
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
     )
     assert event.source == "crunchbase"
     assert event.event_type == "funding_raised"
@@ -32,7 +33,7 @@ def test_signal_event_model_creation(db: Session) -> None:
     assert event.confidence == 0.7
 
 
-def test_signal_event_company_relationship(db: Session) -> None:
+def test_signal_event_company_relationship(db: Session, fractional_cto_pack_id) -> None:
     """Create event with company_id; assert relationship."""
     company = Company(name="Event Co", website_url="https://event.example.com")
     db.add(company)
@@ -45,6 +46,7 @@ def test_signal_event_company_relationship(db: Session) -> None:
         event_type="job_posted_engineering",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
         title="Senior Engineer",
+        pack_id=fractional_cto_pack_id,
     )
     db.add(event)
     db.commit()
@@ -57,7 +59,7 @@ def test_signal_event_company_relationship(db: Session) -> None:
     assert company.signal_events[0].title == "Senior Engineer"
 
 
-def test_signal_event_unique_constraint_prevents_duplicate(db: Session) -> None:
+def test_signal_event_unique_constraint_prevents_duplicate(db: Session, fractional_cto_pack_id) -> None:
     """Insert two events with same (source, source_event_id); second raises IntegrityError."""
     unique_id = f"cb-{uuid.uuid4().hex[:12]}"
     event1 = SignalEvent(
@@ -65,6 +67,7 @@ def test_signal_event_unique_constraint_prevents_duplicate(db: Session) -> None:
         source_event_id=unique_id,
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
     )
     db.add(event1)
     db.commit()
@@ -74,6 +77,7 @@ def test_signal_event_unique_constraint_prevents_duplicate(db: Session) -> None:
         source_event_id=unique_id,
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 13, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
     )
     db.add(event2)
     with pytest.raises(IntegrityError):
@@ -83,6 +87,7 @@ def test_signal_event_unique_constraint_prevents_duplicate(db: Session) -> None:
 
 def test_signal_event_duplicate_allowed_when_source_event_id_null(
     db: Session,
+    fractional_cto_pack_id,
 ) -> None:
     """Insert two events with source_event_id=None; both should succeed."""
     event1 = SignalEvent(
@@ -90,6 +95,7 @@ def test_signal_event_duplicate_allowed_when_source_event_id_null(
         source_event_id=None,
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
     )
     db.add(event1)
     db.commit()
@@ -99,6 +105,7 @@ def test_signal_event_duplicate_allowed_when_source_event_id_null(
         source_event_id=None,
         event_type="job_posted_engineering",
         event_time=datetime(2026, 2, 18, 13, 0, 0, tzinfo=UTC),
+        pack_id=fractional_cto_pack_id,
     )
     db.add(event2)
     db.commit()

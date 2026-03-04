@@ -681,6 +681,7 @@ class TestBuildLeadFeedFromSnapshots:
                 event_type="funding_raised",
                 event_time=datetime.now(UTC) - timedelta(days=5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.add(Watchlist(company_id=company.id))
@@ -739,6 +740,7 @@ class TestBuildLeadFeedFromSnapshots:
                 event_type="funding_raised",
                 event_time=datetime.now(UTC) - timedelta(days=5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.add(Watchlist(company_id=company.id))
