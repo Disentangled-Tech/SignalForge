@@ -7,7 +7,6 @@ import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.llm.router import ModelRole, get_llm_provider
@@ -207,7 +206,7 @@ def get_emerging_companies(
 
     pack_id = resolved_pack
 
-    # Fallback: legacy join query (pack_id NOT NULL after M1)
+    # Fallback: join query (pack_id required, Issue #193)
     pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)

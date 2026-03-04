@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 
 
 class SignalEvent(Base):
-    """Structured event from external adapters (Crunchbase, Product Hunt, etc.)."""
+    """Structured event from external adapters (Crunchbase, Product Hunt, etc.).
+
+    pack_id is required (Issue #193; NOT NULL in DB). All signal tables are pack-scoped.
+    """
 
     __tablename__ = "signal_events"
 

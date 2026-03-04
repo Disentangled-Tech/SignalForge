@@ -1,6 +1,6 @@
 # Pipeline Stages
 
-Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is workspace- and pack-scoped.
+Stages are invoked via `/internal/*` endpoints (cron or scripts). Each stage is workspace- and pack-scoped. For a summary of workspace and pack scoping rules, see [workspace_pack_scoping.md](workspace_pack_scoping.md) (Issue #193).
 
 | Stage | Endpoint | Description | Idempotency |
 |-------|----------|-------------|-------------|
