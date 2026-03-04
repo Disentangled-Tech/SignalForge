@@ -13,6 +13,10 @@ Optional (M1 schema; loader/pipeline use in later milestones):
   - value_statements: list — optional; can align with value_assets or extend them
   - forbidden_phrases: list of strings — phrases the critic must flag
   - tone: str | dict — tone instruction or map (e.g. per recommendation_type)
+  - sensitivity_levels: list of strings — optional; restricts ORE draft to entities whose
+    sensitivity_level is in this list. Allowed values: "low", "medium", "high" (case-insensitive).
+    Missing or not a list = no restriction. Empty list = no one gets a draft (Soft Value Share).
+    See GLOSSARY "Sensitivity & Context" and ore_pipeline M4 playbook eligibility.
 
 Existing playbooks (e.g. fractional_cto_v1) may only define pattern_frames, value_assets,
 and ctas; validation allows optional keys to be absent.
@@ -44,5 +48,5 @@ class OREPlaybook(TypedDict, total=False):
 
 # Known optional ORE playbook keys validated in _validate_playbooks when present
 ORE_PLAYBOOK_OPTIONAL_KEYS = frozenset(
-    {"opening_templates", "value_statements", "forbidden_phrases", "tone"}
+    {"opening_templates", "value_statements", "forbidden_phrases", "tone", "sensitivity_levels"}
 )
