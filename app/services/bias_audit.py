@@ -10,11 +10,13 @@ from __future__ import annotations
 import calendar
 import logging
 from datetime import UTC, date, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models import BiasReport, Company, EngagementSnapshot, JobRun, SignalEvent
 from app.services.analysis import ALLOWED_STAGES
+from app.services.pack_resolver import get_default_pack_id
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +24,17 @@ BIAS_THRESHOLD_PCT = 70
 FUNDING_LOOKBACK_DAYS = 365
 
 
-def get_surfaced_company_ids(db: Session, report_month: date) -> list[int]:
-    """Return company IDs with EngagementSnapshot.as_of in the report month."""
+def get_surfaced_company_ids(
+    db: Session,
+    report_month: date,
+    pack_id: UUID | None = None,
+) -> list[int]:
+    """Return company IDs with EngagementSnapshot.as_of in the report month (pack-scoped, M2)."""
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        return []
+
     first_day = report_month.replace(day=1)
     _, last_day_num = calendar.monthrange(first_day.year, first_day.month)
     last_day = first_day.replace(day=last_day_num)
@@ -33,6 +44,7 @@ def get_surfaced_company_ids(db: Session, report_month: date) -> list[int]:
         .filter(
             EngagementSnapshot.as_of >= first_day,
             EngagementSnapshot.as_of <= last_day,
+            EngagementSnapshot.pack_id == pack_id,
         )
         .distinct()
         .all()
@@ -40,21 +52,31 @@ def get_surfaced_company_ids(db: Session, report_month: date) -> list[int]:
     return [r[0] for r in rows if r[0] is not None]
 
 
-def compute_funding_concentration(db: Session, company_ids: list[int], as_of: date) -> dict:
-    """Count % of companies with funding_raised SignalEvent in last 365 days."""
+def compute_funding_concentration(
+    db: Session,
+    company_ids: list[int],
+    as_of: date,
+    pack_id: UUID | None = None,
+) -> dict:
+    """Count % of companies with funding_raised SignalEvent in last 365 days (pack-scoped, M2)."""
     if not company_ids:
+        return {"with_funding": 0, "pct": 0.0, "segment": "with_funding"}
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
         return {"with_funding": 0, "pct": 0.0, "segment": "with_funding"}
 
     cutoff = as_of - timedelta(days=FUNDING_LOOKBACK_DAYS)
     cutoff_dt = datetime.combine(cutoff, datetime.min.time()).replace(tzinfo=UTC)
 
-    # Companies with at least one funding_raised event
+    # Companies with at least one funding_raised event (pack-scoped)
     with_funding = (
         db.query(SignalEvent.company_id)
         .filter(
             SignalEvent.company_id.in_(company_ids),
             SignalEvent.event_type == "funding_raised",
             SignalEvent.event_time >= cutoff_dt,
+            SignalEvent.pack_id == pack_id,
         )
         .distinct()
         .count()
@@ -110,16 +132,39 @@ def compute_stage_skew(db: Session, company_ids: list[int]) -> dict:
     return counts
 
 
-def run_bias_audit(db: Session, report_month: date | None = None) -> dict:
-    """Run monthly bias audit (Issue #112).
+def run_bias_audit(
+    db: Session,
+    report_month: date | None = None,
+    pack_id: UUID | None = None,
+) -> dict:
+    """Run monthly bias audit (Issue #112). Pack-scoped reads (M2, Issue #193).
 
     Creates JobRun, computes metrics, persists BiasReport, returns summary.
-    Default report_month is last month.
+    Default report_month is last month. When pack_id is None, uses default pack.
     """
     if report_month is None:
         today = date.today()
         first = today.replace(day=1)
         report_month = (first - timedelta(days=1)).replace(day=1)
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        job = JobRun(job_type="bias_audit", status="running")
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        job.finished_at = datetime.now(UTC)
+        job.status = "failed"
+        job.error_message = "No default pack; bias audit requires pack-scoped data"
+        db.commit()
+        return {
+            "status": "failed",
+            "job_run_id": job.id,
+            "report_id": None,
+            "surfaced_count": 0,
+            "flags": [],
+            "error": "No default pack; bias audit requires pack-scoped data",
+        }
 
     job = JobRun(job_type="bias_audit", status="running")
     db.add(job)
@@ -127,14 +172,14 @@ def run_bias_audit(db: Session, report_month: date | None = None) -> dict:
     db.refresh(job)
 
     try:
-        company_ids = get_surfaced_company_ids(db, report_month)
+        company_ids = get_surfaced_company_ids(db, report_month, pack_id=pack_id)
         surfaced_count = len(company_ids)
 
         # Use last day of report month for funding cutoff
         _, last_day = calendar.monthrange(report_month.year, report_month.month)
         as_of = report_month.replace(day=last_day)
 
-        funding = compute_funding_concentration(db, company_ids, as_of)
+        funding = compute_funding_concentration(db, company_ids, as_of, pack_id=pack_id)
         alignment = compute_alignment_skew(db, company_ids)
         stage = compute_stage_skew(db, company_ids)
 

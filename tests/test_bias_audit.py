@@ -123,6 +123,23 @@ class TestGetSurfacedCompanyIds:
         ids = get_surfaced_company_ids(db, _REPORT_MONTH)
         assert c1.id not in ids
 
+    def test_pack_scoped_returns_only_companies_in_pack(
+        self, db: Session, fractional_cto_pack_id, bookkeeping_pack_id
+    ) -> None:
+        """M2 (Issue #193): get_surfaced_company_ids filters by pack_id; no cross-pack leakage."""
+        c1 = _create_company(db, "Co1")
+        c2 = _create_company(db, "Co2")
+        _create_engagement_snapshot(db, c1.id, date(2030, 2, 15), pack_id=fractional_cto_pack_id)
+        _create_engagement_snapshot(db, c2.id, date(2030, 2, 20), pack_id=bookkeeping_pack_id)
+
+        ids_default = get_surfaced_company_ids(db, _REPORT_MONTH, pack_id=fractional_cto_pack_id)
+        ids_bookkeeping = get_surfaced_company_ids(db, _REPORT_MONTH, pack_id=bookkeeping_pack_id)
+
+        assert c1.id in ids_default
+        assert c2.id not in ids_default
+        assert c2.id in ids_bookkeeping
+        assert c1.id not in ids_bookkeeping
+
 
 class TestComputeFundingConcentration:
     def test_empty_companies_returns_zero(self, db: Session) -> None:
@@ -151,6 +168,24 @@ class TestComputeFundingConcentration:
         result = compute_funding_concentration(db, [c1.id], date(2026, 2, 28))
         assert result["with_funding"] == 0
         assert result["pct"] == 0.0
+
+    def test_pack_scoped_counts_only_events_in_pack(
+        self, db: Session, fractional_cto_pack_id, bookkeeping_pack_id
+    ) -> None:
+        """M2 (Issue #193): compute_funding_concentration filters SignalEvent by pack_id."""
+        c1 = _create_company(db, "Co1")
+        _create_signal_event(db, c1.id, "funding_raised", pack_id=fractional_cto_pack_id)
+        # Same company has funding in another pack; query by default pack only
+        result = compute_funding_concentration(
+            db, [c1.id], date(2026, 2, 28), pack_id=bookkeeping_pack_id
+        )
+        assert result["with_funding"] == 0
+        assert result["pct"] == 0.0
+        result_default = compute_funding_concentration(
+            db, [c1.id], date(2026, 2, 28), pack_id=fractional_cto_pack_id
+        )
+        assert result_default["with_funding"] == 1
+        assert result_default["pct"] == 100.0
 
 
 class TestComputeAlignmentSkew:
