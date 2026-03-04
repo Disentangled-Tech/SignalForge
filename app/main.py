@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
     from app.api.briefing_views import router as briefing_views_router
     from app.api.companies import router as companies_router
     from app.api.outreach import router as outreach_router
+    from app.api.scout_views import router as scout_views_router
     from app.api.settings_views import router as settings_views_router
     from app.api.views import router as views_router
     from app.api.watchlist import router as watchlist_router
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(views_router, tags=["views"])
     app.include_router(briefing_views_router, tags=["briefing-views"])
     app.include_router(bias_views_router, tags=["bias-views"])
+    app.include_router(scout_views_router, tags=["scout-views"])
     app.include_router(settings_views_router, tags=["settings-views"])
 
     # Internal job endpoints (cron/scripts — token-authenticated)

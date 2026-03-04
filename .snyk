@@ -1,0 +1,14 @@
+# Snyk (https://snyk.io) policy file
+# Exclude Claude worktrees so dependency scan runs only for the main project
+version: v1.25.0
+exclude:
+  global:
+    - .claude/**
+
+# Snyk Code: Open Redirect (python/OR) in scout_views redirect — false positive.
+# Redirect URL uses only server-generated run_id (uuid.uuid4() in discovery_scout_service.run())
+# and fixed paths; same-origin only. No user input in redirect (CWE-601).
+ignore:
+  python/OR:
+    - app/api/scout_views.py:
+        reason: "Redirect uses only server-generated run_id and fixed paths; same-origin. No user input."

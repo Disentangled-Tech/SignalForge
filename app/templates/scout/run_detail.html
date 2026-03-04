@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Scout run {{ run.run_id }} — SignalForge{% endblock %}
+
+{% block content %}
+<div class="header-row">
+    <h1>Scout run {{ run.run_id }}</h1>
+    <a href="/scout{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}" class="btn btn-secondary">Back to list</a>
+</div>
+
+<p class="text-muted">Started: {{ run.started_at }} · Status: {{ run.status }} · Bundles: {{ run.bundles_count }}</p>
+
+{% if bundles %}
+{% for b in bundles %}
+<div class="card">
+    <h2>{{ b.candidate_company_name }}</h2>
+    <p><a href="{{ b.company_website }}" target="_blank" rel="noopener">{{ b.company_website }}</a></p>
+    {% if b.why_now_hypothesis %}
+    <p><strong>Why now:</strong> {{ b.why_now_hypothesis }}</p>
+    {% endif %}
+    {% if b.evidence %}
+    <ul>
+        {% for e in b.evidence %}
+        <li>{% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener">{{ e.url }}</a>{% endif %}
+            {% if e.quoted_snippet %} — {{ e.quoted_snippet }}{% endif %}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p class="text-muted">No bundles for this run.</p>
+{% endif %}
+{% endblock %}
