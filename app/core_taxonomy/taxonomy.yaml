@@ -37,6 +37,13 @@ signal_ids:
   # produce SignalInstances for it. See app/core_derivers/derivers.yaml NOTE.
   - incorporation
 
+# Optional per-signal sensitivity (Issue #148, M1). Pack ESL sensitivity_mapping overrides.
+# Omit entirely for backward compatibility; if present, every key must be in signal_ids.
+signals:
+  founder_urgency_language:
+    sensitivity: medium
+  funding_raised: {}
+
 dimensions:
   M:  # Momentum
     - funding_raised

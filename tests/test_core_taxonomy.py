@@ -52,6 +52,14 @@ class TestLoadCoreTaxonomy:
         second = load_core_taxonomy()
         assert first["signal_ids"] == second["signal_ids"]
 
+    def test_load_includes_signals_when_in_file(self) -> None:
+        """When taxonomy.yaml has a 'signals' key, the loaded dict includes it (regression)."""
+        from app.core_taxonomy.loader import load_core_taxonomy
+
+        result = load_core_taxonomy()
+        assert "signals" in result, "loader must preserve optional 'signals' when present in file"
+        assert isinstance(result["signals"], dict), "'signals' must be a dict when present"
+
 
 class TestGetCoreSignalIds:
     """get_core_signal_ids() returns a frozenset of all canonical signal_ids."""
@@ -283,6 +291,100 @@ class TestValidateCoreTaxonomy:
 
         validate_core_taxonomy({"signal_ids": ["foo"]})  # must not raise
 
+    def test_signals_absent_passes(self) -> None:
+        """Taxonomy without signals key is valid (backward compatibility)."""
+        from app.core_taxonomy.validator import validate_core_taxonomy
+
+        validate_core_taxonomy({"signal_ids": ["foo"], "dimensions": {"M": ["foo"]}})
+
+    def test_signals_empty_dict_passes(self) -> None:
+        """Taxonomy with signals: {} is valid."""
+        from app.core_taxonomy.validator import validate_core_taxonomy
+
+        validate_core_taxonomy(
+            {"signal_ids": ["foo"], "dimensions": {"M": ["foo"]}, "signals": {}}
+        )
+
+    def test_signals_valid_structure_passes(self) -> None:
+        """Taxonomy with signals map (signal_id -> { sensitivity }) is valid."""
+        from app.core_taxonomy.validator import validate_core_taxonomy
+
+        validate_core_taxonomy(
+            {
+                "signal_ids": ["foo", "bar"],
+                "dimensions": {"M": ["foo"]},
+                "signals": {
+                    "foo": {"sensitivity": "low"},
+                    "bar": {"sensitivity": "medium"},
+                },
+            }
+        )
+
+    def test_signals_invalid_sensitivity_value_raises(self) -> None:
+        """sensitivity must be one of low, medium, high."""
+        from app.core_taxonomy.validator import (
+            CoreTaxonomyValidationError,
+            validate_core_taxonomy,
+        )
+
+        with pytest.raises(
+            CoreTaxonomyValidationError, match="sensitivity.*low.*medium.*high"
+        ):
+            validate_core_taxonomy(
+                {
+                    "signal_ids": ["foo"],
+                    "signals": {"foo": {"sensitivity": "invalid"}},
+                }
+            )
+
+    def test_signals_key_not_in_signal_ids_raises(self) -> None:
+        """Every key in signals must be in signal_ids."""
+        from app.core_taxonomy.validator import (
+            CoreTaxonomyValidationError,
+            validate_core_taxonomy,
+        )
+
+        with pytest.raises(CoreTaxonomyValidationError, match="not in signal_ids"):
+            validate_core_taxonomy(
+                {
+                    "signal_ids": ["foo"],
+                    "signals": {"bar": {"sensitivity": "low"}},
+                }
+            )
+
+    def test_signals_not_dict_raises(self) -> None:
+        """signals must be a dict when present."""
+        from app.core_taxonomy.validator import (
+            CoreTaxonomyValidationError,
+            validate_core_taxonomy,
+        )
+
+        with pytest.raises(CoreTaxonomyValidationError, match="signals.*dict"):
+            validate_core_taxonomy(
+                {"signal_ids": ["foo"], "signals": [{"foo": "low"}]}  # type: ignore[dict-item]
+            )
+
+    def test_signals_entry_not_dict_raises(self) -> None:
+        """Each signals value must be a dict (e.g. { sensitivity?: ... })."""
+        from app.core_taxonomy.validator import (
+            CoreTaxonomyValidationError,
+            validate_core_taxonomy,
+        )
+
+        with pytest.raises(CoreTaxonomyValidationError, match="signals.*entry"):
+            validate_core_taxonomy(
+                {
+                    "signal_ids": ["foo"],
+                    "signals": {"foo": "low"},  # type: ignore[dict-item]
+                }
+            )
+
+    def test_signals_sensitivity_optional_in_entry(self) -> None:
+        """Signal entry may omit sensitivity (optional key)."""
+        from app.core_taxonomy.validator import validate_core_taxonomy
+
+        validate_core_taxonomy({"signal_ids": ["foo"], "signals": {"foo": {}}})
+
 
 class TestCoreTaxonomyIntegrity:
     """Structural integrity of the actual taxonomy.yaml file."""
@@ -305,6 +407,20 @@ class TestCoreTaxonomyIntegrity:
         data = load_core_taxonomy()
         ids = data["signal_ids"]
         assert len(ids) == len(set(ids)), "taxonomy.yaml contains duplicate signal_ids"
+
+    def test_signals_keys_in_signal_ids(self) -> None:
+        """When 'signals' is present, every key must be in signal_ids (structural regression)."""
+        from app.core_taxonomy.loader import load_core_taxonomy
+
+        data = load_core_taxonomy()
+        signal_id_set = set(data["signal_ids"])
+        signals = data.get("signals")
+        if not isinstance(signals, dict):
+            return
+        for signal_id in signals:
+            assert signal_id in signal_id_set, (
+                f"signals key '{signal_id}' is not in signal_ids"
+            )
 
 
 class TestGetCoreSignalSensitivity:
