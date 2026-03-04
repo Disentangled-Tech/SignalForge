@@ -932,3 +932,251 @@ def test_ore_pipeline_empty_explain_passes_empty_snippet_and_labels(db: Session)
     call_kwargs = mock_draft.call_args[1]
     assert call_kwargs["explainability_snippet"] == ""
     assert call_kwargs["top_signal_labels"] == []
+
+
+# --- Issue #122 M1: pack_id/workspace_id and get_or_create ---
+
+
+def test_ore_pipeline_explicit_pack_id_same_as_default(db: Session) -> None:
+    """Issue #122 M1: generate_ore_recommendation(..., pack_id=default_id) matches default behavior."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="ExplicitPackCo",
+        website_url="https://explicit.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 1)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec_default = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+        rec_explicit = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec_default is not None and rec_explicit is not None
+    assert rec_default.id == rec_explicit.id
+    assert rec_default.recommendation_type == rec_explicit.recommendation_type
+    assert rec_default.outreach_score == rec_explicit.outreach_score
+    assert rec_default.playbook_id == rec_explicit.playbook_id
+
+
+def test_get_or_create_ore_recommendation_returns_existing(db: Session) -> None:
+    """Issue #122 M1: get_or_create returns existing row when one exists for (company_id, as_of, pack)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="GetOrCreateCo",
+        website_url="https://getorcreate.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 2)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import (
+        generate_ore_recommendation,
+        get_or_create_ore_recommendation,
+    )
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec1 = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+    assert rec1 is not None
+
+    rec2 = get_or_create_ore_recommendation(
+        db,
+        company_id=company.id,
+        as_of=as_of,
+        pack_id=pack_id,
+    )
+    assert rec2 is not None
+    assert rec1.id == rec2.id
+    assert rec2.recommendation_type == rec1.recommendation_type
+
+
+def test_get_or_create_ore_recommendation_creates_when_none(db: Session) -> None:
+    """Issue #122 M1: get_or_create runs pipeline and returns new recommendation when none exists."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="CreateNewCo",
+        website_url="https://createnew.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 3)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import get_or_create_ore_recommendation
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec = get_or_create_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+        )
+
+    assert rec is not None
+    assert rec.company_id == company.id
+    assert rec.as_of == as_of
+    assert rec.pack_id == pack_id
+    assert rec.playbook_id == DEFAULT_PLAYBOOK_NAME
+    assert rec.recommendation_type in (
+        "Soft Value Share",
+        "Low-Pressure Intro",
+        "Standard Outreach",
+        "Direct Strategic Outreach",
+    )
+    assert rec.outreach_score >= 0
+
+
+def test_get_or_create_ore_recommendation_returns_none_when_company_missing(db: Session) -> None:
+    """Issue #122 M1: get_or_create returns None when company does not exist."""
+    from app.services.ore.ore_pipeline import get_or_create_ore_recommendation
+
+    rec = get_or_create_ore_recommendation(
+        db,
+        company_id=999999,
+        as_of=date(2026, 3, 1),
+    )
+    assert rec is None
+
+
+def test_ore_recommendation_to_response_has_required_fields(db: Session) -> None:
+    """Issue #122 M1: OutreachRecommendationResponse from mapper has required fields and valid types."""
+    from app.schemas.outreach import ore_recommendation_to_response
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+    company = Company(
+        name="SchemaCo",
+        website_url="https://schema.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 4)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+    assert rec is not None
+
+    response = ore_recommendation_to_response(rec, sensitivity_tag="low")
+    assert response.company_id == rec.company_id
+    assert response.as_of == rec.as_of
+    assert response.recommended_playbook_id == (rec.playbook_id or "")
+    assert response.drafts == (list(rec.draft_variants) if rec.draft_variants else [])
+    assert "Recommendation:" in response.rationale
+    assert response.sensitivity_tag == "low"
+    assert response.recommendation_type == rec.recommendation_type
+    assert response.outreach_score == rec.outreach_score
+    assert response.safeguards_triggered == rec.safeguards_triggered
+    assert response.pack_id == rec.pack_id
+    assert response.id == rec.id
+    assert response.created_at == rec.created_at
