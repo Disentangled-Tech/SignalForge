@@ -146,6 +146,25 @@ The **Diff-Based Monitor** is a **separate flow** outside the ingest → derive 
 
 See [monitor.md](monitor.md) for scope, invariants, and relationship to Scan and Scout.
 
+## Outreach API (Issue #108, #122)
+
+### GET /api/outreach/review
+
+Returns top OutreachScore companies for weekly review. Query params: `date` (optional, default: latest snapshot date or today), `limit` (optional, max 20). Response: `as_of`, `companies` (each with company_id, company_name, website_url, outreach_score, explain).
+
+### GET /api/outreach/recommendation/{company_id}
+
+Returns the ORE recommendation kit for a single company (Issue #122). Pack-scoped; uses playbook and ESL only (no core changes).
+
+- **Query params:** `as_of` (optional, default: latest snapshot date or today), `pack_id` (optional), `workspace_id` (optional, for pack resolution when pack_id omitted).
+- **Response:** `OutreachRecommendationResponse` — recommended_playbook_id, drafts, rationale, sensitivity_tag, recommendation_type, outreach_score, safeguards_triggered, company_id, as_of.
+- **404:** Company not found, or no ReadinessSnapshot for (company_id, as_of, resolved pack).
+- **Auth:** Session auth required; when multi_workspace_enabled, workspace access is enforced.
+
+See [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) for ORE design and [pack_v2_contract.md](pack_v2_contract.md) for pack-scoping.
+
+---
+
 ## Phase 4: Briefing and Weekly Review Dual-Path (Issue #225)
 
 When `lead_feed` has rows for workspace/pack/as_of, the briefing page and weekly review

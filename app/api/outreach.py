@@ -1,4 +1,9 @@
-"""Outreach API routes (Issue #108, #122)."""
+"""Outreach API routes (Issue #108, #122).
+
+M3: No domain-specific language in this module. All copy and recommendation
+strings come from pack/playbook/ESL; the endpoint does not hardcode founder,
+startup, CTO, or other domain assumptions.
+"""
 
 from __future__ import annotations
 
@@ -32,6 +37,14 @@ router = APIRouter()
 MAX_REVIEW_LIMIT = 20
 
 
+def resolve_as_of(db: Session, date_param: date | None) -> date:
+    """Resolve snapshot date: use date_param if set, else latest snapshot date, else today (Issue #122 M4)."""
+    if date_param is not None:
+        return date_param
+    latest = get_latest_snapshot_date(db)
+    return latest if latest is not None else date.today()
+
+
 @router.get("/review", response_model=OutreachReviewResponse)
 def api_outreach_review(
     date_param: date | None = Query(
@@ -52,11 +65,7 @@ def api_outreach_review(
     Each company appears at most once. Includes explain block per company.
     """
     settings = get_settings()
-    as_of = date_param
-    if as_of is None:
-        as_of = get_latest_snapshot_date(db)
-        if as_of is None:
-            as_of = date.today()
+    as_of = resolve_as_of(db, date_param)
 
     effective_limit = limit if limit is not None else settings.weekly_review_limit
     effective_limit = min(effective_limit, MAX_REVIEW_LIMIT)
@@ -120,12 +129,9 @@ def api_outreach_recommendation(
     else:
         effective_workspace_id = workspace_id
 
-    resolved_as_of = as_of
-    if resolved_as_of is None:
-        resolved_as_of = get_latest_snapshot_date(db)
-        if resolved_as_of is None:
-            resolved_as_of = date.today()
+    resolved_as_of = resolve_as_of(db, as_of)
 
+    # Return contract: get_or_create_ore_recommendation returns OutreachRecommendation | None (single value).
     rec = get_or_create_ore_recommendation(
         db,
         company_id=company_id,
@@ -148,6 +154,10 @@ def api_outreach_recommendation(
             pack_id=rec.pack_id,
         )
         if ctx is not None:
-            sensitivity_tag = ctx.get("sensitivity_level") if isinstance(ctx.get("sensitivity_level"), str) else None
+            sensitivity_tag = (
+                ctx.get("sensitivity_level")
+                if isinstance(ctx.get("sensitivity_level"), str)
+                else None
+            )
 
     return ore_recommendation_to_response(rec, sensitivity_tag=sensitivity_tag)

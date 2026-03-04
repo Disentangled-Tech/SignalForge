@@ -292,3 +292,25 @@ Energy metrics:
  5. Persist recommendations
  6. Add API: GET /api/outreach/recommendations?week=...
  7. Add outcome capture integration (ties to outreach_history)
+
+---
+
+## Per-company recommendation API (Issue #122)
+
+**Endpoint:** `GET /api/outreach/recommendation/{company_id}`
+
+Returns the ORE recommendation kit for a single company: recommended playbook ID, draft variants, rationale, sensitivity tag, and core recommendation fields (recommendation_type, outreach_score, safeguards_triggered). Pack-scoped; all copy and recommendation types come from pack/playbook/ESL (no domain assumptions in the endpoint).
+
+**Query parameters:**
+
+| Parameter      | Type   | Required | Description |
+|----------------|--------|----------|-------------|
+| `as_of`        | date   | No       | Snapshot date (YYYY-MM-DD). Default: latest available snapshot date, or today if none. |
+| `pack_id`      | UUID   | No       | Pack to use. Default: workspace active pack or app default when omitted. |
+| `workspace_id` | string | No       | Workspace for pack resolution when `pack_id` omitted. When multi_workspace_enabled, defaults to default workspace if omitted. |
+
+**Response:** JSON matching `OutreachRecommendationResponse`: `company_id`, `as_of`, `recommended_playbook_id`, `drafts`, `rationale`, `sensitivity_tag`, `recommendation_type`, `outreach_score`, `safeguards_triggered`, etc.
+
+**404 conditions:** Company not found; or no ReadinessSnapshot for (company_id, as_of, resolved pack) — i.e. no recommendation available.
+
+**Auth:** Same as weekly review: session auth required (`require_auth`). When multi_workspace_enabled, workspace access is enforced and effective workspace is used for pack resolution when `pack_id` is omitted.
