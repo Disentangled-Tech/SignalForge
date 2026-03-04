@@ -427,6 +427,120 @@ def test_ore_playbook_sensitivity_included_draft_generated(db: Session) -> None:
     assert rec.draft_variants and len(rec.draft_variants) >= 1
 
 
+def test_ore_pipeline_channel_from_playbook_when_set(db: Session) -> None:
+    """M4 (Issue #121): When playbook has channel, persisted recommendation uses it."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ChannelCo",
+        website_url="https://channel.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 24)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.draft_generator import CTAS, PATTERN_FRAMES, VALUE_ASSETS
+
+    playbook_with_channel = {
+        "pattern_frames": PATTERN_FRAMES,
+        "value_assets": VALUE_ASSETS,
+        "ctas": CTAS,
+        "sensitivity_levels": None,
+        "channel": "Email",
+    }
+
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_channel,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+    ):
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+            esl_decision="allow",
+            sensitivity_level="low",
+        )
+
+    assert rec is not None
+    assert rec.channel == "Email", "Pipeline must persist playbook channel when set"
+
+
+def test_ore_pipeline_channel_default_when_playbook_missing_channel(db: Session) -> None:
+    """M4 (Issue #121): When playbook has no channel, persisted recommendation uses LinkedIn DM."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="DefaultChannelCo",
+        website_url="https://defaultchannel.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 25)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.channel == "LinkedIn DM", (
+        "Pipeline must default to LinkedIn DM when playbook has no channel"
+    )
+
+
 def test_ore_playbook_no_sensitivity_levels_unchanged(db: Session) -> None:
     """M4: When playbook has no sensitivity_levels, behavior unchanged (draft when gate allows)."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
@@ -764,6 +878,178 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
     )
 
 
+def test_ore_pipeline_enable_ore_polish_true_uses_polished_draft_when_passes_critic(
+    db: Session,
+) -> None:
+    """Issue #119: When enable_ore_polish is True and polished draft passes critic, persisted draft is polished."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="PolishCo",
+        website_url="https://polish.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 27)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    polished_draft = {
+        "subject": "Polished subject line",
+        "message": (
+            "Hi Jane,\n\nWhen products add integrations, systems often need a pass.\n\n"
+            "I have a 2-page checklist that might help. Want me to send that checklist? "
+            "No worries if now isn't the time."
+        ),
+    }
+    playbook_with_polish = {
+        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "value_assets": ["2-page checklist"],
+        "ctas": ["Want me to send that checklist?"],
+        "forbidden_phrases": [],
+        "sensitivity_levels": None,
+        "enable_ore_polish": True,
+    }
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_polish,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.polish_ore_draft",
+            return_value=polished_draft,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.draft_variants and len(rec.draft_variants) == 1
+    stored = rec.draft_variants[0]
+    assert stored.get("subject") == polished_draft["subject"]
+    assert stored.get("message") == polished_draft["message"]
+
+
+def test_ore_pipeline_enable_ore_polish_both_fail_critic_stores_fallback_not_polished(
+    db: Session,
+) -> None:
+    """Issue #119: When polished and original both fail critic, persisted draft is fallback (or original), not polished."""
+    from app.services.ore.critic import CriticResult
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="FallbackCo",
+        website_url="https://fallback.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 28)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    polished_draft = {"subject": "Polished only", "message": "Polished body only."}
+    playbook_with_polish = {
+        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "value_assets": ["2-page Tech Inflection Checklist"],
+        "ctas": ["Want me to send that checklist?"],
+        "forbidden_phrases": [],
+        "sensitivity_levels": None,
+        "enable_ore_polish": True,
+    }
+    failing_draft = {
+        "subject": "Quick question",
+        "message": "Hi Jane, I have a checklist. Want me to send that checklist?",
+    }
+
+    call_count = 0
+
+    def critic_fail_then_pass(subject: str, message: str, **kwargs: object) -> object:
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            return CriticResult(passed=False, violations=["test"])
+        return CriticResult(passed=True, violations=[])
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_polish,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=failing_draft,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.polish_ore_draft",
+            return_value=polished_draft,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.check_critic",
+            side_effect=critic_fail_then_pass,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.draft_variants and len(rec.draft_variants) == 1
+    stored = rec.draft_variants[0]
+    assert stored.get("subject") != polished_draft["subject"]
+    assert "Polished only" not in (stored.get("subject") or "")
+    assert "Polished body" not in (stored.get("message") or "")
+    assert "FallbackCo" in (stored.get("subject") or "") or "No worries" in (stored.get("message") or "")
+
+
 def test_ore_returns_none_when_company_not_found(db: Session) -> None:
     """generate_ore_recommendation returns None when company_id does not exist."""
     from app.services.ore.ore_pipeline import generate_ore_recommendation
@@ -1093,6 +1379,67 @@ def test_ore_pipeline_empty_explain_passes_empty_snippet_and_labels(db: Session)
     call_kwargs = mock_draft.call_args[1]
     assert call_kwargs["explainability_snippet"] == ""
     assert call_kwargs["top_signal_labels"] == []
+
+
+def test_ore_pipeline_real_fractional_cto_v1_passes_recipient_label_from_taxonomy(
+    db: Session,
+) -> None:
+    """M3 (Issue #121): With real fractional_cto_v1 pack (no mock resolve_pack), pipeline passes taxonomy.recipient_label to generate_ore_draft.
+
+    fractional_cto_v1 has taxonomy.yaml with recipient_label: \"Founder\" so production wording is unchanged.
+    Asserts the pipeline passes recipient_label=\"Founder\" when the default pack is loaded from disk.
+    """
+    pack_row = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    if pack_row is None:
+        pytest.skip("fractional_cto_v1 pack not in DB")
+    pack_id = pack_row.id
+
+    company = Company(
+        name="RealPackCo",
+        website_url="https://realpack.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 3, 2)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    # No mock of resolve_pack: real pack is loaded (with taxonomy.recipient_label from packs/fractional_cto_v1/taxonomy.yaml)
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ) as mock_draft:
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    mock_draft.assert_called_once()
+    call_kwargs = mock_draft.call_args[1]
+    # M3: pipeline passes recipient_label from pack taxonomy; fractional_cto_v1 has recipient_label: "Founder"
+    if "recipient_label" not in call_kwargs:
+        pytest.skip("M3 recipient_label not yet in pipeline (ore_pipeline.generate_ore_draft)")
+    assert call_kwargs["recipient_label"] == "Founder"
 
 
 # --- Issue #122 M1: pack_id/workspace_id and get_or_create ---

@@ -76,6 +76,8 @@ When a workspace's active pack is resolved (e.g. for scoring, briefing, ORE), on
 
 ORE playbooks (e.g. `playbooks/ore_outreach.yaml`) may define optional **forbidden_phrases** (list of strings). The ORE critic applies these in addition to core rules (surveillance, urgency, CTA, opt-out); see [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md).
 
+**ORE recipient label (Issue #121 M3):** Pack **taxonomy** may define optional **recipient_label** (string). When present, ORE uses it in the draft prompt as the "X name:" line (e.g. "Founder name: …"); when absent, ORE uses `"Contact"` so that no domain-specific wording appears unless the pack defines it. See `packs/fractional_cto_v1/taxonomy.yaml` for an example.
+
 **ORE recommendation endpoint (Issue #122):** `GET /api/outreach/recommendation/{company_id}` is pack-scoped. It accepts optional `as_of`, `pack_id`, and `workspace_id`; TRS/ESL and playbook content come from the resolved pack only. No core logic changes; the endpoint uses the same ORE pipeline and playbook/ESL contract as internal callers. See [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) and [pipeline.md](pipeline.md).
 
 ## Backward compatibility

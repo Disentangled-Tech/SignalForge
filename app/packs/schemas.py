@@ -483,6 +483,21 @@ def _validate_playbook_optional_ore_keys(playbook_name: str, content: dict[str, 
             raise ValidationError(
                 f"playbook '{playbook_name}' tone must be a string or dict"
             )
+    # Issue #121 M4: optional channel (non-empty string when present)
+    channel = content.get("channel")
+    if channel is not None:
+        if not isinstance(channel, str):
+            raise ValidationError(f"playbook '{playbook_name}' channel must be a string")
+        if not channel.strip():
+            raise ValidationError(
+                f"playbook '{playbook_name}' channel must be a non-empty string when present"
+            )
+    # Issue #119: optional enable_ore_polish (bool or string when present)
+    enable_ore_polish = content.get("enable_ore_polish")
+    if enable_ore_polish is not None and not isinstance(enable_ore_polish, (bool, str)):
+        raise ValidationError(
+            f"playbook '{playbook_name}' enable_ore_polish must be a boolean or string"
+        )
 
 
 def _validate_ethical_policy(esl_policy: dict[str, Any]) -> None:

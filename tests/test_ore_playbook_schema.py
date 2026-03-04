@@ -17,6 +17,7 @@ class TestOREPlaybookSchema:
                 "forbidden_phrases",
                 "tone",
                 "sensitivity_levels",
+                "channel",
             }
         )
 
@@ -32,7 +33,7 @@ class TestOREPlaybookSchema:
         assert minimal["ctas"] == ["CTA1"]
 
     def test_ore_playbook_with_optional_keys(self) -> None:
-        """OREPlaybook accepts all optional keys."""
+        """OREPlaybook accepts all optional keys including channel (Issue #121 M4)."""
         full: OREPlaybook = {
             "pattern_frames": {"momentum": "text"},
             "value_assets": ["a"],
@@ -41,9 +42,11 @@ class TestOREPlaybookSchema:
             "value_statements": ["We help teams."],
             "forbidden_phrases": ["I saw you"],
             "tone": "professional",
+            "channel": "Email",
         }
         assert full["forbidden_phrases"] == ["I saw you"]
         assert full["tone"] == "professional"
+        assert full["channel"] == "Email"
 
     def test_ore_playbook_tone_dict(self) -> None:
         """OREPlaybook accepts tone as dict."""

@@ -246,6 +246,7 @@ def generate_ore_recommendation(
     )
 
     draft_variants: list[dict] = []
+    strategy_notes_for_persist: str | dict | None = None
     if gate.should_generate_draft:
         # Pick pattern frame from dominant TRS dimension (Issue #121 M2).
         pattern_frames = playbook.get("pattern_frames") or {}
@@ -327,11 +328,26 @@ def generate_ore_recommendation(
                     if fallback_critic.passed:
                         draft_variants = [fallback]
                     else:
-                        # Mark for manual review — still store with empty draft
-                        draft_variants = [draft]  # Store original, strategy_notes will flag
+                        # Mark for manual review — still store original draft (Issue #120 M3)
+                        draft_variants = [draft]
+                        strategy_notes_for_persist = {
+                            "message": _strategy_notes_for_critic_failure(critic_result),
+                        }
+                        _log_critic_violations(
+                            critic_result, company_id=company_id, pack_id=resolved_pack_id
+                        )
 
     # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
     generation_version = (pack.manifest.get("version") or "1")[:64]
+
+    # Issue #121 M4: channel from playbook; fallback "LinkedIn DM" when missing
+    _channel_raw = playbook.get("channel")
+    channel = (
+        _channel_raw.strip()
+        if isinstance(_channel_raw, str) and (_channel_raw or "").strip()
+        else None
+    )
+    channel = channel or "LinkedIn DM"
 
     # Issue #115 M2: upsert by (company_id, as_of, pack_id) — update existing or insert
     existing = (
@@ -346,9 +362,9 @@ def generate_ore_recommendation(
     if existing:
         existing.recommendation_type = gate.recommendation_type
         existing.outreach_score = outreach_score
-        existing.channel = "LinkedIn DM"
+        existing.channel = channel
         existing.draft_variants = draft_variants if draft_variants else None
-        existing.strategy_notes = None
+        existing.strategy_notes = strategy_notes_for_persist
         existing.safeguards_triggered = gate.safeguards_triggered or None
         existing.generation_version = generation_version
         existing.playbook_id = DEFAULT_PLAYBOOK_NAME
@@ -361,9 +377,9 @@ def generate_ore_recommendation(
         as_of=as_of,
         recommendation_type=gate.recommendation_type,
         outreach_score=outreach_score,
-        channel="LinkedIn DM",
+        channel=channel,
         draft_variants=draft_variants if draft_variants else None,
-        strategy_notes=None,
+        strategy_notes=strategy_notes_for_persist,
         safeguards_triggered=gate.safeguards_triggered or None,
         generation_version=generation_version,
         pack_id=resolved_pack_id,
@@ -634,6 +650,53 @@ def regenerate_ore_draft(
     db.commit()
     db.refresh(existing)
     return existing
+
+
+def _log_critic_violations(
+    critic_result: object,
+    *,
+    company_id: int,
+    pack_id: UUID,
+) -> None:
+    """Log ORE critic violations for auditing (Issue #120 M3): violation_type, pack_id, signal_id."""
+    from app.services.ore.critic import CriticResult
+
+    if not isinstance(critic_result, CriticResult) or critic_result.passed:
+        return
+    details = critic_result.violation_details or []
+    for v in details:
+        logger.warning(
+            "ORE critic violation: type=%s pack_id=%s company_id=%s",
+            v.get("type", "unknown"),
+            pack_id,
+            company_id,
+            extra={
+                "violation_type": v.get("type"),
+                "pack_id": str(pack_id),
+                "signal_id": v.get("signal_id"),
+                "company_id": company_id,
+            },
+        )
+    if not details and critic_result.violations:
+        logger.warning(
+            "ORE critic violation: pack_id=%s company_id=%s violations=%s",
+            pack_id,
+            company_id,
+            critic_result.violations,
+            extra={"pack_id": str(pack_id), "company_id": company_id},
+        )
+
+
+def _strategy_notes_for_critic_failure(critic_result: object) -> str:
+    """Build strategy_notes message when storing draft that failed critic (Issue #120 M3)."""
+    from app.services.ore.critic import CriticResult
+
+    if not isinstance(critic_result, CriticResult) or critic_result.passed:
+        return "Manual Review: critic check"
+    parts = [f"Manual Review: {v}" for v in (critic_result.violations or [])[:3]]
+    if (critic_result.violations or [])[3:]:
+        parts.append("...")
+    return "; ".join(parts) if parts else "Manual Review: critic violations"
 
 
 def _build_critic_compliant_fallback(

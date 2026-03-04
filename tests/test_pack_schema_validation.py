@@ -995,6 +995,125 @@ class TestValidatePlaybookOptionalOreKeys:
                 playbooks=playbooks,
             )
 
+    def test_playbook_channel_not_string_raises(self) -> None:
+        """Playbook with channel not a string raises ValidationError (Issue #121 M4)."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "channel": 123,
+            }
+        }
+        with pytest.raises(ValidationError, match="channel must be a string"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_channel_empty_string_raises(self) -> None:
+        """Playbook with channel empty or whitespace raises ValidationError (Issue #121 M4)."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        for value in ("", "   "):
+            playbooks = {
+                "ore_outreach": {
+                    **_valid_playbooks()["ore_outreach"],
+                    "channel": value,
+                }
+            }
+            with pytest.raises(ValidationError, match="channel must be a non-empty string"):
+                validate_pack_schema(
+                    manifest=_valid_manifest(),
+                    taxonomy=_valid_taxonomy(),
+                    scoring=_valid_scoring(),
+                    esl_policy=_valid_esl_policy(),
+                    derivers=_valid_derivers(),
+                    playbooks=playbooks,
+                )
+
+    def test_playbook_channel_valid_string_passes(self) -> None:
+        """Playbook with channel as non-empty string passes (Issue #121 M4)."""
+        from app.packs.schemas import validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "channel": "Email",
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_playbook_enable_ore_polish_true_passes(self) -> None:
+        """Playbook with enable_ore_polish: true passes (Issue #119)."""
+        from app.packs.schemas import validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "enable_ore_polish": True,
+            }
+        }
+        validate_pack_schema(
+            manifest=_valid_manifest(),
+            taxonomy=_valid_taxonomy(),
+            scoring=_valid_scoring(),
+            esl_policy=_valid_esl_policy(),
+            derivers=_valid_derivers(),
+            playbooks=playbooks,
+        )
+
+    def test_playbook_enable_ore_polish_string_passes(self) -> None:
+        """Playbook with enable_ore_polish: \"yes\" or \"true\" passes (Issue #119)."""
+        from app.packs.schemas import validate_pack_schema
+
+        for value in ("yes", "true"):
+            playbooks = {
+                "ore_outreach": {
+                    **_valid_playbooks()["ore_outreach"],
+                    "enable_ore_polish": value,
+                }
+            }
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
+    def test_playbook_enable_ore_polish_invalid_type_raises(self) -> None:
+        """Playbook with enable_ore_polish not bool or string raises ValidationError (Issue #119)."""
+        from app.packs.schemas import ValidationError, validate_pack_schema
+
+        playbooks = {
+            "ore_outreach": {
+                **_valid_playbooks()["ore_outreach"],
+                "enable_ore_polish": 42,
+            }
+        }
+        with pytest.raises(ValidationError, match="enable_ore_polish must be a boolean or string"):
+            validate_pack_schema(
+                manifest=_valid_manifest(),
+                taxonomy=_valid_taxonomy(),
+                scoring=_valid_scoring(),
+                esl_policy=_valid_esl_policy(),
+                derivers=_valid_derivers(),
+                playbooks=playbooks,
+            )
+
     def test_optional_ore_keys_validated_when_no_recommendation_boundaries(self) -> None:
         """Optional ORE key validation runs even when esl_policy has no recommendation_boundaries.
 

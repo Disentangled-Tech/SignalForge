@@ -1,0 +1,4 @@
+# Optional taxonomy for fractional_cto_v1 (v2). ORE recipient label (Issue #121 M3).
+# When present, ORE uses this in the draft prompt as the "X name:" line (e.g. "Founder name: {{NAME}}").
+# Omit to use default "Contact". See docs/pack_v2_contract.md.
+recipient_label: "Founder"
