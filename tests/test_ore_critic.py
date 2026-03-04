@@ -54,3 +54,40 @@ def test_passes_valid_draft() -> None:
     )
     assert result.passed is True
     assert len(result.violations) == 0
+
+
+def test_rejects_pack_forbidden_phrase() -> None:
+    """When forbidden_phrases is provided and draft contains a phrase, critic fails (Issue #176 M3)."""
+    result = check_critic(
+        "Quick question",
+        "Hi Jane, we have a limited-time offer for you. Want me to send a checklist? No worries if now isn't the time.",
+        forbidden_phrases=["limited-time offer"],
+    )
+    assert result.passed is False
+    assert any("Pack forbidden phrase" in v for v in result.violations)
+    assert any("limited-time offer" in v for v in result.violations)
+
+
+def test_passes_when_forbidden_phrase_absent() -> None:
+    """When forbidden_phrases is provided but draft does not contain any, critic can pass (other rules permitting)."""
+    result = check_critic(
+        "Quick question about TestCo",
+        "Hi Jane, teams often hit a complexity step-change when product and hiring accelerate. "
+        "Want me to send a 2-page Tech Inflection Checklist? No worries if now isn't the time.",
+        forbidden_phrases=["limited-time offer", "act now"],
+    )
+    assert result.passed is True
+    assert len(result.violations) == 0
+
+
+def test_forbidden_phrases_none_or_empty_unchanged() -> None:
+    """When forbidden_phrases is None or empty, only core rules apply (backward compat)."""
+    draft_subject = "Quick question"
+    draft_message = (
+        "Hi Jane, teams often hit a complexity step-change. "
+        "Want me to send a checklist? No worries if now isn't the time."
+    )
+    result_none = check_critic(draft_subject, draft_message, forbidden_phrases=None)
+    result_empty = check_critic(draft_subject, draft_message, forbidden_phrases=[])
+    assert result_none.passed is True
+    assert result_empty.passed is True
