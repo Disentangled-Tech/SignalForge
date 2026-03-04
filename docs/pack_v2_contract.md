@@ -76,6 +76,8 @@ When a workspace's active pack is resolved (e.g. for scoring, briefing, ORE), on
 
 ORE playbooks (e.g. `playbooks/ore_outreach.yaml`) may define optional **forbidden_phrases** (list of strings). The ORE critic applies these in addition to core rules (surveillance, urgency, CTA, opt-out); see [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md).
 
+**ORE recommendation endpoint (Issue #122):** `GET /api/outreach/recommendation/{company_id}` is pack-scoped. It accepts optional `as_of`, `pack_id`, and `workspace_id`; TRS/ESL and playbook content come from the resolved pack only. No core logic changes; the endpoint uses the same ORE pipeline and playbook/ESL contract as internal callers. See [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) and [pipeline.md](pipeline.md).
+
 ## Backward compatibility
 
 - fractional_cto_v1 has been migrated to schema_version `"2"` (Issue #288 M1); scoring/ESL behavior is unchanged (same weights and rubrics).
