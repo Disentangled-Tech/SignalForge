@@ -40,3 +40,7 @@ svi_event_types:
 
 blocked_signals: []
 prohibited_combinations: []
+
+# Issue #148 M6: optional sensitivity_mapping so parity tests see sensitivity_level
+sensitivity_mapping:
+  founder_urgency_language: medium

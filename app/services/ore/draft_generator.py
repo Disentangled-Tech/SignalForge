@@ -4,59 +4,25 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from app.llm.router import ModelRole, get_llm_provider
 from app.models.company import Company
 from app.prompts.loader import resolve_prompt_content
+from app.services.ore.playbook_loader import (
+    CTAS,
+    PATTERN_FRAMES,
+    VALUE_ASSETS,
+    get_ore_playbook,
+)
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
 
 logger = logging.getLogger(__name__)
 
-# Pattern frames (generic, non-invasive) per ORE design spec §6
-# Fallback when pack not provided or playbook missing (Phase 2, Step 3.5)
-PATTERN_FRAMES = {
-    "momentum": "When a team's pace picks up, tech decisions that worked earlier can start costing more.",
-    "complexity": "When products add integrations/AI/enterprise asks, systems often need a stabilization pass.",
-    "pressure": "When timelines get tighter, it helps to reduce decision load and get a clean plan.",
-    "leadership_gap": "When there isn't a dedicated technical owner yet, teams often benefit from a short-term systems guide.",
-}
-
-VALUE_ASSETS = [
-    "2-page Tech Inflection Checklist",
-    "30-minute 'what's breaking next' map",
-    "5 questions to reduce tech chaos",
-]
-
-CTAS = [
-    "Want me to send that checklist?",
-    "Open to a 15-min compare-notes call?",
-    "If helpful, I can share a one-page approach—want it?",
-]
-
-
-def get_ore_playbook(pack: Pack | None) -> dict[str, Any]:
-    """Return ORE playbook values: pattern_frames, value_assets, ctas (Phase 2, Step 3.5).
-
-    When pack is provided and has ore_outreach playbook, use pack values;
-    otherwise fall back to module constants.
-    """
-    if pack is None:
-        return {
-            "pattern_frames": PATTERN_FRAMES,
-            "value_assets": VALUE_ASSETS,
-            "ctas": CTAS,
-            "sensitivity_levels": None,
-        }
-    playbook = pack.playbooks.get("ore_outreach") or {}
-    return {
-        "pattern_frames": playbook.get("pattern_frames") or PATTERN_FRAMES,
-        "value_assets": playbook.get("value_assets") or VALUE_ASSETS,
-        "ctas": playbook.get("ctas") or CTAS,
-        "sensitivity_levels": playbook.get("sensitivity_levels"),  # optional; None or [] = allow all (M4)
-    }
+# Re-export for backward compatibility (test_pack_fractional_cto_parity, etc.)
+__all__ = ["PATTERN_FRAMES", "VALUE_ASSETS", "CTAS", "get_ore_playbook", "generate_ore_draft"]
 
 
 def _parse_json_safe(text: str) -> dict | None:
