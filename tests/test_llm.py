@@ -196,7 +196,10 @@ class TestRouter:
         assert p1 is p2
 
     def test_raises_for_unknown_provider(self):
-        with pytest.raises(ValueError, match=r"Unknown LLM provider"):
+        with pytest.raises(
+            ValueError,
+            match=r"Unknown LLM provider.*Supported provider: anthropic",
+        ):
             get_llm_provider(settings=_make_settings(llm_provider="azure"))
 
     def test_raises_when_api_key_missing(self):
