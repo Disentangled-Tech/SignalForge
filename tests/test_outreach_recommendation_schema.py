@@ -1,17 +1,19 @@
-"""Outreach recommendation schema tests (Issue #115 M1, M3).
+"""Outreach recommendation schema tests (Issue #115 M1, M3, M4).
 
-Model and insert/retrieve for generation_version; unique constraint in M3.
+Model and insert/retrieve for generation_version; unique constraint in M3;
+Pydantic read schema and docs in M4.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, SignalPack
+from app.schemas.outreach import OutreachRecommendationRead
 
 
 def test_outreach_recommendation_model_has_generation_version_nullable() -> None:
@@ -142,3 +144,61 @@ def test_outreach_recommendation_duplicate_company_as_of_pack_raises_integrity_e
     with pytest.raises(IntegrityError):
         db.commit()
     db.rollback()
+
+
+def test_outreach_recommendation_read_from_orm_attributes() -> None:
+    """OutreachRecommendationRead can be built from ORM instance (Issue #115 M4)."""
+    rec = OutreachRecommendation(
+        id=1,
+        company_id=10,
+        as_of=date(2026, 3, 4),
+        recommendation_type="Soft Value Share",
+        outreach_score=41,
+        channel="LinkedIn DM",
+        draft_variants=[{"subject": "Hi", "message": "Hello"}],
+        strategy_notes={"note": "test"},
+        safeguards_triggered=["cooldown"],
+        generation_version="1",
+        pack_id=None,
+        playbook_id="fractional_cto_standard_v1",
+        created_at=datetime(2026, 3, 4, 12, 0, 0, tzinfo=UTC),
+    )
+    read = OutreachRecommendationRead.model_validate(rec)
+    assert read.id == 1
+    assert read.company_id == 10
+    assert read.as_of == date(2026, 3, 4)
+    assert read.recommendation_type == "Soft Value Share"
+    assert read.outreach_score == 41
+    assert read.channel == "LinkedIn DM"
+    assert read.draft_variants == [{"subject": "Hi", "message": "Hello"}]
+    assert read.strategy_notes == {"note": "test"}
+    assert read.safeguards_triggered == ["cooldown"]
+    assert read.generation_version == "1"
+    assert read.pack_id is None
+    assert read.playbook_id == "fractional_cto_standard_v1"
+    assert read.created_at == datetime(2026, 3, 4, 12, 0, 0, tzinfo=UTC)
+
+
+def test_outreach_recommendation_read_roundtrip_from_dict() -> None:
+    """OutreachRecommendationRead validates from dict (future API payload)."""
+    payload = {
+        "id": 2,
+        "company_id": 20,
+        "as_of": "2026-03-05",
+        "recommendation_type": "Observe Only",
+        "outreach_score": 0,
+        "channel": None,
+        "draft_variants": None,
+        "strategy_notes": None,
+        "safeguards_triggered": None,
+        "generation_version": "v1",
+        "pack_id": None,
+        "playbook_id": None,
+        "created_at": "2026-03-05T14:00:00+00:00",
+    }
+    read = OutreachRecommendationRead.model_validate(payload)
+    assert read.id == 2
+    assert read.company_id == 20
+    assert read.recommendation_type == "Observe Only"
+    assert read.outreach_score == 0
+    assert read.generation_version == "v1"
