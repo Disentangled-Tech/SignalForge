@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
+from app.services.ore.suppressed_signal_phrases import get_phrases_for_suppressed_signals
 
 
 @dataclass
@@ -20,6 +24,7 @@ class CriticResult:
 
     passed: bool
     violations: list[str]
+    violation_details: list[dict[str, Any]] | None = None
 
 
 # Surveillance phrases (from critic_rules.md)
