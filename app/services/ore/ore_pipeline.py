@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,40 @@ from app.services.ore.draft_generator import generate_ore_draft
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.services.readiness.human_labels import event_type_to_label
+
+if TYPE_CHECKING:
+    from app.packs.loader import Pack
+
+# M4: limit top signal labels passed to draft (framing only; no raw observation text)
+_ORE_TOP_SIGNALS_LIMIT = 5
+
+
+def _build_explainability_context(
+    snapshot: ReadinessSnapshot,
+    pack: Pack | None,
+) -> tuple[str, list[str]]:
+    """Build explainability snippet and top_signal_labels from ReadinessSnapshot.explain (M4).
+
+    Uses only signal_id/category labels and safe framing text; no raw observation text.
+    """
+    explain = getattr(snapshot, "explain", None) or {}
+    top_events = explain.get("top_events") or []
+    labels: list[str] = []
+    seen: set[str] = set()
+    for ev in top_events[: _ORE_TOP_SIGNALS_LIMIT]:
+        if not isinstance(ev, dict):
+            continue
+        etype = ev.get("event_type") or ""
+        if etype and etype not in seen:
+            seen.add(etype)
+            labels.append(event_type_to_label(etype, pack=pack))
+    snippet = (
+        "Top contributing categories: see TOP_SIGNALS below. Use for framing only; do not reference specific events."
+        if labels
+        else ""
+    )
+    return (snippet, labels)
 
 
 def generate_ore_recommendation(
@@ -130,6 +165,9 @@ def generate_ore_recommendation(
         value_asset = value_assets[0] if value_assets else ""
         cta = ctas[0] if ctas else ""
 
+        explainability_snippet, top_signal_labels = _build_explainability_context(
+            snapshot, pack
+        )
         draft = generate_ore_draft(
             company=company,
             recommendation_type=gate.recommendation_type,
@@ -137,12 +175,16 @@ def generate_ore_recommendation(
             value_asset=value_asset,
             cta=cta,
             pack=pack,
+            explainability_snippet=explainability_snippet,
+            top_signal_labels=top_signal_labels,
         )
 
+        forbidden_phrases = playbook.get("forbidden_phrases") or []
         if draft.get("subject") or draft.get("message"):
             critic_result = check_critic(
                 draft.get("subject", ""),
                 draft.get("message", ""),
+                forbidden_phrases=forbidden_phrases,
             )
             if critic_result.passed:
                 draft_variants = [draft]
@@ -156,6 +198,7 @@ def generate_ore_recommendation(
                 fallback_critic = check_critic(
                     fallback.get("subject", ""),
                     fallback.get("message", ""),
+                    forbidden_phrases=forbidden_phrases,
                 )
                 if fallback_critic.passed:
                     draft_variants = [fallback]

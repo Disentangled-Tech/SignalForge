@@ -47,14 +47,29 @@ _CTA_PATTERNS = [
 ]
 
 
-def check_critic(subject: str, message: str) -> CriticResult:
+def check_critic(
+    subject: str,
+    message: str,
+    *,
+    forbidden_phrases: list[str] | None = None,
+) -> CriticResult:
     """Run critic checks on draft subject and message.
+
+    When forbidden_phrases is provided (e.g. from pack playbook), draft must not
+    contain any of those phrases (case-insensitive). When None or empty, only
+    core rules apply.
 
     Returns:
         CriticResult with passed=False and violations list if any rule fails.
     """
     combined = f"{subject} {message}"
     violations: list[str] = []
+
+    if forbidden_phrases:
+        lower_text = combined.lower()
+        for phrase in forbidden_phrases:
+            if phrase and phrase.lower() in lower_text:
+                violations.append(f"Pack forbidden phrase: {phrase!r}")
 
     for p in _SURVEILLANCE_PATTERNS:
         if p.search(combined):

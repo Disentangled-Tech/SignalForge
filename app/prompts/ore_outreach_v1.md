@@ -30,3 +30,5 @@ Inputs:
 - Pattern frame (generic, non-invasive): {{PATTERN_FRAME}}
 - Value asset: {{VALUE_ASSET}}
 - CTA: {{CTA}}
+- Context (M4 — use for framing only; do NOT say "I saw you" or reference specific events): {{EXPLAINABILITY_SNIPPET}}
+- Top signal categories (use for tone only; do NOT reference explicitly): {{TOP_SIGNALS}}

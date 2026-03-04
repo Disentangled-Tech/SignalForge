@@ -15,7 +15,7 @@ A reference for acronyms and abbreviations used throughout the project.
 | **CTO** | Chief Technology Officer | Primary target persona; fractional CTO serving early-stage founders. |
 | **ESL** | Engagement Suitability Layer | Layer that modulates outreach intensity. ESL = BE × SM × CM × AM. Protects founder autonomy and reduces pressure-based outreach. |
 | **ND** | Neurodivergent | Design consideration for outreach; ND-friendly messaging avoids shame language, urgency pressure, and surveillance phrasing. |
-| **ORE** | Outreach Recommendation Engine | Produces outreach kits: recommendation type, channel, draft variants, why-this-works notes, and safeguards. See [docs/Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md). |
+| **ORE** | Outreach Recommendation Engine | Produces outreach kits: recommendation type, channel, draft variants, why-this-works notes, and safeguards. Persisted in `outreach_recommendations` (one row per company per date per pack; see [signal-models.md](signal-models.md) §1.4). See [docs/Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md). |
 | **PRD** | Product Requirements Document | Product specification; see [docs/v2PRD.md](v2PRD.md) and [rules/CURSOR_PRD.md](../rules/CURSOR_PRD.md). |
 | **SM** | Stability Modifier | ESL component; SM = 1 - (w_svi×SVI + w_spi×SPI + w_csi×(1-CSI)). High stress reduces SM. |
 | **SPI** | Sustained Pressure Index | Stability dimension; high when pressure exceeds threshold for sustained days. |
@@ -58,9 +58,10 @@ A reference for acronyms and abbreviations used throughout the project.
 
 | Term | Description |
 |------|--------------|
+| **Workspace and pack scoping** | All tenant-visible data is scoped by `workspace_id`; all signal/snapshot access is scoped by `pack_id`. See [workspace_pack_scoping.md](workspace_pack_scoping.md) (Issue #193). |
 | **Active pack** | The pack assigned to a workspace (`Workspace.active_pack_id`). At runtime, resolving the active pack loads **analysis config only** (manifest, scoring, ESL, playbooks, prompt_bundles, optional labels). Derivers and full taxonomy are not loaded; derivation and ingestion scope are pack-invariant. See [pack_v2_contract.md](pack_v2_contract.md#runtime-pack-selection-issue-290) and [ADR-003](ADR-001-Introduce-Declarative-Signal-Pack-Architecture.md). |
 | **Pack selection** | Choosing which pack a workspace uses for scoring, briefing, and ORE. Pack selection at runtime **reloads analysis config only** (weights, ESL, playbooks, prompts). It does not reload or apply derivers or taxonomy; derived signals and ingestion scope are unchanged (Issue #290). |
-| **Sensitivity & Context** | Signal- and entity-level sensitivity used by ESL and ORE. **sensitivity_level** (per entity) comes from core taxonomy (optional per-signal sensitivity) merged with pack `esl_policy.sensitivity_mapping`; pack overrides core for the same signal; highest level wins (high > medium > low). **sensitivity_levels** (in ORE playbooks) is an optional list of allowed levels for draft generation: allowed values are `low`, `medium`, `high` (case-insensitive). If the playbook defines `sensitivity_levels`, only entities whose sensitivity_level is in that list get a draft; empty list means no one gets a draft. Missing or not a list means no restriction. See ORE playbook schema. |
+| **Sensitivity & Context** | Signal- and entity-level sensitivity used by ESL and ORE. **sensitivity_level** (per entity) comes from core taxonomy (optional per-signal sensitivity) merged with pack `esl_policy.sensitivity_mapping`; pack overrides core for the same signal; highest level wins (high > medium > low). **sensitivity_levels** (in ORE playbooks) is an optional list of allowed levels for draft generation: allowed values are `low`, `medium`, `high` (case-insensitive). If the playbook defines `sensitivity_levels`, only entities whose sensitivity_level is in that list get a draft; empty list means no one gets a draft. Missing or not a list means no restriction. See ORE playbook schema. Pack **downgrade rules** and **suppression** (e.g. `allow_with_constraints`, `suppress`) constrain outreach type and tone; **core hard bans** (`CORE_BAN_SIGNAL_IDS`) block certain signals from ever allowing outreach. See [CORE_BAN_SIGNAL_IDS.md](CORE_BAN_SIGNAL_IDS.md). |
 
 ## ADR Quick Reference
 
@@ -75,3 +76,4 @@ A reference for acronyms and abbreviations used throughout the project.
 | ADR-007 | One Active Pack Per Workspace (V3 Constraint) |
 | ADR-008 | Safe Regex + Deriver Execution Limits |
 | ADR-009 | SignalInstances Are Pack-Scoped |
+| ADR-013 | Outreach Recommendation Schema (Issue #115) |
