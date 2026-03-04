@@ -1,4 +1,4 @@
-"""Outreach recommendation schema tests (Issue #115 M1).
+"""Outreach recommendation schema tests (Issue #115 M1, M3).
 
 Model and insert/retrieve for generation_version; unique constraint in M3.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, SignalPack
@@ -93,3 +94,51 @@ def test_insert_and_retrieve_outreach_recommendation_with_generation_version(
     assert found.draft_variants == [{"subject": "Hi", "message": "Hello"}]
     assert found.strategy_notes == {"note": "test"}
     assert found.safeguards_triggered == ["cooldown"]
+
+
+@pytest.mark.integration
+def test_outreach_recommendation_duplicate_company_as_of_pack_raises_integrity_error(
+    db: Session,
+) -> None:
+    """Duplicate (company_id, as_of, pack_id) raises IntegrityError (Issue #115 M3).
+
+    Raw insert of a second row with same company_id, as_of, pack_id must fail;
+    ORE uses upsert so application path does not hit this.
+    """
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    assert pack is not None
+    company = Company(
+        name="DupTestCo",
+        website_url="https://duptest.example.com",
+        founder_name="Dup Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 3, 5)
+    rec1 = OutreachRecommendation(
+        company_id=company.id,
+        as_of=as_of,
+        recommendation_type="Observe Only",
+        outreach_score=0,
+        generation_version="1",
+        pack_id=pack.id,
+        playbook_id="default",
+    )
+    db.add(rec1)
+    db.commit()
+
+    rec2 = OutreachRecommendation(
+        company_id=company.id,
+        as_of=as_of,
+        recommendation_type="Standard Outreach",
+        outreach_score=50,
+        generation_version="1",
+        pack_id=pack.id,
+        playbook_id="default",
+    )
+    db.add(rec2)
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()

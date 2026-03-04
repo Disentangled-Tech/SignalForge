@@ -1,13 +1,18 @@
-"""Watchlist service — add, remove, list with composite and 7-day delta (Issue #94)."""
+"""Watchlist service — add, remove, list with composite and 7-day delta (Issue #94).
+
+Pack-scoped snapshot reads (M2, Issue #193).
+"""
 
 from __future__ import annotations
 
 from datetime import date, timedelta
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models import Company, ReadinessSnapshot, Watchlist
 from app.schemas.watchlist import WatchlistItemResponse
+from app.services.pack_resolver import get_default_pack_id
 
 
 class WatchlistConflictError(ValueError):
@@ -72,15 +77,24 @@ def remove_from_watchlist(db: Session, company_id: int) -> bool:
     return True
 
 
-def list_watchlist(db: Session, as_of: date | None = None) -> list[WatchlistItemResponse]:
+def list_watchlist(
+    db: Session,
+    as_of: date | None = None,
+    pack_id: UUID | None = None,
+) -> list[WatchlistItemResponse]:
     """List active watchlist entries with latest composite and 7-day delta.
 
     For each entry: fetches latest ReadinessSnapshot (as_of <= as_of_date),
     snapshot 7 days before that as_of, computes delta_7d = latest - prev.
-    Returns list of WatchlistItemResponse.
+    Snapshot reads are pack-scoped (M2, Issue #193). When pack_id is None,
+    uses default pack.
     """
     if as_of is None:
         as_of = date.today()
+    if pack_id is None:
+        pack_id = get_default_pack_id(db)
+    if pack_id is None:
+        return []
 
     entries = (
         db.query(Watchlist)
@@ -101,6 +115,7 @@ def list_watchlist(db: Session, as_of: date | None = None) -> list[WatchlistItem
             .filter(
                 ReadinessSnapshot.company_id == company.id,
                 ReadinessSnapshot.as_of <= as_of,
+                ReadinessSnapshot.pack_id == pack_id,
             )
             .order_by(ReadinessSnapshot.as_of.desc())
             .first()
@@ -115,6 +130,7 @@ def list_watchlist(db: Session, as_of: date | None = None) -> list[WatchlistItem
                 .filter(
                     ReadinessSnapshot.company_id == company.id,
                     ReadinessSnapshot.as_of == prev_date,
+                    ReadinessSnapshot.pack_id == pack_id,
                 )
                 .first()
             )
