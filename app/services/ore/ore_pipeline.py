@@ -17,6 +17,7 @@ from app.services.ore.dominant_dimension import get_dominant_trs_dimension
 from app.services.ore.draft_generator import generate_ore_draft
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
+from app.services.ore.polisher import polish_ore_draft
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace, resolve_pack
 from app.services.readiness.human_labels import event_type_to_label
 
@@ -255,32 +256,60 @@ def generate_ore_recommendation(
             tone_definition=tone_def or None,
         )
 
-        forbidden_phrases = playbook.get("forbidden_phrases") or []
-        if draft.get("subject") or draft.get("message"):
-            critic_result = check_critic(
+        # Optional polish (Issue #119): when enable_ore_polish is True, polish then run critic on polished draft
+        candidate_draft = draft
+        used_polish = False
+        if playbook.get("enable_ore_polish") is True:
+            polished = polish_ore_draft(
                 draft.get("subject", ""),
                 draft.get("message", ""),
+                tone_definition=tone_def or None,
+                sensitivity_level=sensitivity_level,
+                forbidden_phrases=playbook.get("forbidden_phrases") or [],
+                allowed_framing_labels=top_signal_labels,
+                pack=pack,
+            )
+            if polished.get("subject") or polished.get("message"):
+                candidate_draft = polished
+                used_polish = True
+
+        forbidden_phrases = playbook.get("forbidden_phrases") or []
+        if candidate_draft.get("subject") or candidate_draft.get("message"):
+            critic_result = check_critic(
+                candidate_draft.get("subject", ""),
+                candidate_draft.get("message", ""),
                 forbidden_phrases=forbidden_phrases,
             )
             if critic_result.passed:
-                draft_variants = [draft]
+                draft_variants = [candidate_draft]
             else:
-                # Rewrite once (simplified: use fallback that passes critic)
-                fallback = _build_critic_compliant_fallback(
-                    company=company,
-                    value_asset=value_asset,
-                    cta=cta,
-                )
-                fallback_critic = check_critic(
-                    fallback.get("subject", ""),
-                    fallback.get("message", ""),
-                    forbidden_phrases=forbidden_phrases,
-                )
-                if fallback_critic.passed:
-                    draft_variants = [fallback]
+                # If we used polished draft and it failed critic, retry with original draft (Issue #119)
+                if used_polish:
+                    candidate_draft = draft
+                    critic_result = check_critic(
+                        draft.get("subject", ""),
+                        draft.get("message", ""),
+                        forbidden_phrases=forbidden_phrases,
+                    )
+                if critic_result.passed:
+                    draft_variants = [candidate_draft]
                 else:
-                    # Mark for manual review — still store with empty draft
-                    draft_variants = [draft]  # Store original, strategy_notes will flag
+                    # Rewrite once (simplified: use fallback that passes critic)
+                    fallback = _build_critic_compliant_fallback(
+                        company=company,
+                        value_asset=value_asset,
+                        cta=cta,
+                    )
+                    fallback_critic = check_critic(
+                        fallback.get("subject", ""),
+                        fallback.get("message", ""),
+                        forbidden_phrases=forbidden_phrases,
+                    )
+                    if fallback_critic.passed:
+                        draft_variants = [fallback]
+                    else:
+                        # Mark for manual review — still store with empty draft
+                        draft_variants = [draft]  # Store original, strategy_notes will flag
 
     # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
     generation_version = (pack.manifest.get("version") or "1")[:64]
