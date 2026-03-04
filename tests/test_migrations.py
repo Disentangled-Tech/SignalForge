@@ -90,6 +90,7 @@ def test_alembic_upgrade_downgrade_cycle(_ensure_migrations: None) -> None:
 
 def test_migration_20260226_up_down(_ensure_migrations: None) -> None:
     """Migration 20260226_issue_240: upgrade and downgrade succeed (Phase 4, Issue #240)."""
+    engine.dispose()  # Release connections so alembic subprocess does not deadlock
     result = _run_alembic_env("current")
     out = result.stdout or ""
     if "20260226_issue_240" not in out and "(head)" not in out:
@@ -107,6 +108,7 @@ def test_migration_20260226_up_down(_ensure_migrations: None) -> None:
 
 def test_migration_20260228_up_down(_ensure_migrations: None) -> None:
     """Migration 20260228_analysis_pack_idx: upgrade and downgrade succeed."""
+    engine.dispose()  # Release connections so alembic subprocess does not deadlock
     result = _run_alembic_env("downgrade", "20260227_user_workspaces", timeout=60)
     assert result.returncode == 0, f"downgrade failed: {result.stderr}"
 
@@ -312,6 +314,7 @@ def test_migration_20260238_scout_bundle_run_id_uuid_up_down_and_orphan_cleanup(
     Ensures downgrade is reversible: orphans (bundles whose run no longer exists)
     are deleted before backfilling Integer column so NOT NULL is safe.
     """
+    engine.dispose()  # Release connections so alembic subprocess does not deadlock
     # Ensure we're at head
     result = _run_alembic_env("upgrade", "head", timeout=90)
     assert result.returncode == 0, f"upgrade head failed: {result.stderr}"
