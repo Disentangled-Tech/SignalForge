@@ -66,7 +66,17 @@ def scout_list(
         }
         for r in runs
     ]
-    flash_message = request.query_params.get("success")
+    error_message = request.query_params.get("error")
+    success_message = request.query_params.get("success")
+    if error_message:
+        flash_message = error_message
+        flash_type = "error"
+    elif success_message:
+        flash_message = success_message
+        flash_type = "success"
+    else:
+        flash_message = None
+        flash_type = None
     return templates.TemplateResponse(
         request,
         "scout/list.html",
@@ -75,8 +85,31 @@ def scout_list(
             "user": user,
             "runs": run_items,
             "flash_message": flash_message,
-            "flash_type": "success" if flash_message else None,
+            "flash_type": flash_type,
             "workspace_id": workspace_id if get_settings().multi_workspace_enabled else None,
+        },
+    )
+
+
+@router.get("/scout/new", response_class=HTMLResponse)
+def scout_run_new(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_ui_auth),
+):
+    """Show form to trigger a new Scout run. Workspace-scoped when multi_workspace enabled."""
+    workspace_id = _resolve_workspace_id(request)
+    if get_settings().multi_workspace_enabled and workspace_id is None:
+        workspace_id = DEFAULT_WORKSPACE_ID
+    _require_workspace_access(db, user, workspace_id)
+    return templates.TemplateResponse(
+        request,
+        "scout/run_new.html",
+        {
+            "request": request,
+            "user": user,
+            "workspace_id": workspace_id if get_settings().multi_workspace_enabled else None,
+            "form_data": {},
         },
     )
 
@@ -95,7 +128,12 @@ def scout_run_detail(
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
         # Resolve workspace from run so redirect from POST /scout/runs needs no query (avoids open-redirect)
-        run_by_id = db.query(ScoutRun).filter(ScoutRun.run_id == run_id).first()
+        run_by_id = (
+            db.query(ScoutRun)
+            .options(joinedload(ScoutRun.bundles))
+            .filter(ScoutRun.run_id == run_id)
+            .first()
+        )
         if run_by_id is None:
             from fastapi import HTTPException
 
@@ -109,6 +147,7 @@ def scout_run_detail(
         ws_uuid = UUID(workspace_id) if workspace_id else UUID(DEFAULT_WORKSPACE_ID)
         run = (
             db.query(ScoutRun)
+            .options(joinedload(ScoutRun.bundles))
             .filter(ScoutRun.run_id == run_id, ScoutRun.workspace_id == ws_uuid)
             .first()
         )
@@ -153,7 +192,7 @@ def scout_run_trigger(
     exclusion_rules: str | None = Form(None),
     page_fetch_limit: int = Form(DEFAULT_PAGE_FETCH_LIMIT, ge=0, le=100),
 ):
-    """Trigger a Scout run. Resolve workspace from request; enforce access; redirect to run detail."""
+    """Trigger a Scout run. Resolve workspace from request; enforce access; redirect to list with success or error flash."""
     import asyncio
 
     workspace_id = _resolve_workspace_id(request)
@@ -173,10 +212,10 @@ def scout_run_trigger(
             )
         )
         db.commit()
-        # run_id is server-generated in discovery_scout_service.run() (uuid.uuid4()), not from client.
-        # Redirect is same-origin path only; no request-derived input in URL (open-redirect safe).
+        # Redirect to list with success message only (no run_id in URL to satisfy open-redirect SAST).
+        # run_id is server-generated; user can open the new run from the list.
         return RedirectResponse(
-            url=f"/scout/runs/{run_id}?success=Scout+run+started",
+            url="/scout?success=Scout+run+started",
             status_code=303,
         )
     except Exception as exc:

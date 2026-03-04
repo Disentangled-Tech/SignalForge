@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}New Scout run — SignalForge{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px;">
+    <div class="header-row">
+        <h1>New Scout run</h1>
+        <a href="/scout{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}" class="btn btn-secondary">Cancel</a>
+    </div>
+
+    <div class="card">
+        <form method="post" action="/scout/runs{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}">
+            <div class="form-group">
+                <label for="icp_definition">ICP definition *</label>
+                <textarea id="icp_definition" name="icp_definition" rows="5" required placeholder="Describe your ideal customer profile (e.g. stage, sector, technical needs)...">{{ form_data.icp_definition|default('') }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="exclusion_rules">Exclusion rules (optional)</label>
+                <textarea id="exclusion_rules" name="exclusion_rules" rows="3" placeholder="Domains or criteria to exclude...">{{ form_data.exclusion_rules|default('') }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="page_fetch_limit">Page fetch limit (optional, default 10)</label>
+                <input type="number" id="page_fetch_limit" name="page_fetch_limit" value="{{ form_data.page_fetch_limit|default(10) }}" min="0" max="100">
+            </div>
+            <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary">Start Scout run</button>
+                <a href="/scout{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

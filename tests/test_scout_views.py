@@ -48,6 +48,13 @@ def test_scout_run_trigger_unauthenticated_redirects_to_login(client: TestClient
     assert resp.headers.get("location") == "/login"
 
 
+def test_scout_run_new_unauthenticated_redirects_to_login(client: TestClient) -> None:
+    """GET /scout/new without auth returns 303 to /login."""
+    resp = client.get("/scout/new", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers.get("location") == "/login"
+
+
 # ── List: authenticated, workspace-scoped ─────────────────────────────────
 
 
@@ -71,6 +78,31 @@ def test_scout_list_authenticated_empty(
         resp = client_with_db.get("/scout", follow_redirects=False)
         assert resp.status_code == 200
         assert "No scout runs" in resp.text or "scout" in resp.text.lower()
+    finally:
+        app.dependency_overrides.pop(require_ui_auth, None)
+
+
+@pytest.mark.integration
+def test_scout_run_new_authenticated_returns_form(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """GET /scout/new when authenticated returns 200 with ICP form."""
+    user = User(username="scout_new_user")
+    user.set_password(TEST_PASSWORD)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    from app.api.deps import require_ui_auth
+    from app.main import app
+
+    app.dependency_overrides[require_ui_auth] = lambda: user
+    try:
+        resp = client_with_db.get("/scout/new", follow_redirects=False)
+        assert resp.status_code == 200
+        assert "icp_definition" in resp.text or "New Scout run" in resp.text
+        assert "scout/runs" in resp.text
     finally:
         app.dependency_overrides.pop(require_ui_auth, None)
 
@@ -176,6 +208,34 @@ def test_scout_list_workspace_scoping_no_cross_tenant(
         )
         assert resp.status_code == 200
         assert str(run_a.run_id) not in resp.text
+    finally:
+        app.dependency_overrides.pop(require_ui_auth, None)
+
+
+@pytest.mark.integration
+def test_scout_list_shows_error_flash_when_error_query_param(
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """GET /scout?error=... shows error flash message."""
+    user = User(username="scout_error_flash_user")
+    user.set_password(TEST_PASSWORD)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    from app.api.deps import require_ui_auth
+    from app.main import app
+
+    app.dependency_overrides[require_ui_auth] = lambda: user
+    try:
+        resp = client_with_db.get(
+            "/scout?error=Scout+run+failed",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 200
+        assert "Scout run failed" in resp.text or "run failed" in resp.text
+        assert "flash error" in resp.text or 'class="flash error"' in resp.text
     finally:
         app.dependency_overrides.pop(require_ui_auth, None)
 
@@ -293,6 +353,69 @@ def test_scout_run_detail_authenticated_shows_bundles(
         app.dependency_overrides.pop(require_ui_auth, None)
 
 
+@patch("app.api.views.get_settings")
+@patch("app.api.scout_views.get_settings")
+@pytest.mark.integration
+def test_scout_run_detail_without_workspace_id_resolves_from_run(
+    mock_settings_scout: MagicMock,
+    mock_settings_views: MagicMock,
+    client_with_db: TestClient,
+    db,
+) -> None:
+    """GET /scout/runs/{run_id} without workspace_id (multi_workspace) resolves workspace from run."""
+    mock_settings_scout.return_value.multi_workspace_enabled = True
+    mock_settings_views.return_value.multi_workspace_enabled = True
+
+    ws = Workspace(name="Scout Detail No WS Param")
+    db.add(ws)
+    db.commit()
+    db.refresh(ws)
+
+    run = ScoutRun(
+        run_id=uuid4(),
+        workspace_id=ws.id,
+        started_at=datetime.now(UTC),
+        model_version="test",
+        page_fetch_count=0,
+        status="completed",
+    )
+    db.add(run)
+    db.flush()
+    db.add(
+        ScoutEvidenceBundle(
+            scout_run_id=run.run_id,
+            candidate_company_name="Resolved Co",
+            company_website="https://resolved.example.com",
+            why_now_hypothesis="Why now.",
+            evidence=[],
+            missing_information=[],
+        )
+    )
+    db.commit()
+
+    user = User(username="scout_detail_no_ws_user")
+    user.set_password(TEST_PASSWORD)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.add(UserWorkspace(user_id=user.id, workspace_id=ws.id))
+    db.commit()
+
+    from app.api.deps import require_ui_auth
+    from app.main import app
+
+    app.dependency_overrides[require_ui_auth] = lambda: user
+    try:
+        resp = client_with_db.get(
+            f"/scout/runs/{run.run_id}",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 200
+        assert "Resolved Co" in resp.text
+    finally:
+        app.dependency_overrides.pop(require_ui_auth, None)
+
+
 # ── Trigger: POST /scout/runs creates run and redirects ───────────────────────
 
 
@@ -366,8 +489,7 @@ def test_scout_run_trigger_creates_run_redirects_to_detail(
         )
         assert resp.status_code == 303
         location = resp.headers.get("location") or ""
-        assert "/scout/runs/" in location
-        assert "success=" in location or "Scout" in location
+        assert location.startswith("/scout") and "success=" in location
 
         run = (
             db.query(ScoutRun)

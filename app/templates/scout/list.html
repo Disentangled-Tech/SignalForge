@@ -5,6 +5,7 @@
 {% block content %}
 <div class="header-row">
     <h1>Scout runs</h1>
+    <a href="/scout/new{% if workspace_id %}?workspace_id={{ workspace_id }}{% endif %}" class="btn btn-primary">New Scout run</a>
 </div>
 
 {% if runs %}
