@@ -11,9 +11,11 @@ a snapshot with a clear dominant dimension yields pattern_frame from selector.
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot, SignalPack
@@ -226,6 +228,74 @@ def test_ore_suppress_no_draft(db: Session) -> None:
     assert rec.draft_variants is None or rec.draft_variants == []
     assert rec.safeguards_triggered is not None
     assert any("suppress" in (s or "").lower() for s in rec.safeguards_triggered)
+
+
+def test_ore_pipeline_logs_structured_pack_playbook_sensitivity_signals(
+    db: Session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """M1 (Issue #121): ORE logs pack_id, playbook_id, sensitivity_level, recommendation_type, signals."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="LogTestCo",
+        website_url="https://logtest.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 20)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+        explain={
+            "top_events": [
+                {"event_type": "cto_role_posted", "contribution_points": 25},
+                {"event_type": "funding_raised", "contribution_points": 20},
+            ],
+        },
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    with caplog.at_level(logging.INFO, logger="app.services.ore.ore_pipeline"):
+        with patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ):
+            rec = generate_ore_recommendation(
+                db,
+                company_id=company.id,
+                as_of=as_of,
+                stability_modifier=0.9,
+                cooldown_active=False,
+                alignment_high=True,
+                esl_decision="allow",
+                sensitivity_level="low",
+            )
+
+    assert rec is not None
+    ore_records = [r for r in caplog.records if "ORE recommendation" in (r.getMessage() or "")]
+    assert len(ore_records) >= 1, "ORE pipeline must log once per run with structured context"
+    record = ore_records[0]
+    assert getattr(record, "pack_id", None) is not None, "log extra must include pack_id"
+    assert getattr(record, "playbook_id", None) == DEFAULT_PLAYBOOK_NAME
+    assert getattr(record, "sensitivity_level", None) == "low"
+    assert getattr(record, "recommendation_type", None) is not None
+    signals = getattr(record, "signals", None)
+    assert signals is not None and isinstance(signals, list), "log extra must include signals list"
+    assert len(signals) >= 1, "snapshot had top_events so signals should be non-empty"
 
 
 def test_ore_playbook_sensitivity_excluded_no_draft(db: Session) -> None:
@@ -510,12 +580,15 @@ def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -
 
         return real_critic(subject, message, **kwargs)
 
-    with patch(
-        "app.services.ore.ore_pipeline.generate_ore_draft",
-        return_value=_ORE_DRAFT,
-    ), patch(
-        "app.services.ore.ore_pipeline.check_critic",
-        side_effect=record_critic,
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.check_critic",
+            side_effect=record_critic,
+        ),
     ):
         from app.services.ore.ore_pipeline import generate_ore_recommendation
 
@@ -531,11 +604,15 @@ def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -
     assert rec is not None
     assert len(critic_calls) >= 1, "Pipeline must call check_critic when generating draft"
     for call in critic_calls:
-        assert "forbidden_phrases" in call["kwargs"], "Pipeline must pass forbidden_phrases to critic"
+        assert "forbidden_phrases" in call["kwargs"], (
+            "Pipeline must pass forbidden_phrases to critic"
+        )
         assert isinstance(call["kwargs"]["forbidden_phrases"], list)
 
 
-def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallback(db: Session) -> None:
+def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallback(
+    db: Session,
+) -> None:
     """M3: When draft contains a pack forbidden phrase, critic fails and pipeline stores fallback."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
     pack_id = pack.id if pack else None
@@ -579,12 +656,15 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
         playbook["forbidden_phrases"] = ["limited time only", "bargain basement"]
         return playbook
 
-    with patch(
-        "app.services.ore.ore_pipeline.get_ore_playbook",
-        side_effect=playbook_with_forbidden,
-    ), patch(
-        "app.services.ore.ore_pipeline.generate_ore_draft",
-        return_value=draft_with_forbidden,
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            side_effect=playbook_with_forbidden,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=draft_with_forbidden,
+        ),
     ):
         from app.services.ore.ore_pipeline import generate_ore_recommendation
 
@@ -601,9 +681,10 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
     assert rec.draft_variants and len(rec.draft_variants) == 1
     stored = rec.draft_variants[0]
     assert "limited time only" not in (stored.get("message") or "").lower()
-    assert "No worries" in (stored.get("message") or "") or "no pressure" in (
-        stored.get("message") or ""
-    ).lower()
+    assert (
+        "No worries" in (stored.get("message") or "")
+        or "no pressure" in (stored.get("message") or "").lower()
+    )
 
 
 def test_ore_returns_none_when_company_not_found(db: Session) -> None:
