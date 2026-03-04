@@ -25,7 +25,7 @@ from app.llm.provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
-# Retry configuration (mirror openai_provider)
+# Retry configuration
 INITIAL_BACKOFF = 1.0  # seconds
 BACKOFF_MULTIPLIER = 2.0
 DEFAULT_MAX_TOKENS = 4096

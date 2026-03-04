@@ -8,6 +8,8 @@ Branch 20260228 created scout_evidence_bundles with scout_run_id INTEGER FK to
 scout_runs.id; the ORM (ScoutEvidenceBundle) expects UUID FK to scout_runs.run_id.
 This migration aligns the schema with the ORM so run_scout and tests pass.
 Downgrade: deletes orphan bundles (run no longer exists) before backfill for clean reversible downgrade.
+Downgrade looks up the FK constraint by name from pg_constraint so it runs whether the FK was
+created with the standard name or an auto-generated name (e.g. from 20260227 branch).
 """
 
 from collections.abc import Sequence
@@ -108,7 +110,8 @@ def downgrade() -> None:
     )
     fk_row = r2.fetchone()
     if fk_row:
-        # conname is from pg_constraint; use identifier quoting for safety
+        # conname comes from pg_constraint (system catalog); not user input. We escape
+        # double-quotes in the identifier for safe SQL quoting when dropping by name.
         conname = str(fk_row[0])
         conn.execute(
             sa.text(
