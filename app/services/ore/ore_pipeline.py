@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -20,6 +21,8 @@ from app.services.readiness.human_labels import event_type_to_label
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
+
+logger = logging.getLogger(__name__)
 
 # M4: limit top signal labels passed to draft (framing only; no raw observation text)
 _ORE_TOP_SIGNALS_LIMIT = 5
@@ -47,7 +50,7 @@ def _build_explainability_context(
     top_events = explain.get("top_events") or []
     labels: list[str] = []
     seen: set[str] = set()
-    for ev in top_events[: _ORE_TOP_SIGNALS_LIMIT]:
+    for ev in top_events[:_ORE_TOP_SIGNALS_LIMIT]:
         if not isinstance(ev, dict):
             continue
         etype = ev.get("event_type") or ""
@@ -204,6 +207,23 @@ def generate_ore_recommendation(
             + ["Playbook excludes sensitivity level"],
         )
 
+    # M1 (Issue #121): structured logging — pack_id, playbook_id, sensitivity_level, signals (no PII)
+    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    logger.info(
+        "ORE recommendation: pack_id=%s playbook_id=%s sensitivity_level=%s recommendation_type=%s",
+        resolved_pack_id,
+        DEFAULT_PLAYBOOK_NAME,
+        sensitivity_level,
+        gate.recommendation_type,
+        extra={
+            "pack_id": str(resolved_pack_id),
+            "playbook_id": DEFAULT_PLAYBOOK_NAME,
+            "sensitivity_level": sensitivity_level,
+            "recommendation_type": gate.recommendation_type,
+            "signals": top_signal_labels,
+        },
+    )
+
     draft_variants: list[dict] = []
     if gate.should_generate_draft:
         # Pick pattern frame from dominant dimension (simplified: use complexity)
@@ -214,9 +234,6 @@ def generate_ore_recommendation(
         value_asset = value_assets[0] if value_assets else ""
         cta = ctas[0] if ctas else ""
 
-        explainability_snippet, top_signal_labels = _build_explainability_context(
-            snapshot, pack
-        )
         tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
         draft = generate_ore_draft(
             company=company,
