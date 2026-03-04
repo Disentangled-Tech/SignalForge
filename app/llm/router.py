@@ -61,29 +61,7 @@ def get_llm_provider(
     if cache_key in _provider_cache:
         return _provider_cache[cache_key]
 
-    if provider_name == "openai":
-        if not settings.llm_api_key:
-            raise ValueError(
-                "LLM_API_KEY is required for the OpenAI provider. "
-                "Set it in your environment or .env file."
-            )
-
-        from app.llm.openai_provider import OpenAIProvider
-
-        model = {
-            ModelRole.REASONING: settings.llm_model_reasoning,
-            ModelRole.JSON: settings.llm_model_json,
-            ModelRole.OUTREACH: settings.llm_model_outreach,
-            ModelRole.SCOUT: settings.llm_model_scout,
-        }[role]
-
-        provider = OpenAIProvider(
-            api_key=settings.llm_api_key,
-            model=model,
-            timeout=settings.llm_timeout,
-            max_retries=settings.llm_max_retries,
-        )
-    elif provider_name == "anthropic":
+    if provider_name == "anthropic":
         anthropic_api_key = getattr(settings, "anthropic_api_key", None) or settings.llm_api_key
         if not anthropic_api_key:
             raise ValueError(
@@ -107,9 +85,7 @@ def get_llm_provider(
             max_retries=settings.llm_max_retries,
         )
     else:
-        raise ValueError(
-            f"Unknown LLM provider: '{provider_name}'. Supported providers: openai, anthropic"
-        )
+        raise ValueError(f"Unknown LLM provider: '{provider_name}'. Supported provider: anthropic")
 
     _provider_cache[cache_key] = provider
     logger.info("Created LLM provider: %s role=%s model=%s", provider_name, role.value, model)

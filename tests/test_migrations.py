@@ -313,6 +313,9 @@ def test_migration_20260238_scout_bundle_run_id_uuid_up_down_and_orphan_cleanup(
 
     Ensures downgrade is reversible: orphans (bundles whose run no longer exists)
     are deleted before backfilling Integer column so NOT NULL is safe.
+    Downgrade looks up the FK constraint by name from pg_constraint and drops it,
+    so it runs cleanly whether the FK was created with the standard name
+    (scout_evidence_bundles_scout_run_id_fkey) or an auto-generated name (e.g. from 20260227).
     """
     engine.dispose()  # Release connections so alembic subprocess does not deadlock
     # Ensure we're at head

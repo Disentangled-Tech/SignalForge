@@ -24,9 +24,9 @@ The PRD specifies:
 
 | Role        | Use case                    | Default model   |
 |-------------|-----------------------------|-----------------|
-| REASONING   | Stage, pain, explanation    | gpt-4o          |
-| JSON        | Briefing entry JSON         | gpt-4o-mini     |
-| OUTREACH    | Outreach draft              | gpt-4o-mini     |
+| REASONING   | Stage, pain, explanation    | claude-sonnet-4-20250514 |
+| JSON        | Briefing entry JSON         | claude-3-5-haiku-20241022 |
+| OUTREACH    | Outreach draft              | claude-3-5-haiku-20241022 |
 
 ---
 
@@ -34,12 +34,12 @@ The PRD specifies:
 
 | Env var               | Default     | Description                          |
 |-----------------------|-------------|--------------------------------------|
-| LLM_MODEL_REASONING   | gpt-4o      | Analysis: stage, pain, explanation    |
-| LLM_MODEL_JSON        | gpt-4o-mini | Cheap: briefing entry JSON           |
-| LLM_MODEL_OUTREACH    | gpt-4o-mini | Conversational: outreach draft       |
+| LLM_MODEL_REASONING   | claude-sonnet-4-20250514 | Analysis: stage, pain, explanation |
+| LLM_MODEL_JSON        | claude-3-5-haiku-20241022 | Cheap: briefing entry JSON        |
+| LLM_MODEL_OUTREACH    | claude-3-5-haiku-20241022 | Conversational: outreach draft  |
 | LLM_TIMEOUT           | 60          | Seconds per request                  |
 | LLM_MAX_RETRIES       | 3           | Retries on rate limit / timeout      |
-| LLM_MODEL             | gpt-4o-mini | Legacy: used for all roles if above unset |
+| LLM_MODEL             | claude-3-5-haiku-20241022 | Legacy: used for all roles if above unset |
 
 ---
 
