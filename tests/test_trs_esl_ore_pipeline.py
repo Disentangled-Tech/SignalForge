@@ -4,13 +4,18 @@ Simulates: Company with TRS=82, StabilityModifier=0.5, Cooldown inactive, High a
 Expects: Recommendation capped at Soft Value Share, No surveillance language,
          Single CTA, OutreachScore computed correctly.
 Fixture strategy: Insert Company and ReadinessSnapshot directly (no SignalEvents).
+
+TODO(M4): When selector is wired in pipeline (Issue #117), add integration test that
+a snapshot with a clear dominant dimension yields pattern_frame from selector.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from unittest.mock import patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Company, OutreachRecommendation, ReadinessSnapshot, SignalPack
@@ -223,6 +228,74 @@ def test_ore_suppress_no_draft(db: Session) -> None:
     assert rec.draft_variants is None or rec.draft_variants == []
     assert rec.safeguards_triggered is not None
     assert any("suppress" in (s or "").lower() for s in rec.safeguards_triggered)
+
+
+def test_ore_pipeline_logs_structured_pack_playbook_sensitivity_signals(
+    db: Session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """M1 (Issue #121): ORE logs pack_id, playbook_id, sensitivity_level, recommendation_type, signals."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="LogTestCo",
+        website_url="https://logtest.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 20)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+        explain={
+            "top_events": [
+                {"event_type": "cto_role_posted", "contribution_points": 25},
+                {"event_type": "funding_raised", "contribution_points": 20},
+            ],
+        },
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    with caplog.at_level(logging.INFO, logger="app.services.ore.ore_pipeline"):
+        with patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ):
+            rec = generate_ore_recommendation(
+                db,
+                company_id=company.id,
+                as_of=as_of,
+                stability_modifier=0.9,
+                cooldown_active=False,
+                alignment_high=True,
+                esl_decision="allow",
+                sensitivity_level="low",
+            )
+
+    assert rec is not None
+    ore_records = [r for r in caplog.records if "ORE recommendation" in (r.getMessage() or "")]
+    assert len(ore_records) >= 1, "ORE pipeline must log once per run with structured context"
+    record = ore_records[0]
+    assert getattr(record, "pack_id", None) is not None, "log extra must include pack_id"
+    assert getattr(record, "playbook_id", None) == DEFAULT_PLAYBOOK_NAME
+    assert getattr(record, "sensitivity_level", None) == "low"
+    assert getattr(record, "recommendation_type", None) is not None
+    signals = getattr(record, "signals", None)
+    assert signals is not None and isinstance(signals, list), "log extra must include signals list"
+    assert len(signals) >= 1, "snapshot had top_events so signals should be non-empty"
 
 
 def test_ore_playbook_sensitivity_excluded_no_draft(db: Session) -> None:
@@ -507,12 +580,15 @@ def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -
 
         return real_critic(subject, message, **kwargs)
 
-    with patch(
-        "app.services.ore.ore_pipeline.generate_ore_draft",
-        return_value=_ORE_DRAFT,
-    ), patch(
-        "app.services.ore.ore_pipeline.check_critic",
-        side_effect=record_critic,
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.check_critic",
+            side_effect=record_critic,
+        ),
     ):
         from app.services.ore.ore_pipeline import generate_ore_recommendation
 
@@ -528,11 +604,15 @@ def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -
     assert rec is not None
     assert len(critic_calls) >= 1, "Pipeline must call check_critic when generating draft"
     for call in critic_calls:
-        assert "forbidden_phrases" in call["kwargs"], "Pipeline must pass forbidden_phrases to critic"
+        assert "forbidden_phrases" in call["kwargs"], (
+            "Pipeline must pass forbidden_phrases to critic"
+        )
         assert isinstance(call["kwargs"]["forbidden_phrases"], list)
 
 
-def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallback(db: Session) -> None:
+def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallback(
+    db: Session,
+) -> None:
     """M3: When draft contains a pack forbidden phrase, critic fails and pipeline stores fallback."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
     pack_id = pack.id if pack else None
@@ -576,12 +656,15 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
         playbook["forbidden_phrases"] = ["limited time only", "bargain basement"]
         return playbook
 
-    with patch(
-        "app.services.ore.ore_pipeline.get_ore_playbook",
-        side_effect=playbook_with_forbidden,
-    ), patch(
-        "app.services.ore.ore_pipeline.generate_ore_draft",
-        return_value=draft_with_forbidden,
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            side_effect=playbook_with_forbidden,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=draft_with_forbidden,
+        ),
     ):
         from app.services.ore.ore_pipeline import generate_ore_recommendation
 
@@ -598,9 +681,10 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
     assert rec.draft_variants and len(rec.draft_variants) == 1
     stored = rec.draft_variants[0]
     assert "limited time only" not in (stored.get("message") or "").lower()
-    assert "No worries" in (stored.get("message") or "") or "no pressure" in (
-        stored.get("message") or ""
-    ).lower()
+    assert (
+        "No worries" in (stored.get("message") or "")
+        or "no pressure" in (stored.get("message") or "").lower()
+    )
 
 
 def test_ore_returns_none_when_company_not_found(db: Session) -> None:
@@ -932,3 +1016,251 @@ def test_ore_pipeline_empty_explain_passes_empty_snippet_and_labels(db: Session)
     call_kwargs = mock_draft.call_args[1]
     assert call_kwargs["explainability_snippet"] == ""
     assert call_kwargs["top_signal_labels"] == []
+
+
+# --- Issue #122 M1: pack_id/workspace_id and get_or_create ---
+
+
+def test_ore_pipeline_explicit_pack_id_same_as_default(db: Session) -> None:
+    """Issue #122 M1: generate_ore_recommendation(..., pack_id=default_id) matches default behavior."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="ExplicitPackCo",
+        website_url="https://explicit.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 1)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec_default = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+        rec_explicit = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec_default is not None and rec_explicit is not None
+    assert rec_default.id == rec_explicit.id
+    assert rec_default.recommendation_type == rec_explicit.recommendation_type
+    assert rec_default.outreach_score == rec_explicit.outreach_score
+    assert rec_default.playbook_id == rec_explicit.playbook_id
+
+
+def test_get_or_create_ore_recommendation_returns_existing(db: Session) -> None:
+    """Issue #122 M1: get_or_create returns existing row when one exists for (company_id, as_of, pack)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="GetOrCreateCo",
+        website_url="https://getorcreate.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 2)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import (
+        generate_ore_recommendation,
+        get_or_create_ore_recommendation,
+    )
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec1 = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+    assert rec1 is not None
+
+    rec2 = get_or_create_ore_recommendation(
+        db,
+        company_id=company.id,
+        as_of=as_of,
+        pack_id=pack_id,
+    )
+    assert rec2 is not None
+    assert rec1.id == rec2.id
+    assert rec2.recommendation_type == rec1.recommendation_type
+
+
+def test_get_or_create_ore_recommendation_creates_when_none(db: Session) -> None:
+    """Issue #122 M1: get_or_create runs pipeline and returns new recommendation when none exists."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="CreateNewCo",
+        website_url="https://createnew.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 3)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    from app.services.ore.ore_pipeline import get_or_create_ore_recommendation
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec = get_or_create_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+        )
+
+    assert rec is not None
+    assert rec.company_id == company.id
+    assert rec.as_of == as_of
+    assert rec.pack_id == pack_id
+    assert rec.playbook_id == DEFAULT_PLAYBOOK_NAME
+    assert rec.recommendation_type in (
+        "Soft Value Share",
+        "Low-Pressure Intro",
+        "Standard Outreach",
+        "Direct Strategic Outreach",
+    )
+    assert rec.outreach_score >= 0
+
+
+def test_get_or_create_ore_recommendation_returns_none_when_company_missing(db: Session) -> None:
+    """Issue #122 M1: get_or_create returns None when company does not exist."""
+    from app.services.ore.ore_pipeline import get_or_create_ore_recommendation
+
+    rec = get_or_create_ore_recommendation(
+        db,
+        company_id=999999,
+        as_of=date(2026, 3, 1),
+    )
+    assert rec is None
+
+
+def test_ore_recommendation_to_response_has_required_fields(db: Session) -> None:
+    """Issue #122 M1: OutreachRecommendationResponse from mapper has required fields and valid types."""
+    from app.schemas.outreach import ore_recommendation_to_response
+    from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+    company = Company(
+        name="SchemaCo",
+        website_url="https://schema.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    as_of = date(2026, 3, 4)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ):
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            pack_id=pack_id,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+    assert rec is not None
+
+    response = ore_recommendation_to_response(rec, sensitivity_tag="low")
+    assert response.company_id == rec.company_id
+    assert response.as_of == rec.as_of
+    assert response.recommended_playbook_id == (rec.playbook_id or "")
+    assert response.drafts == (list(rec.draft_variants) if rec.draft_variants else [])
+    assert "Recommendation:" in response.rationale
+    assert response.sensitivity_tag == "low"
+    assert response.recommendation_type == rec.recommendation_type
+    assert response.outreach_score == rec.outreach_score
+    assert response.safeguards_triggered == rec.safeguards_triggered
+    assert response.pack_id == rec.pack_id
+    assert response.id == rec.id
+    assert response.created_at == rec.created_at

@@ -1,9 +1,11 @@
-"""ORE pipeline — TRS → ESL → policy gate → draft → critic → persist (Issue #124, #106)."""
+"""ORE pipeline — TRS → ESL → policy gate → draft → critic → persist (Issue #124, #106, #122)."""
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -14,11 +16,13 @@ from app.services.ore.critic import check_critic
 from app.services.ore.draft_generator import generate_ore_draft
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
-from app.services.pack_resolver import get_default_pack_id, resolve_pack
+from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace, resolve_pack
 from app.services.readiness.human_labels import event_type_to_label
 
 if TYPE_CHECKING:
     from app.packs.loader import Pack
+
+logger = logging.getLogger(__name__)
 
 # M4: limit top signal labels passed to draft (framing only; no raw observation text)
 _ORE_TOP_SIGNALS_LIMIT = 5
@@ -46,7 +50,7 @@ def _build_explainability_context(
     top_events = explain.get("top_events") or []
     labels: list[str] = []
     seen: set[str] = set()
-    for ev in top_events[: _ORE_TOP_SIGNALS_LIMIT]:
+    for ev in top_events[:_ORE_TOP_SIGNALS_LIMIT]:
         if not isinstance(ev, dict):
             continue
         etype = ev.get("event_type") or ""
@@ -61,11 +65,27 @@ def _build_explainability_context(
     return (snippet, labels)
 
 
+def _resolve_ore_pack_id(
+    db: Session,
+    *,
+    pack_id: UUID | None = None,
+    workspace_id: str | None = None,
+) -> UUID | None:
+    """Resolve pack_id for ORE: explicit pack_id, else workspace, else default (Issue #122 M1)."""
+    if pack_id is not None:
+        return pack_id
+    if workspace_id is not None:
+        return get_pack_for_workspace(db, workspace_id)
+    return get_default_pack_id(db)
+
+
 def generate_ore_recommendation(
     db: Session,
     company_id: int,
     as_of: date,
     *,
+    pack_id: UUID | None = None,
+    workspace_id: str | None = None,
     stability_modifier: float | None = None,
     cooldown_active: bool | None = None,
     alignment_high: bool | None = None,
@@ -73,6 +93,9 @@ def generate_ore_recommendation(
     sensitivity_level: str | None = None,
 ) -> OutreachRecommendation | None:
     """Run full ORE pipeline: ESL suppress check → policy gate → draft → critic → persist.
+
+    Pack resolution (Issue #122 M1): when pack_id is None, uses get_pack_for_workspace(db,
+    workspace_id) if workspace_id is set, else get_default_pack_id(db).
 
     When stability_modifier is None, computes ESL from context (ReadinessSnapshot,
     SignalEvents, OutreachHistory, Company) and uses ctx esl_decision/sensitivity_level.
@@ -82,17 +105,19 @@ def generate_ore_recommendation(
     defines sensitivity_levels and entity sensitivity_level is not in the list, no draft
     and recommendation capped at Soft Value Share.
 
-    Returns OutreachRecommendation or None if company/snapshot not found.
+    Returns OutreachRecommendation or None if company/snapshot/pack not found.
     """
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         return None
 
-    pack_id = get_default_pack_id(db)
-    if pack_id is None:
+    resolved_pack_id = _resolve_ore_pack_id(db, pack_id=pack_id, workspace_id=workspace_id)
+    if resolved_pack_id is None:
         return None
 
-    pack = resolve_pack(db, pack_id)
+    pack = resolve_pack(db, resolved_pack_id)
+    if pack is None:
+        return None
     playbook = get_ore_playbook(pack, playbook_name=DEFAULT_PLAYBOOK_NAME)
 
     snapshot = (
@@ -100,7 +125,7 @@ def generate_ore_recommendation(
         .filter(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of == as_of,
-            ReadinessSnapshot.pack_id == pack_id,
+            ReadinessSnapshot.pack_id == resolved_pack_id,
         )
         .first()
     )
@@ -121,7 +146,7 @@ def generate_ore_recommendation(
         align = alignment_high if alignment_high is not None else True
         # Injected path: esl_decision/sensitivity_level from params (default None)
     else:
-        ctx = compute_esl_from_context(db, company_id, as_of, pack_id=pack_id)
+        ctx = compute_esl_from_context(db, company_id, as_of, pack_id=resolved_pack_id)
         if not ctx:
             return None
         sm = ctx["stability_modifier"]
@@ -133,7 +158,11 @@ def generate_ore_recommendation(
         sensitivity_level = ctx.get("sensitivity_level")
         # M5: pass ESL tone_constraint into draft so LLM respects sensitivity gating
         explain = ctx.get("explain") or {}
-        tone_constraint_esl = explain.get("tone_constraint") if isinstance(explain.get("tone_constraint"), str) else None
+        tone_constraint_esl = (
+            explain.get("tone_constraint")
+            if isinstance(explain.get("tone_constraint"), str)
+            else None
+        )
 
     outreach_score = compute_outreach_score(trs, esl_composite)
 
@@ -178,6 +207,23 @@ def generate_ore_recommendation(
             + ["Playbook excludes sensitivity level"],
         )
 
+    # M1 (Issue #121): structured logging — pack_id, playbook_id, sensitivity_level, signals (no PII)
+    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    logger.info(
+        "ORE recommendation: pack_id=%s playbook_id=%s sensitivity_level=%s recommendation_type=%s",
+        resolved_pack_id,
+        DEFAULT_PLAYBOOK_NAME,
+        sensitivity_level,
+        gate.recommendation_type,
+        extra={
+            "pack_id": str(resolved_pack_id),
+            "playbook_id": DEFAULT_PLAYBOOK_NAME,
+            "sensitivity_level": sensitivity_level,
+            "recommendation_type": gate.recommendation_type,
+            "signals": top_signal_labels,
+        },
+    )
+
     draft_variants: list[dict] = []
     if gate.should_generate_draft:
         # Pick pattern frame from dominant dimension (simplified: use complexity)
@@ -188,9 +234,6 @@ def generate_ore_recommendation(
         value_asset = value_assets[0] if value_assets else ""
         cta = ctas[0] if ctas else ""
 
-        explainability_snippet, top_signal_labels = _build_explainability_context(
-            snapshot, pack
-        )
         tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
         draft = generate_ore_draft(
             company=company,
@@ -241,7 +284,7 @@ def generate_ore_recommendation(
         .filter(
             OutreachRecommendation.company_id == company_id,
             OutreachRecommendation.as_of == as_of,
-            OutreachRecommendation.pack_id == pack_id,
+            OutreachRecommendation.pack_id == resolved_pack_id,
         )
         .first()
     )
@@ -268,13 +311,50 @@ def generate_ore_recommendation(
         strategy_notes=None,
         safeguards_triggered=gate.safeguards_triggered or None,
         generation_version=generation_version,
-        pack_id=pack_id,
+        pack_id=resolved_pack_id,
         playbook_id=DEFAULT_PLAYBOOK_NAME,
     )
     db.add(rec)
     db.commit()
     db.refresh(rec)
     return rec
+
+
+def get_or_create_ore_recommendation(
+    db: Session,
+    company_id: int,
+    as_of: date,
+    *,
+    pack_id: UUID | None = None,
+    workspace_id: str | None = None,
+) -> OutreachRecommendation | None:
+    """Return existing ORE recommendation or run pipeline and return result (Issue #122 M1).
+
+    Resolves pack via _resolve_ore_pack_id (pack_id else workspace_id else default).
+    If an OutreachRecommendation exists for (company_id, as_of, resolved_pack_id), returns it.
+    Otherwise runs generate_ore_recommendation and returns the new or updated row, or None.
+    """
+    resolved_pack_id = _resolve_ore_pack_id(db, pack_id=pack_id, workspace_id=workspace_id)
+    if resolved_pack_id is None:
+        return None
+    existing = (
+        db.query(OutreachRecommendation)
+        .filter(
+            OutreachRecommendation.company_id == company_id,
+            OutreachRecommendation.as_of == as_of,
+            OutreachRecommendation.pack_id == resolved_pack_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        return existing
+    return generate_ore_recommendation(
+        db,
+        company_id=company_id,
+        as_of=as_of,
+        pack_id=resolved_pack_id,
+        workspace_id=None,
+    )
 
 
 def _build_critic_compliant_fallback(
