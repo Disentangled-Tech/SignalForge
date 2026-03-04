@@ -79,6 +79,7 @@ def generate_ore_recommendation(
         esl_composite = ctx["esl_composite"]
         cooldown = ctx["cadence_blocked"] if cooldown_active is None else cooldown_active
         align = ctx["alignment_high"] if alignment_high is None else alignment_high
+        # Always use context values when using computed ESL; ignore any caller-provided esl_decision/sensitivity_level.
         esl_decision = ctx.get("esl_decision")
         sensitivity_level = ctx.get("sensitivity_level")
 
@@ -99,8 +100,7 @@ def generate_ore_recommendation(
             pack=pack,
         )
 
-    # M4: Playbook eligibility by sensitivity: if playbook restricts and entity level not allowed, no draft
-    playbook = get_ore_playbook(pack)
+    # M4: Playbook eligibility by sensitivity. Reuse playbook from above.
     allowed_levels = playbook.get("sensitivity_levels") if isinstance(playbook.get("sensitivity_levels"), list) else None
     if gate.should_generate_draft and allowed_levels and sensitivity_level and sensitivity_level not in allowed_levels:
         gate = PolicyGateResult(
