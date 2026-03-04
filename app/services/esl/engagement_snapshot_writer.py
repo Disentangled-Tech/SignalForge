@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -37,6 +37,27 @@ from app.services.esl.esl_engine import (
     map_esl_to_recommendation,
 )
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
+
+
+class EslContextResult(TypedDict, total=True):
+    """Return shape of compute_esl_from_context (Issue #106, M1 Issue #120).
+
+    Consumers (ORE pipeline, write_engagement_snapshot) should use these keys.
+    signal_ids: entity's signal set for the pack (or core pack when core_pack_id set).
+    """
+
+    esl_composite: float
+    stability_modifier: float
+    recommendation_type: str
+    explain: dict[str, Any]
+    cadence_blocked: bool
+    alignment_high: bool
+    trs: float
+    pack_id: UUID | str
+    esl_decision: str
+    esl_reason_code: str
+    sensitivity_level: str | None
+    signal_ids: set[str]
 
 
 def _get_signal_ids_for_company(
@@ -73,11 +94,11 @@ def compute_esl_from_context(
     as_of: date,
     pack_id=None,
     core_pack_id: UUID | None = None,
-) -> dict[str, Any] | None:
+) -> EslContextResult | None:
     """Compute ESL from DB context without persisting (Issue #106).
 
-    Returns dict with esl_composite, stability_modifier, recommendation_type,
-    explain, cadence_blocked, alignment_high. Returns None if no ReadinessSnapshot.
+    Returns EslContextResult (see type) or None if no ReadinessSnapshot.
+    signal_ids (M1 Issue #120): entity's signal set for pack (or core pack when core_pack_id set).
     """
     pack_id = pack_id or get_default_pack_id(db)
     if pack_id is None:
@@ -193,6 +214,7 @@ def compute_esl_from_context(
         "esl_decision": esl_result.decision,
         "esl_reason_code": esl_result.reason_code,
         "sensitivity_level": esl_result.sensitivity_level,
+        "signal_ids": signal_ids,  # M1 (Issue #120): pack-aware critic needs entity signal set
     }
 
 

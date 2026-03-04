@@ -14,7 +14,59 @@ from app.models import (
     SignalEvent,
     SignalInstance,
 )
-from app.services.esl.engagement_snapshot_writer import write_engagement_snapshot
+from app.services.esl.engagement_snapshot_writer import (
+    compute_esl_from_context,
+    write_engagement_snapshot,
+)
+
+
+def test_compute_esl_from_context_return_includes_signal_ids(
+    db: Session, fractional_cto_pack_id: UUID
+) -> None:
+    """M1 (Issue #120): compute_esl_from_context return includes signal_ids for pack-aware critic."""
+    as_of = date(2026, 2, 18)
+    company = Company(name="SignalIdsCtxCo", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    readiness = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=80,
+        complexity=75,
+        pressure=60,
+        leadership_gap=70,
+        composite=82,
+        pack_id=fractional_cto_pack_id,
+    )
+    db.add(readiness)
+    db.commit()
+
+    ctx = compute_esl_from_context(
+        db, company.id, as_of, pack_id=fractional_cto_pack_id
+    )
+    assert ctx is not None
+    assert "signal_ids" in ctx
+    assert ctx["signal_ids"] == set(), "No SignalInstances → signal_ids empty"
+
+    # Add SignalInstance for this company/pack
+    inst = SignalInstance(
+        entity_id=company.id,
+        signal_id="funding_raised",
+        pack_id=fractional_cto_pack_id,
+        first_seen=datetime(2026, 2, 1, tzinfo=UTC),
+        last_seen=datetime(2026, 2, 10, tzinfo=UTC),
+    )
+    db.add(inst)
+    db.commit()
+
+    ctx2 = compute_esl_from_context(
+        db, company.id, as_of, pack_id=fractional_cto_pack_id
+    )
+    assert ctx2 is not None
+    assert "signal_ids" in ctx2
+    assert ctx2["signal_ids"] == {"funding_raised"}
 
 
 def test_engagement_snapshot_writer_returns_none_without_readiness(db: Session) -> None:
@@ -189,6 +241,67 @@ def test_stability_cap_under_pressure_spike(db: Session, fractional_cto_pack_id)
     assert result.engagement_type == "Soft Value Share"
     assert result.explain.get("stability_cap_triggered") is True
     assert result.explain.get("stability_modifier") < 0.7
+
+
+def test_compute_esl_from_context_signal_ids_from_core_pack_when_core_pack_id_provided(
+    db: Session,
+    core_pack_id: UUID,
+    esl_blocked_pack_id: UUID,
+) -> None:
+    """M1 follow-up: ctx['signal_ids'] comes from core SignalInstances when core_pack_id set (Issue #287 M4).
+
+    Same scenario as test_esl_signal_set_from_core_instances_when_core_pack_id_provided but asserts
+    on compute_esl_from_context return dict. Signal only in core pack; with core_pack_id the
+    context must expose signal_ids including funding_raised.
+    """
+    as_of = date(2026, 2, 18)
+    company = Company(name="CoreSignalCtxCo", source="manual")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    readiness = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=50,
+        complexity=50,
+        pressure=50,
+        leadership_gap=50,
+        composite=50,
+        pack_id=esl_blocked_pack_id,
+    )
+    db.add(readiness)
+    db.commit()
+
+    # Signal only in core pack (no instance in workspace pack)
+    inst = SignalInstance(
+        entity_id=company.id,
+        signal_id="funding_raised",
+        pack_id=core_pack_id,
+        first_seen=datetime(2026, 2, 1, tzinfo=UTC),
+        last_seen=datetime(2026, 2, 10, tzinfo=UTC),
+    )
+    db.add(inst)
+    db.commit()
+
+    # Without core_pack_id: query uses workspace pack → no instances → signal_ids empty
+    ctx_no_core = compute_esl_from_context(
+        db, company.id, as_of, pack_id=esl_blocked_pack_id
+    )
+    assert ctx_no_core is not None
+    assert ctx_no_core["signal_ids"] == set()
+
+    # With core_pack_id: signal set from core pack → signal_ids includes funding_raised
+    ctx = compute_esl_from_context(
+        db,
+        company.id,
+        as_of,
+        pack_id=esl_blocked_pack_id,
+        core_pack_id=core_pack_id,
+    )
+    assert ctx is not None
+    assert "signal_ids" in ctx
+    assert ctx["signal_ids"] == {"funding_raised"}
 
 
 def test_esl_signal_set_from_core_instances_when_core_pack_id_provided(
