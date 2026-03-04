@@ -165,19 +165,32 @@ async def run_score(
 
 
 @router.post("/run_alert_scan")
-async def run_alert_scan(
+async def run_alert_scan_endpoint(
     db: Session = Depends(get_db),
     _token: None = Depends(_require_internal_token),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID; uses default if omitted (Issue #193).",
+    ),
 ):
     """Trigger daily readiness delta alert scan (Issue #92).
 
     Run after score_nightly. Creates alerts when |delta| >= threshold.
+    Snapshot reads are pack-scoped; pack resolved from workspace (Issue #193).
     Returns alerts_created, companies_scanned.
     """
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
+    from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace
     from app.services.readiness.alert_scan import run_alert_scan
 
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    ws_id = (
+        workspace_id.strip() if workspace_id and workspace_id.strip() else None
+    ) or DEFAULT_WORKSPACE_ID
+    pack_id = get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
+
     try:
-        result = run_alert_scan(db)
+        result = run_alert_scan(db, pack_id=pack_id)
         return {
             "status": result["status"],
             "alerts_created": result["alerts_created"],
@@ -842,19 +855,30 @@ async def run_bias_audit_endpoint(
         None,
         description="Report month (YYYY-MM-DD, first day). Default: previous month.",
     ),
+    workspace_id: str | None = Query(
+        None,
+        description="Workspace ID; uses default if omitted (Issue #193).",
+    ),
 ):
     """Trigger monthly bias audit (Issue #112).
 
     Analyzes surfaced companies for funding, alignment, stage skew.
-    Persists report; flags when any segment > 70%.
+    Persists report keyed by (report_month, pack_id); flags when any segment > 70%.
+    When workspace_id is provided, audit is scoped to that workspace's pack (Issue #193).
     """
+    from app.pipeline.stages import DEFAULT_WORKSPACE_ID
     from app.services.bias_audit import run_bias_audit
+
+    validate_uuid_param_or_422(workspace_id, "workspace_id")
+    ws_id = (
+        workspace_id.strip() if workspace_id and workspace_id.strip() else None
+    ) or DEFAULT_WORKSPACE_ID
 
     try:
         report_month = month
         if report_month is not None:
             report_month = report_month.replace(day=1)
-        result = run_bias_audit(db, report_month)
+        result = run_bias_audit(db, report_month=report_month, workspace_id=ws_id)
         return {
             "status": result["status"],
             "job_run_id": result["job_run_id"],
