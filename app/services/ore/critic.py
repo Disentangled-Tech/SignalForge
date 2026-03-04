@@ -1,4 +1,4 @@
-"""ORE critic — rules for draft compliance (Issue #124).
+"""ORE critic — rules for draft compliance (Issue #124, #120 M2).
 
 Per docs/critic_rules.md:
 - No surveillance phrases
@@ -6,12 +6,19 @@ Per docs/critic_rules.md:
 - Single CTA
 - Opt-out language
 - Short paragraphs
+
+M2: Optional pack-aware checks when context provided: suppressed-signal mention
+(violation_details for logging).
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
+from app.services.ore.suppressed_signal_phrases import get_phrases_for_suppressed_signals
 
 
 @dataclass
@@ -20,6 +27,8 @@ class CriticResult:
 
     passed: bool
     violations: list[str]
+    # M2: structured details for logging (violation_type, signal_id, phrase when applicable)
+    violation_details: list[dict[str, Any]]
 
 
 # Surveillance phrases (from critic_rules.md)
