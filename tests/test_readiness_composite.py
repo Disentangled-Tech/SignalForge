@@ -297,7 +297,7 @@ class TestComputeEventContributions:
 class TestWriteReadinessSnapshotPersists:
     """Snapshot written to DB."""
 
-    def test_persists_snapshot(self, db: Session) -> None:
+    def test_persists_snapshot(self, db: Session, fractional_cto_pack_id) -> None:
         """write_readiness_snapshot creates ReadinessSnapshot row."""
         company = Company(name="CompositeTestCo", website_url="https://composite.example.com")
         db.add(company)
@@ -313,11 +313,12 @@ class TestWriteReadinessSnapshotPersists:
                 event_type=etype,
                 event_time=datetime.now(UTC) - timedelta(days=i * 10),
                 confidence=0.8,
+                pack_id=fractional_cto_pack_id,
             )
             db.add(ev)
         db.commit()
 
-        snapshot = write_readiness_snapshot(db, company.id, as_of)
+        snapshot = write_readiness_snapshot(db, company.id, as_of, pack_id=fractional_cto_pack_id)
         assert snapshot is not None
         assert snapshot.company_id == company.id
         assert snapshot.as_of == as_of
@@ -344,7 +345,7 @@ class TestWriteReadinessSnapshotPersists:
         snapshot = write_readiness_snapshot(db, company.id, date.today())
         assert snapshot is None
 
-    def test_explain_includes_delta_1d_when_prev_exists(self, db: Session) -> None:
+    def test_explain_includes_delta_1d_when_prev_exists(self, db: Session, fractional_cto_pack_id) -> None:
         """Second snapshot includes delta_1d when previous day snapshot exists."""
         company = Company(name="DeltaTestCo", website_url="https://delta.example.com")
         db.add(company)
@@ -359,19 +360,20 @@ class TestWriteReadinessSnapshotPersists:
                 event_type=etype,
                 event_time=datetime.now(UTC) - timedelta(days=i * 10),
                 confidence=0.8,
+                pack_id=fractional_cto_pack_id,
             )
             db.add(ev)
         db.commit()
 
         # Day 1 snapshot (composite will be some value)
         as_of_1 = date.today() - timedelta(days=1)
-        snap1 = write_readiness_snapshot(db, company.id, as_of_1)
+        snap1 = write_readiness_snapshot(db, company.id, as_of_1, pack_id=fractional_cto_pack_id)
         assert snap1 is not None
         composite_1 = snap1.composite
 
         # Day 2 snapshot - should have delta_1d = composite_2 - composite_1
         as_of_2 = date.today()
-        snap2 = write_readiness_snapshot(db, company.id, as_of_2)
+        snap2 = write_readiness_snapshot(db, company.id, as_of_2, pack_id=fractional_cto_pack_id)
         assert snap2 is not None
         assert "delta_1d" in snap2.explain
         expected_delta = snap2.composite - composite_1

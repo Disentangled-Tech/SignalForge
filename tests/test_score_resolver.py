@@ -15,7 +15,7 @@ from app.services.score_resolver import (
 )
 
 
-def test_get_company_score_from_snapshot(db: Session) -> None:
+def test_get_company_score_from_snapshot(db: Session, fractional_cto_pack_id) -> None:
     """get_company_score returns composite from ReadinessSnapshot when available."""
     company = Company(name="Snapshot Co", website_url="https://snap.example.com")
     db.add(company)
@@ -30,7 +30,7 @@ def test_get_company_score_from_snapshot(db: Session) -> None:
         pressure=18,
         leadership_gap=12,
         composite=65,
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -66,7 +66,7 @@ def test_get_company_score_returns_none_when_no_data(db: Session) -> None:
     assert score is None
 
 
-def test_get_company_score_prefers_snapshot_over_cto_need(db: Session) -> None:
+def test_get_company_score_prefers_snapshot_over_cto_need(db: Session, fractional_cto_pack_id) -> None:
     """When both exist, get_company_score prefers ReadinessSnapshot."""
     company = Company(
         name="Both Co",
@@ -85,7 +85,7 @@ def test_get_company_score_prefers_snapshot_over_cto_need(db: Session) -> None:
         pressure=22,
         leadership_gap=15,
         composite=82,
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -100,7 +100,7 @@ def test_get_company_scores_batch_empty_input(db: Session) -> None:
     assert get_company_scores_batch(db, []) == {}
 
 
-def test_get_company_scores_batch_matches_single_company(db: Session) -> None:
+def test_get_company_scores_batch_matches_single_company(db: Session, fractional_cto_pack_id) -> None:
     """get_company_scores_batch returns same result as get_company_score for one company."""
     company = Company(name="Batch Co", website_url="https://batch.example.com")
     db.add(company)
@@ -115,7 +115,7 @@ def test_get_company_scores_batch_matches_single_company(db: Session) -> None:
         pressure=10,
         leadership_gap=10,
         composite=40,
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -127,7 +127,7 @@ def test_get_company_scores_batch_matches_single_company(db: Session) -> None:
     assert batch == {company.id: 40}
 
 
-def test_get_company_scores_batch_multiple_companies(db: Session) -> None:
+def test_get_company_scores_batch_multiple_companies(db: Session, fractional_cto_pack_id) -> None:
     """get_company_scores_batch returns correct scores for multiple companies."""
     c1 = Company(name="C1", website_url="https://c1.example.com", cto_need_score=10)
     c2 = Company(name="C2", website_url="https://c2.example.com")
@@ -145,7 +145,7 @@ def test_get_company_scores_batch_multiple_companies(db: Session) -> None:
         pressure=5,
         leadership_gap=5,
         composite=20,
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -155,7 +155,7 @@ def test_get_company_scores_batch_multiple_companies(db: Session) -> None:
     assert result == {c1.id: 10, c2.id: 20, c3.id: 30}
 
 
-def test_get_company_scores_batch_prefers_snapshot_over_cto_need(db: Session) -> None:
+def test_get_company_scores_batch_prefers_snapshot_over_cto_need(db: Session, fractional_cto_pack_id) -> None:
     """get_company_scores_batch prefers ReadinessSnapshot over cto_need_score."""
     company = Company(
         name="Both Co",
@@ -174,7 +174,7 @@ def test_get_company_scores_batch_prefers_snapshot_over_cto_need(db: Session) ->
         pressure=22,
         leadership_gap=15,
         composite=82,
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -225,7 +225,7 @@ def test_get_company_score_uses_workspace_pack(db: Session, fractional_cto_pack_
 # ── get_company_score_with_band (Issue #242 Phase 3) ────────────────────
 
 
-def test_get_company_score_with_band_returns_band_from_explain(db: Session) -> None:
+def test_get_company_score_with_band_returns_band_from_explain(db: Session, fractional_cto_pack_id) -> None:
     """get_company_score_with_band returns (score, band) when snapshot has recommendation_band."""
     company = Company(name="Band Co", website_url="https://band.example.com")
     db.add(company)
@@ -241,7 +241,7 @@ def test_get_company_score_with_band_returns_band_from_explain(db: Session) -> N
         leadership_gap=10,
         composite=85,
         explain={"recommendation_band": "HIGH_PRIORITY"},
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -252,7 +252,7 @@ def test_get_company_score_with_band_returns_band_from_explain(db: Session) -> N
     assert band == "HIGH_PRIORITY"
 
 
-def test_get_company_score_with_band_returns_none_band_when_no_explain(db: Session) -> None:
+def test_get_company_score_with_band_returns_none_band_when_no_explain(db: Session, fractional_cto_pack_id) -> None:
     """get_company_score_with_band returns (score, None) when snapshot has no recommendation_band."""
     company = Company(name="No Band Co", website_url="https://noband.example.com")
     db.add(company)
@@ -268,7 +268,7 @@ def test_get_company_score_with_band_returns_none_band_when_no_explain(db: Sessi
         leadership_gap=12,
         composite=65,
         explain={"top_events": []},
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add(snapshot)
@@ -305,7 +305,7 @@ def test_get_company_scores_and_bands_batch_empty_input(db: Session) -> None:
     assert bands == {}
 
 
-def test_get_company_scores_and_bands_batch_returns_bands_from_explain(db: Session) -> None:
+def test_get_company_scores_and_bands_batch_returns_bands_from_explain(db: Session, fractional_cto_pack_id) -> None:
     """get_company_scores_and_bands_batch returns bands from ReadinessSnapshot.explain."""
     c1 = Company(name="C1", website_url="https://c1.example.com")
     c2 = Company(name="C2", website_url="https://c2.example.com")
@@ -323,7 +323,7 @@ def test_get_company_scores_and_bands_batch_returns_bands_from_explain(db: Sessi
         leadership_gap=10,
         composite=88,
         explain={"recommendation_band": "HIGH_PRIORITY"},
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     snapshot2 = ReadinessSnapshot(
@@ -335,7 +335,7 @@ def test_get_company_scores_and_bands_batch_returns_bands_from_explain(db: Sessi
         leadership_gap=8,
         composite=45,
         explain={"recommendation_band": "WATCH"},
-        pack_id=None,
+        pack_id=fractional_cto_pack_id,
         computed_at=datetime.now(UTC),
     )
     db.add_all([snapshot1, snapshot2])

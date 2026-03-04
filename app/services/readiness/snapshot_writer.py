@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import Company, ReadinessSnapshot, SignalEvent
@@ -40,10 +39,6 @@ def write_readiness_snapshot(
 
     cutoff_dt = datetime.combine(as_of - timedelta(days=365), datetime.min.time())
     cutoff_dt = cutoff_dt.replace(tzinfo=UTC)
-    event_pack_filter = or_(
-        SignalEvent.pack_id == pack_id,
-        SignalEvent.pack_id.is_(None),
-    )
 
     if core_pack_id is not None:
         events = get_event_like_list_from_core_instances(db, company_id, as_of, core_pack_id)
@@ -55,7 +50,7 @@ def write_readiness_snapshot(
                 .filter(
                     SignalEvent.company_id == company_id,
                     SignalEvent.event_time >= cutoff_dt,
-                    event_pack_filter,
+                    SignalEvent.pack_id == pack_id,
                 )
                 .order_by(SignalEvent.event_time.desc())
                 .all()
@@ -66,7 +61,7 @@ def write_readiness_snapshot(
             .filter(
                 SignalEvent.company_id == company_id,
                 SignalEvent.event_time >= cutoff_dt,
-                event_pack_filter,
+                SignalEvent.pack_id == pack_id,
             )
             .order_by(SignalEvent.event_time.desc())
             .all()

@@ -1,7 +1,8 @@
 """
-Tests for the LLM provider layer: OpenAIProvider and router.
+Tests for the LLM provider layer: AnthropicProvider and router (ADR-012).
 
-All OpenAI API calls are mocked — no real network requests.
+OpenAI provider removed; OpenAI-specific tests are skipped when OpenAIProvider
+is not available. All API calls are mocked — no real network requests.
 """
 
 from __future__ import annotations
@@ -16,12 +17,18 @@ from anthropic import (
 from anthropic import (
     RateLimitError as AnthropicRateLimitError,
 )
-from openai import APITimeoutError, RateLimitError
 
 from app.config import Settings
 from app.llm.anthropic_provider import AnthropicProvider
-from app.llm.openai_provider import OpenAIProvider
 from app.llm.router import ModelRole, clear_provider_cache, get_llm_provider
+
+try:
+    from app.llm.openai_provider import OpenAIProvider
+    from openai import APITimeoutError, RateLimitError
+except ModuleNotFoundError:
+    OpenAIProvider = None  # type: ignore[misc, assignment]
+    APITimeoutError = None  # type: ignore[assignment]
+    RateLimitError = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -65,10 +72,11 @@ def _make_settings(**overrides) -> Settings:
 
 
 # ---------------------------------------------------------------------------
-# OpenAIProvider — initialisation
+# OpenAIProvider — initialisation (skipped when OpenAI removed, ADR-012)
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
 class TestOpenAIProviderInit:
     def test_stores_model_and_timeout(self):
         with patch("app.llm.openai_provider.OpenAI"):
@@ -89,6 +97,7 @@ class TestOpenAIProviderInit:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
 class TestOpenAIProviderComplete:
     def test_basic_complete(self):
         with patch("app.llm.openai_provider.OpenAI") as MockOpenAI:
@@ -172,11 +181,13 @@ class TestOpenAIProviderComplete:
 
 
 class TestRouter:
+    @pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
     def test_returns_openai_provider(self):
         with patch("app.llm.openai_provider.OpenAI"):
             provider = get_llm_provider(settings=_make_settings())
         assert isinstance(provider, OpenAIProvider)
 
+    @pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
     def test_caches_provider(self):
         with patch("app.llm.openai_provider.OpenAI"):
             s = _make_settings()
@@ -185,16 +196,18 @@ class TestRouter:
         assert p1 is p2
 
     def test_raises_for_unknown_provider(self):
-        with pytest.raises(
-            ValueError,
-            match=r"Unknown LLM provider.*Supported providers: openai, anthropic",
-        ):
+        with pytest.raises(ValueError, match=r"Unknown LLM provider"):
             get_llm_provider(settings=_make_settings(llm_provider="azure"))
 
     def test_raises_when_api_key_missing(self):
-        with pytest.raises(ValueError, match="LLM_API_KEY is required"):
-            get_llm_provider(settings=_make_settings(llm_api_key=None))
+        """Uses anthropic provider; message references LLM_API_KEY or ANTHROPIC_API_KEY."""
+        with pytest.raises(
+            ValueError,
+            match="LLM_API_KEY or ANTHROPIC_API_KEY required for Anthropic provider",
+        ):
+            get_llm_provider(settings=_make_settings(llm_provider="anthropic", llm_api_key=None))
 
+    @pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
     def test_router_returns_different_models_per_role(self):
         """Different roles get providers configured with different models."""
         with patch("app.llm.openai_provider.OpenAI"):
@@ -208,6 +221,7 @@ class TestRouter:
         assert p_reasoning.model == "gpt-4o"
         assert p_json.model == "gpt-4o-mini"
 
+    @pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
     def test_router_passes_timeout_and_retries(self):
         """OpenAIProvider receives timeout and max_retries from settings."""
         with patch("app.llm.openai_provider.OpenAI") as MockOpenAI:
@@ -221,6 +235,7 @@ class TestRouter:
         provider = get_llm_provider(role=ModelRole.REASONING, settings=s)
         assert provider.max_retries == 5
 
+    @pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
     def test_router_default_role_is_reasoning(self):
         """Omitting role defaults to REASONING."""
         with patch("app.llm.openai_provider.OpenAI"):
@@ -398,6 +413,7 @@ class TestAnthropicProviderRetry:
         assert mock_time.sleep.call_count == 2
 
 
+@pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
 class TestProviderRetryOnTimeout:
     def test_provider_retries_on_timeout(self):
         """Provider retries on APITimeoutError and eventually succeeds."""
@@ -421,6 +437,7 @@ class TestProviderRetryOnTimeout:
         assert mock_time.sleep.call_count == 2
 
 
+@pytest.mark.skipif(OpenAIProvider is None, reason="OpenAI provider removed (ADR-012)")
 class TestPromptLogging:
     def test_prompt_logged_at_info_with_preview(self, caplog):
         """INFO log contains prompt_preview and token usage."""

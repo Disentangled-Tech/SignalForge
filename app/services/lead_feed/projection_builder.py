@@ -287,15 +287,7 @@ def build_lead_feed_from_snapshots(
 
     pack_uuid = UUID(str(pack_id)) if isinstance(pack_id, str) else pack_id
 
-    pack_match = or_(
-        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
-        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
-    )
-    pack_filter = or_(
-        ReadinessSnapshot.pack_id == pack_uuid,
-        ReadinessSnapshot.pack_id.is_(None),
-    )
-
+    pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
         .join(
@@ -304,7 +296,7 @@ def build_lead_feed_from_snapshots(
             & (ReadinessSnapshot.as_of == EngagementSnapshot.as_of)
             & pack_match,
         )
-        .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
+        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_uuid)
         .all()
     )
 

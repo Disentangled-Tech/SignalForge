@@ -28,7 +28,7 @@ def test_engagement_snapshot_writer_returns_none_without_readiness(db: Session) 
     assert result is None
 
 
-def test_engagement_snapshot_writer_persists(db: Session) -> None:
+def test_engagement_snapshot_writer_persists(db: Session, fractional_cto_pack_id) -> None:
     """With ReadinessSnapshot, writes EngagementSnapshot with correct fields."""
     company = Company(name="EngagementTestCo", source="manual")
     db.add(company)
@@ -43,11 +43,12 @@ def test_engagement_snapshot_writer_persists(db: Session) -> None:
         pressure=60,
         leadership_gap=70,
         composite=82,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(readiness)
     db.commit()
 
-    result = write_engagement_snapshot(db, company.id, date(2026, 2, 18))
+    result = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
 
     assert result is not None
     assert result.company_id == company.id
@@ -78,7 +79,7 @@ def test_engagement_snapshot_writer_persists(db: Session) -> None:
     assert result.outreach_score == round(82 * result.esl_score)
 
 
-def test_engagement_snapshot_writer_upserts(db: Session) -> None:
+def test_engagement_snapshot_writer_upserts(db: Session, fractional_cto_pack_id) -> None:
     """Second write upserts existing EngagementSnapshot."""
     company = Company(name="UpsertCo", source="manual")
     db.add(company)
@@ -93,21 +94,22 @@ def test_engagement_snapshot_writer_upserts(db: Session) -> None:
         pressure=50,
         leadership_gap=50,
         composite=50,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(readiness)
     db.commit()
 
-    first = write_engagement_snapshot(db, company.id, date(2026, 2, 18))
+    first = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
     assert first is not None
     first_id = first.id
 
-    second = write_engagement_snapshot(db, company.id, date(2026, 2, 18))
+    second = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
     assert second is not None
     assert second.id == first_id
     assert second.esl_score == first.esl_score
 
 
-def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session) -> None:
+def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session, fractional_cto_pack_id) -> None:
     """Recent outreach sets cadence_blocked=True and lowers ESL."""
     company = Company(name="CadenceCo", source="manual")
     db.add(company)
@@ -122,6 +124,7 @@ def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session) 
         pressure=80,
         leadership_gap=80,
         composite=82,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(readiness)
     db.commit()
@@ -135,7 +138,7 @@ def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session) 
     db.add(history)
     db.commit()
 
-    result = write_engagement_snapshot(db, company.id, date(2026, 2, 18))
+    result = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
 
     assert result is not None
     assert result.cadence_blocked is True
@@ -143,7 +146,7 @@ def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session) 
     assert result.engagement_type == "Observe Only"
 
 
-def test_stability_cap_under_pressure_spike(db: Session) -> None:
+def test_stability_cap_under_pressure_spike(db: Session, fractional_cto_pack_id) -> None:
     """Pressure spike drives SM < 0.7; cap enforced to Soft Value Share (Issue #111)."""
     company = Company(name="PressureSpikeCo", source="manual")
     db.add(company)
@@ -159,6 +162,7 @@ def test_stability_cap_under_pressure_spike(db: Session) -> None:
         pressure=70,  # >= SPI_PRESSURE_THRESHOLD (60)
         leadership_gap=70,
         composite=82,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(readiness)
     db.commit()
@@ -174,11 +178,12 @@ def test_stability_cap_under_pressure_spike(db: Session) -> None:
             event_time=datetime(2026, 2, 10 + i, tzinfo=UTC),
             ingested_at=datetime(2026, 2, 10, tzinfo=UTC),
             confidence=0.9,
+            pack_id=fractional_cto_pack_id,
         )
         db.add(ev)
     db.commit()
 
-    result = write_engagement_snapshot(db, company.id, as_of)
+    result = write_engagement_snapshot(db, company.id, as_of, pack_id=fractional_cto_pack_id)
 
     assert result is not None
     assert result.engagement_type == "Soft Value Share"

@@ -36,7 +36,7 @@ def test_readiness_snapshot_model_creation() -> None:
     # computed_at is set on insert; before persist it may be None
 
 
-def test_readiness_snapshot_explain_jsonb_persists(db: Session) -> None:
+def test_readiness_snapshot_explain_jsonb_persists(db: Session, fractional_cto_pack_id) -> None:
     """JSON explain payload round-trips correctly."""
     company = Company(name="ExplainCo", website_url="https://explain.example.com")
     db.add(company)
@@ -69,6 +69,7 @@ def test_readiness_snapshot_explain_jsonb_persists(db: Session) -> None:
         leadership_gap=40,
         composite=62,
         explain=explain_payload,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(snapshot)
     db.commit()
@@ -116,7 +117,7 @@ def test_readiness_snapshot_unique_constraint(db: Session, fractional_cto_pack_i
     db.rollback()
 
 
-def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
+def test_readiness_snapshot_index_supports_top_n(db: Session, fractional_cto_pack_id) -> None:
     """Query as_of=X ORDER BY composite DESC LIMIT N works."""
     company1 = Company(name="TopN Co 1", website_url="https://topn1.example.com")
     company2 = Company(name="TopN Co 2", website_url="https://topn2.example.com")
@@ -138,6 +139,7 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
             pressure=60,
             leadership_gap=50,
             composite=70,
+            pack_id=fractional_cto_pack_id,
         ),
         ReadinessSnapshot(
             company_id=company2.id,
@@ -147,6 +149,7 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
             pressure=40,
             leadership_gap=30,
             composite=50,
+            pack_id=fractional_cto_pack_id,
         ),
         ReadinessSnapshot(
             company_id=company3.id,
@@ -156,6 +159,7 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
             pressure=55,
             leadership_gap=45,
             composite=65,
+            pack_id=fractional_cto_pack_id,
         ),
     ]
     db.add_all(snapshots)
@@ -177,7 +181,7 @@ def test_readiness_snapshot_index_supports_top_n(db: Session) -> None:
     assert top_n[1].composite == 65
 
 
-def test_readiness_snapshot_company_relationship(db: Session) -> None:
+def test_readiness_snapshot_company_relationship(db: Session, fractional_cto_pack_id) -> None:
     """Company.readiness_snapshots loads correctly."""
     company = Company(name="RelCo", website_url="https://rel.example.com")
     db.add(company)
@@ -192,6 +196,7 @@ def test_readiness_snapshot_company_relationship(db: Session) -> None:
         pressure=55,
         leadership_gap=40,
         composite=62,
+        pack_id=fractional_cto_pack_id,
     )
     db.add(snapshot)
     db.commit()

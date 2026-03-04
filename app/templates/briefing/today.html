@@ -54,6 +54,13 @@
     .emerging-recommendation { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #e0e7ff; color: #3730a3; }
     .emerging-cooldown { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #fef3c7; color: #92400e; }
     .emerging-stability-cap { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: #fef3c7; color: #92400e; }
+    .emerging-sensitivity { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 600; }
+    .emerging-sensitivity-suppressed { background: #fee2e2; color: #991b1b; }
+    .emerging-sensitivity-constrained { background: #fef3c7; color: #92400e; }
+    .emerging-sensitivity-low { background: #d1fae5; color: #065f46; }
+    .emerging-sensitivity-medium { background: #e0e7ff; color: #3730a3; }
+    .emerging-sensitivity-high { background: #fce7f3; color: #9d174d; }
+    .emerging-sensitivity-explanation { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
 
     .print-header { display: none; }
     @media print {
@@ -108,6 +115,16 @@
             <span class="emerging-recommendation">{{ ec.engagement_type }}</span>
             {% if ec.recommendation_band %}
             <span class="badge {% if ec.recommendation_band == 'HIGH_PRIORITY' %}badge-green{% elif ec.recommendation_band == 'WATCH' %}badge-yellow{% else %}badge-gray{% endif %}">{{ ec.recommendation_band }}</span>
+            {% endif %}
+            {% if ec.esl_decision == 'suppress' %}
+            <span class="emerging-sensitivity emerging-sensitivity-suppressed">Suppressed</span>
+            {% elif ec.esl_decision == 'allow_with_constraints' %}
+            <span class="emerging-sensitivity emerging-sensitivity-constrained">Constrained</span>
+            {% elif ec.sensitivity_level %}
+            <span class="emerging-sensitivity emerging-sensitivity-{{ ec.sensitivity_level|lower }}">{{ ec.sensitivity_level|capitalize }}</span>
+            {% endif %}
+            {% if ec.esl_decision == 'allow_with_constraints' and ec.tone_constraint %}
+            <span class="emerging-sensitivity-explanation">Max: {{ ec.tone_constraint }}</span>
             {% endif %}
             {% if ec.cadence_blocked %}
             <span class="emerging-cooldown">Cooldown active</span>
@@ -176,6 +193,16 @@
         <span class="emerging-recommendation">{{ item_esl.engagement_type }}</span>
         <span class="score-badge" style="margin-left:0.25rem;">Outreach: {{ item_esl.outreach_score }}</span>
         <span class="emerging-dim">ESL {{ "%.2f"|format(item_esl.esl_score) }}</span>
+        {% if item_esl.esl_decision == 'suppress' %}
+        <span class="emerging-sensitivity emerging-sensitivity-suppressed">Suppressed</span>
+        {% elif item_esl.esl_decision == 'allow_with_constraints' %}
+        <span class="emerging-sensitivity emerging-sensitivity-constrained">Constrained</span>
+        {% elif item_esl.sensitivity_level %}
+        <span class="emerging-sensitivity emerging-sensitivity-{{ item_esl.sensitivity_level|lower }}">{{ item_esl.sensitivity_level|capitalize }}</span>
+        {% endif %}
+        {% if item_esl.esl_decision == 'allow_with_constraints' and item_esl.tone_constraint %}
+        <span class="emerging-sensitivity-explanation">Max: {{ item_esl.tone_constraint }}</span>
+        {% endif %}
         {% if item_esl.cadence_blocked %}
         <span class="emerging-cooldown">Cooldown active</span>
         {% endif %}
