@@ -109,6 +109,9 @@ def test_trs_esl_ore_pipeline_integration(db: Session) -> None:
     assert rec.company_id == company.id
     assert rec.as_of == as_of
     assert rec.pack_id == pack_id, "ORE pipeline must set pack_id on OutreachRecommendation"
+    # Issue #115 M1: generation_version set from pack manifest
+    assert rec.generation_version is not None
+    assert rec.generation_version == "1", "fractional_cto_v1 pack version is 1"
 
 
 def test_ore_pipeline_uses_computed_esl(db: Session) -> None:

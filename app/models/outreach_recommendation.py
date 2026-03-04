@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
+if TYPE_CHECKING:
+    from app.models.company import Company
 
 
 class OutreachRecommendation(Base):
@@ -28,6 +32,7 @@ class OutreachRecommendation(Base):
     draft_variants: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     strategy_notes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     safeguards_triggered: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    generation_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pack_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("signal_packs.id", ondelete="SET NULL"),
