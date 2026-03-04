@@ -79,3 +79,118 @@ def test_generate_ore_draft_returns_empty_on_invalid_json() -> None:
                 pack=None,
             )
     assert result == {"subject": "", "message": ""}
+
+
+def test_generate_ore_draft_passes_tone_instruction_when_tone_constraint_and_definition_provided() -> None:
+    """M5: When tone_constraint and tone_definition are provided, TONE_INSTRUCTION is built and passed to prompt."""
+    company = Company(name="TestCo", founder_name="Jane", website_url="https://test.co")
+    with patch(
+        "app.services.ore.draft_generator.resolve_prompt_content",
+        return_value="rendered",
+    ) as mock_resolve:
+        with patch(
+            "app.services.ore.draft_generator.get_llm_provider",
+        ) as mock_llm:
+            mock_llm.return_value.complete.return_value = '{"subject":"Hi","message":"Hello"}'
+            generate_ore_draft(
+                company=company,
+                recommendation_type="Soft Value Share",
+                pattern_frame="When teams scale...",
+                value_asset="Checklist",
+                cta="Want me to send it?",
+                pack=None,
+                tone_constraint="Soft Value Share",
+                tone_definition="Keep it gentle; no direct ask.",
+            )
+    call_kwargs = mock_resolve.call_args[1]
+    assert "TONE_INSTRUCTION" in call_kwargs
+    instruction = call_kwargs["TONE_INSTRUCTION"]
+    assert "Soft Value Share" in instruction
+    assert "gentle" in instruction or "no direct ask" in instruction.lower()
+
+
+def test_generate_ore_draft_tone_instruction_empty_when_tone_omitted() -> None:
+    """M5: When tone_constraint and tone_definition are omitted, TONE_INSTRUCTION is empty (backward compat)."""
+    company = Company(name="TestCo", founder_name="Jane", website_url="https://test.co")
+    with patch(
+        "app.services.ore.draft_generator.resolve_prompt_content",
+        return_value="rendered",
+    ) as mock_resolve:
+        with patch(
+            "app.services.ore.draft_generator.get_llm_provider",
+        ) as mock_llm:
+            mock_llm.return_value.complete.return_value = '{"subject":"Hi","message":"Hello"}'
+            generate_ore_draft(
+                company=company,
+                recommendation_type="Low-Pressure Intro",
+                pattern_frame="When teams scale...",
+                value_asset="Checklist",
+                cta="Want me to send it?",
+                pack=None,
+            )
+    call_kwargs = mock_resolve.call_args[1]
+    assert call_kwargs.get("TONE_INSTRUCTION") == ""
+
+
+def test_generate_ore_draft_sensitivity_level_not_passed_to_prompt() -> None:
+    """M5: sensitivity_level is never passed into the prompt (no surveillance/leak)."""
+    company = Company(name="TestCo", founder_name="Jane", website_url="https://test.co")
+    with patch(
+        "app.services.ore.draft_generator.resolve_prompt_content",
+        return_value="rendered",
+    ) as mock_resolve:
+        with patch(
+            "app.services.ore.draft_generator.get_llm_provider",
+        ) as mock_llm:
+            mock_llm.return_value.complete.return_value = '{"subject":"Hi","message":"Hello"}'
+            generate_ore_draft(
+                company=company,
+                recommendation_type="Soft Value Share",
+                pattern_frame="When teams scale...",
+                value_asset="Checklist",
+                cta="Want me to send it?",
+                pack=None,
+                tone_constraint="Soft Value Share",
+            )
+    call_kwargs = mock_resolve.call_args[1]
+    assert "SENSITIVITY_LEVEL" not in call_kwargs
+
+
+def test_generate_ore_draft_returns_empty_when_prompt_rendering_raises() -> None:
+    """When resolve_prompt_content raises, returns empty subject/message."""
+    company = Company(name="TestCo", founder_name="Jane", website_url="https://test.co")
+    with patch(
+        "app.services.ore.draft_generator.resolve_prompt_content",
+        side_effect=ValueError("Unfilled placeholders"),
+    ):
+        result = generate_ore_draft(
+            company=company,
+            recommendation_type="Low-Pressure Intro",
+            pattern_frame="When teams scale...",
+            value_asset="Checklist",
+            cta="Want me to send it?",
+            pack=None,
+        )
+    assert result == {"subject": "", "message": ""}
+
+
+def test_generate_ore_draft_returns_empty_when_llm_raises() -> None:
+    """When LLM complete() raises, returns empty subject/message."""
+    company = Company(name="TestCo", founder_name="Jane", website_url="https://test.co")
+    with patch(
+        "app.services.ore.draft_generator.resolve_prompt_content",
+        return_value="rendered",
+    ):
+        with patch(
+            "app.services.ore.draft_generator.get_llm_provider",
+        ) as mock_llm:
+            mock_llm.return_value.complete.side_effect = RuntimeError("API error")
+            result = generate_ore_draft(
+                company=company,
+                recommendation_type="Low-Pressure Intro",
+                pattern_frame="When teams scale...",
+                value_asset="Checklist",
+                cta="Want me to send it?",
+                pack=None,
+            )
+    assert result == {"subject": "", "message": ""}

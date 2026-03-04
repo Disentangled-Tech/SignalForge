@@ -32,3 +32,4 @@ Inputs:
 - CTA: {{CTA}}
 - Context (M4 — use for framing only; do NOT say "I saw you" or reference specific events): {{EXPLAINABILITY_SNIPPET}}
 - Top signal categories (use for tone only; do NOT reference explicitly): {{TOP_SIGNALS}}
+- Tone (M5 — respect; do not use stronger ask than allowed): {{TONE_INSTRUCTION}}

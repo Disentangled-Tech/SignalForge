@@ -311,3 +311,41 @@ def test_resolve_prompt_content_with_v2_pack_uses_pack_file_when_present() -> No
         assert "Pack override" in result
         assert "Acme" in result
         assert "some signals" in result
+
+
+# Required placeholders for ore_outreach_v1 (app template). Pack overrides must include these (ORE design spec M5).
+ORE_OUTREACH_V1_REQUIRED_PLACEHOLDERS = frozenset(
+    {"NAME", "COMPANY", "PATTERN_FRAME", "VALUE_ASSET", "CTA", "EXPLAINABILITY_SNIPPET", "TOP_SIGNALS", "TONE_INSTRUCTION"}
+)
+
+
+def test_pack_ore_outreach_v1_override_includes_required_placeholders() -> None:
+    """Any pack that overrides ore_outreach_v1 must include {{TONE_INSTRUCTION}} and all app placeholders (ORE design spec M5)."""
+    import json
+    from pathlib import Path
+
+    app_template = load_prompt("ore_outreach_v1")
+    app_placeholders = set(_PLACEHOLDER_RE.findall(app_template))
+    required = app_placeholders  # same as app template
+    assert ORE_OUTREACH_V1_REQUIRED_PLACEHOLDERS.issubset(required), "Test sanity: app template has required placeholders"
+
+    packs_root = Path(__file__).resolve().parent.parent / "packs"
+    if not packs_root.is_dir():
+        pytest.skip("packs/ directory not found")
+
+    for pack_dir in sorted(packs_root.iterdir()):
+        if not pack_dir.is_dir():
+            continue
+        pack_json = pack_dir / "pack.json"
+        if not pack_json.exists():
+            continue
+        override_path = pack_dir / "prompts" / "ore_outreach_v1.md"
+        if not override_path.is_file():
+            continue
+        content = override_path.read_text(encoding="utf-8")
+        pack_placeholders = set(_PLACEHOLDER_RE.findall(content))
+        missing = required - pack_placeholders
+        assert not missing, (
+            f"Pack {pack_dir.name} overrides ore_outreach_v1 but is missing required placeholders: {sorted(missing)}. "
+            "See docs/Outreach-Recommendation-Engine-ORE-design-spec.md: pack overrides must include {{TONE_INSTRUCTION}} and all app placeholders."
+        )

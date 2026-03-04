@@ -42,9 +42,10 @@ The Legacy-vs-Pack Parity Harness ensures that when migrating from the legacy pi
 - **Readiness parity**: `compute_readiness(events, pack=None)` == `compute_readiness(events, pack=cto)`
 - **Entity set**: `set(pack_entity_ids) == set(legacy_entity_ids) == expected`
 - **Ordering**: Same OutreachScore ordering (64, 60, 58, 54, 35)
+- **Outreach draft constraints** (when parity run includes ORE path): Same playbook chosen; drafts must satisfy: (1) correct tone class for recommendation_type, (2) contain required elements (opening/value/CTA), (3) do not contain any pack forbidden phrases, (4) reference only allowed facts (no raw observation text). If exact draft text is non-deterministic, assert these constraints rather than exact string equality. See rules/TDD_rules.md § Legacy-vs-Pack Parity Harness and docs/playbook-draft-engine.md.
 
 ## Follow-ups
 
 - [ ] Extend harness to compare `select_top_companies` (legacy) vs `get_emerging_companies` (pack) when both paths are fully wired (requires aligned fixture: AnalysisRecord + snapshots; `test_get_emerging_companies_pack_returns_companies_with_snapshots` added for pack path)
 - [ ] Add ESL decision and sensitivity label assertions when those fields are exposed in test fixtures (per TDD_rules follow-ups)
-- [ ] Add outreach draft constraints assertion (tone, required elements, no forbidden phrases)
+- [ ] Implement outreach draft constraints assertion in test_legacy_pack_parity.py when ORE path is exercised in parity runs (assertions specified above)

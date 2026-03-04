@@ -56,7 +56,13 @@ def get_ore_playbook(
 
 
 def _normalize_playbook(raw: dict[str, Any], _playbook_name: str) -> dict[str, Any]:
-    """Fill required and optional keys with defaults when missing."""
+    """Fill required and optional keys with defaults when missing (Issue #176 M3)."""
+    forbidden = raw.get("forbidden_phrases")
+    if not isinstance(forbidden, list):
+        forbidden = []
+    else:
+        forbidden = [str(p).strip() for p in forbidden if isinstance(p, str) and str(p).strip()]
+
     return {
         "pattern_frames": raw.get("pattern_frames") or PATTERN_FRAMES,
         "value_assets": raw.get("value_assets") or VALUE_ASSETS,
@@ -64,4 +70,12 @@ def _normalize_playbook(raw: dict[str, Any], _playbook_name: str) -> dict[str, A
         "sensitivity_levels": raw.get("sensitivity_levels")
         if isinstance(raw.get("sensitivity_levels"), list)
         else None,
+        "forbidden_phrases": forbidden,
+        "opening_templates": raw.get("opening_templates")
+        if isinstance(raw.get("opening_templates"), list)
+        else [],
+        "value_statements": raw.get("value_statements")
+        if isinstance(raw.get("value_statements"), list)
+        else [],
+        "tone": raw.get("tone") if isinstance(raw.get("tone"), (str, dict)) else None,
     }

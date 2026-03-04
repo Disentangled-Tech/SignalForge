@@ -74,6 +74,8 @@ For v2, when taxonomy.yaml is absent or omits `signal_ids`, scoring and ESL vali
 
 When a workspace's active pack is resolved (e.g. for scoring, briefing, ORE), only **analysis config** is loaded: manifest, scoring (or analysis_weights), ESL policy (or esl_rubric), playbooks, prompt_bundles, and optional labels. Derivers and taxonomy (beyond labels) are not loaded or used for runtime behavior. Derivation and ingestion scope are pack-invariant; switching packs changes interpretation (weights, ESL, outreach) only.
 
+ORE playbooks (e.g. `playbooks/ore_outreach.yaml`) may define optional **forbidden_phrases** (list of strings). The ORE critic applies these in addition to core rules (surveillance, urgency, CTA, opt-out); see [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md).
+
 ## Backward compatibility
 
 - fractional_cto_v1 has been migrated to schema_version `"2"` (Issue #288 M1); scoring/ESL behavior is unchanged (same weights and rubrics).

@@ -95,6 +95,10 @@ Critic checks:
 
 Pack playbooks may define **forbidden_phrases** (a list of strings). The critic applies these in addition to the core rules above: any draft containing a forbidden phrase (case-insensitive) fails the critic and the pipeline substitutes a compliant fallback when possible. See playbook YAML (e.g. playbooks/ore_outreach.yaml) and app/services/ore/critic.py.
 
+Pack-driven playbooks and sensitivity (Issue #176)
+
+ORE is pack-driven: the active pack supplies the playbook (e.g. playbooks/ore_outreach.yaml), including pattern_frames, value_assets, ctas, optional opening_templates, value_statements, forbidden_phrases, and tone. The critic applies pack forbidden_phrases in addition to core rules. Sensitivity gating is prompt-only: tone_constraint (e.g. "Soft Value Share") and playbook tone definitions are passed as TONE_INSTRUCTION so the LLM stays within the allowed tier; sensitivity_level is never sent to the LLM. See docs/playbook-draft-engine.md for YAML shape, loader, and data flow.
+
 ⸻
 
 1) Outreach Types and What They Mean
@@ -198,7 +202,9 @@ Each template has slots:
  • {value_asset}
  • {cta}
 
-**Pack override prompts (ore_outreach_v1):** If a pack overrides the base `ore_outreach_v1` template (e.g. in a v2 pack’s `prompts/` directory), that template **must** include the same placeholders as the app template, including **EXPLAINABILITY_SNIPPET** and **TOP_SIGNALS** (M4). The loader requires all placeholders to be supplied; omitting them will cause draft generation to fail. When no explainability context is available, the pipeline passes empty string and empty list respectively.
+**Pack override prompts (ore_outreach_v1):** If a pack overrides the base `ore_outreach_v1` template (e.g. in a v2 pack’s `prompts/` directory), that template **must** include **{{TONE_INSTRUCTION}}** and all other app placeholders (**NAME**, **COMPANY**, **PATTERN_FRAME**, **VALUE_ASSET**, **CTA**, **EXPLAINABILITY_SNIPPET**, **TOP_SIGNALS**, **TONE_INSTRUCTION**). The loader requires all placeholders to be supplied; omitting them will cause draft generation to fail. When no explainability context is available, the pipeline passes empty string and empty list respectively; when no tone constraint is set, **TONE_INSTRUCTION** is passed as empty string.
+
+**Tone gating (M5):** Tone gating is prompt-only: an additive instruction (e.g. maximum outreach tier and tier-specific wording from the playbook) is passed as **TONE_INSTRUCTION** so the LLM stays within the allowed tone. It does not change policy gate, critic, or ESL logic. **sensitivity_level** is never sent to the LLM; only the derived **tone_constraint** (e.g. "Soft Value Share") and playbook **tone** text are used for the prompt. Tier-specific wording should be defined in the playbook's `tone` (string or dict per recommendation_type); see playbooks/ore_outreach.yaml.
 
 Pattern Frames (safe, non-invasive)
 
