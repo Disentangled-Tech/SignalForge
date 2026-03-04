@@ -179,11 +179,11 @@ class TestDiscoverPages:
                 assert len(call[0]) == 1 or (len(call[0]) == 2 and call[0][1] is False)
 
     async def test_discover_pages_extracted_text_contract_no_tags_under_8k(self):
-        """Integration: fetch → extract_text path yields plain text (no HTML tags, length ≤ 8k).
+        """Boundary contract: fetch → extract_text path yields plain text (no HTML tags, length ≤ 8k).
 
-        Ensures the shared text extraction contract (Issue #12) is satisfied at the
-        page_discovery call site: extracted content has no angle brackets and is
-        capped at MAX_TEXT_LENGTH (8000). Use >100 chars so page passes meaningful-content check.
+        This is the integration-level test for the text extraction contract at the
+        page_discovery call site. Extracted content must have no angle brackets and
+        be capped at MAX_TEXT_LENGTH (8000). Use >100 chars so page passes meaningful-content check.
         """
         from app.services.extractor import MAX_TEXT_LENGTH
 
