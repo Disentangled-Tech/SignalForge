@@ -78,6 +78,7 @@ def test_scout_list_authenticated_empty(
         resp = client_with_db.get("/scout", follow_redirects=False)
         assert resp.status_code == 200
         assert "No scout runs" in resp.text or "scout" in resp.text.lower()
+        assert 'href="/scout"' in resp.text, "Nav must include Scout link"
     finally:
         app.dependency_overrides.pop(require_ui_auth, None)
 
