@@ -68,7 +68,7 @@ def _build_explainability_context(
     return (snippet, labels)
 
 
-def _no_reference_signal_ids(pack: "Pack") -> set[str]:
+def _no_reference_signal_ids(pack: "Pack") -> set[str]:  # noqa: UP037 — Pack is TYPE_CHECKING-only
     """Signal IDs that must not be referenced in ORE drafts (Issue #120 M3).
 
     Union of core bans, pack blocked_signals, and both sides of prohibited_combinations.
@@ -340,6 +340,15 @@ def generate_ore_recommendation(
     # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
     generation_version = (pack.manifest.get("version") or "1")[:64]
 
+    # Issue #121 M4: channel from playbook; fallback "LinkedIn DM" when missing
+    _channel_raw = playbook.get("channel")
+    channel = (
+        _channel_raw.strip()
+        if isinstance(_channel_raw, str) and (_channel_raw or "").strip()
+        else None
+    )
+    channel = channel or "LinkedIn DM"
+
     # Issue #115 M2: upsert by (company_id, as_of, pack_id) — update existing or insert
     existing = (
         db.query(OutreachRecommendation)
@@ -353,7 +362,7 @@ def generate_ore_recommendation(
     if existing:
         existing.recommendation_type = gate.recommendation_type
         existing.outreach_score = outreach_score
-        existing.channel = "LinkedIn DM"
+        existing.channel = channel
         existing.draft_variants = draft_variants if draft_variants else None
         existing.strategy_notes = strategy_notes_for_persist
         existing.safeguards_triggered = gate.safeguards_triggered or None
@@ -368,7 +377,7 @@ def generate_ore_recommendation(
         as_of=as_of,
         recommendation_type=gate.recommendation_type,
         outreach_score=outreach_score,
-        channel="LinkedIn DM",
+        channel=channel,
         draft_variants=draft_variants if draft_variants else None,
         strategy_notes=strategy_notes_for_persist,
         safeguards_triggered=gate.safeguards_triggered or None,
