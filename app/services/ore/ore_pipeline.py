@@ -24,6 +24,16 @@ if TYPE_CHECKING:
 _ORE_TOP_SIGNALS_LIMIT = 5
 
 
+def _tone_definition_for_recommendation(playbook: dict, recommendation_type: str) -> str:
+    """Resolve playbook tone to a string for draft (M5). Supports tone as string or dict per recommendation_type."""
+    raw = playbook.get("tone")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    if isinstance(raw, dict):
+        return (raw.get(recommendation_type) or raw.get("default") or "").strip()
+    return ""
+
+
 def _build_explainability_context(
     snapshot: ReadinessSnapshot,
     pack: Pack | None,
@@ -99,6 +109,9 @@ def generate_ore_recommendation(
 
     trs = snapshot.composite
 
+    # M5: tone_constraint from ESL context when using computed ESL (for sensitivity gating in draft).
+    tone_constraint_esl: str | None = None
+
     # Compute or use provided ESL (Issue #106)
     # ESL signal set: legacy (pack-scoped); not passing core_pack_id (Issue #287).
     if stability_modifier is not None:
@@ -118,6 +131,9 @@ def generate_ore_recommendation(
         # Always use context values when using computed ESL; ignore any caller-provided esl_decision/sensitivity_level.
         esl_decision = ctx.get("esl_decision")
         sensitivity_level = ctx.get("sensitivity_level")
+        # M5: pass ESL tone_constraint into draft so LLM respects sensitivity gating
+        explain = ctx.get("explain") or {}
+        tone_constraint_esl = explain.get("tone_constraint") if isinstance(explain.get("tone_constraint"), str) else None
 
     outreach_score = compute_outreach_score(trs, esl_composite)
 
@@ -168,6 +184,7 @@ def generate_ore_recommendation(
         explainability_snippet, top_signal_labels = _build_explainability_context(
             snapshot, pack
         )
+        tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
         draft = generate_ore_draft(
             company=company,
             recommendation_type=gate.recommendation_type,
@@ -177,6 +194,8 @@ def generate_ore_recommendation(
             pack=pack,
             explainability_snippet=explainability_snippet,
             top_signal_labels=top_signal_labels,
+            tone_constraint=tone_constraint_esl,
+            tone_definition=tone_def or None,
         )
 
         forbidden_phrases = playbook.get("forbidden_phrases") or []

@@ -16,3 +16,16 @@ ctas:
   - "Want me to send that checklist?"
   - "Open to a 15-min compare-notes call?"
   - "If helpful, I can share a one-page approach—want it?"
+
+# Optional (Issue #176 M3): phrases the critic must flag in drafts (in addition to core rules)
+forbidden_phrases: []
+
+# Optional (Issue #176 M5): tier-specific tone instructions for the draft prompt.
+# Keys match recommendation_type (e.g. Soft Value Share, Low-Pressure Intro).
+# Pipeline passes the entry for the current tier as tone_definition; generic instruction from tone_constraint is added separately.
+tone:
+  "Soft Value Share": "Use only gentle framing; no direct ask."
+  "Low-Pressure Intro": "Brief intro and pattern only; one small next step."
+  "Standard Outreach": "Propose a short call tied to a problem frame; still consent-based."
+  "Direct Strategic Outreach": "Specific positioning; direct ask; remain consent-based and not urgent."
+  default: "Match the maximum outreach tier above."

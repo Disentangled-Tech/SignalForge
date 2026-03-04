@@ -32,6 +32,21 @@ def _parse_json_safe(text: str) -> dict | None:
         return None
 
 
+def _build_tone_instruction(
+    tone_constraint: str | None,
+    tone_definition: str | None,
+) -> str:
+    """Build TONE_INSTRUCTION for prompt (M5). Tier-specific wording from playbook; Soft Value Share gets no-direct-ask by default."""
+    parts: list[str] = []
+    if tone_constraint:
+        parts.append(f"Maximum outreach tier: {tone_constraint}.")
+        if tone_constraint == "Soft Value Share":
+            parts.append("Use only gentle framing; no direct ask.")
+    if tone_definition:
+        parts.append(tone_definition)
+    return " ".join(parts).strip() if parts else ""
+
+
 def generate_ore_draft(
     company: Company,
     recommendation_type: str,
@@ -41,6 +56,8 @@ def generate_ore_draft(
     pack: Pack | None = None,
     explainability_snippet: str = "",
     top_signal_labels: list[str] | None = None,
+    tone_constraint: str | None = None,
+    tone_definition: str | None = None,
 ) -> dict:
     """Generate ORE-compliant draft (no evidence, no surveillance).
 
@@ -50,10 +67,14 @@ def generate_ore_draft(
     M4: explainability_snippet and top_signal_labels are injected into the prompt for
     "why now" framing only; no raw observation text. Use for tone/framing; do not
     reference as "I saw you" or specific events.
+
+    M5: tone_constraint (e.g. from ESL) and tone_definition (from playbook) are
+    combined into TONE_INSTRUCTION so the LLM respects sensitivity gating.
     """
     name = (company.founder_name or "").strip() or "there"
     company_name = (company.name or "").strip() or "your company"
     top_signals_str = ", ".join(top_signal_labels) if top_signal_labels else ""
+    tone_instruction = _build_tone_instruction(tone_constraint, tone_definition)
 
     try:
         prompt = resolve_prompt_content(
@@ -66,6 +87,7 @@ def generate_ore_draft(
             CTA=cta,
             EXPLAINABILITY_SNIPPET=explainability_snippet,
             TOP_SIGNALS=top_signals_str,
+            TONE_INSTRUCTION=tone_instruction,
         )
     except Exception:
         logger.exception("Failed to render ore_outreach_v1 prompt")

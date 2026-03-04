@@ -23,4 +23,4 @@ GitHub Issue #115 requested an Outreach Recommendation Schema: add `generation_v
 ## Consequences
 
 - **Positive:** One recommendation per company per date per pack; version tracking via `generation_version`; backward-compatible (nullable column, additive constraint after dedupe).
-- **References:** Issue #115; [docs/signal-models.md](../docs/signal-models.md) §1.4; [Outreach-Recommendation-Engine-ORE-design-spec.md](../docs/Outreach-Recommendation-Engine-ORE-design-spec.md).
+- **References:** Issue #115; [docs/signal-models.md](../docs/signal-models.md) §1.4; [Outreach-Recommendation-Engine-ORE-design-spec.md](../docs/Outreach-Recommendation-Engine-ORE-design-spec.md). Tone gating (M5) is prompt-only (additive **TONE_INSTRUCTION**); **sensitivity_level** is never sent to the LLM. Any pack that overrides `ore_outreach_v1` must include **{{TONE_INSTRUCTION}}** in its template—see ORE design spec §Message Template Library.

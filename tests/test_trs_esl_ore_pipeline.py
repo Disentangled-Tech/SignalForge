@@ -701,6 +701,64 @@ def test_ore_upsert_two_calls_same_key_yield_one_row_updated(db: Session) -> Non
     assert count_after == 1, "Second call must not insert a duplicate row"
 
 
+def test_ore_pipeline_passes_esl_tone_constraint_to_draft(db: Session) -> None:
+    """M5: When compute_esl_from_context returns explain.tone_constraint, generate_ore_draft receives it."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ToneConstraintCo",
+        website_url="https://tone.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 26)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    # Mock compute_esl_from_context so we control tone_constraint without full ESL setup
+    ctx_with_tone = {
+        "esl_composite": 0.9,
+        "stability_modifier": 0.9,
+        "recommendation_type": "Low-Pressure Intro",
+        "explain": {"tone_constraint": "Soft Value Share"},
+        "cadence_blocked": False,
+        "alignment_high": True,
+        "esl_decision": "allow",
+        "sensitivity_level": "low",
+    }
+
+    with patch(
+        "app.services.ore.ore_pipeline.compute_esl_from_context",
+        return_value=ctx_with_tone,
+    ):
+        with patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ) as mock_draft:
+            from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+            rec = generate_ore_recommendation(db, company_id=company.id, as_of=as_of)
+
+    assert rec is not None
+    mock_draft.assert_called_once()
+    call_kwargs = mock_draft.call_args[1]
+    assert call_kwargs.get("tone_constraint") == "Soft Value Share"
+
+
 def test_ore_pipeline_passes_snapshot_explain_to_draft(db: Session) -> None:
     """M4: When ReadinessSnapshot has explain with top_events, generate_ore_draft receives explainability and top_signal_labels."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
