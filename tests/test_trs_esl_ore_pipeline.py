@@ -408,6 +408,138 @@ def test_ore_playbook_no_sensitivity_levels_unchanged(db: Session) -> None:
     assert rec.draft_variants and len(rec.draft_variants) >= 1
 
 
+def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -> None:
+    """M3: Pipeline passes playbook forbidden_phrases to check_critic (Issue #176)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ForbiddenPhraseCo",
+        website_url="https://fp.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 24)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    critic_calls: list[dict] = []
+
+    def record_critic(subject: str, message: str, **kwargs: object) -> object:
+        critic_calls.append({"subject": subject, "message": message, "kwargs": dict(kwargs)})
+        from app.services.ore.critic import check_critic as real_critic
+
+        return real_critic(subject, message, **kwargs)
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ), patch(
+        "app.services.ore.ore_pipeline.check_critic",
+        side_effect=record_critic,
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert len(critic_calls) >= 1, "Pipeline must call check_critic when generating draft"
+    for call in critic_calls:
+        assert "forbidden_phrases" in call["kwargs"], "Pipeline must pass forbidden_phrases to critic"
+        assert isinstance(call["kwargs"]["forbidden_phrases"], list)
+
+
+def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallback(db: Session) -> None:
+    """M3: When draft contains a pack forbidden phrase, critic fails and pipeline stores fallback."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ForbiddenDraftCo",
+        website_url="https://fd.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 25)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    draft_with_forbidden = {
+        "subject": "Quick question",
+        "message": (
+            "Hi Jane, our limited time only offer might help. "
+            "Want me to send the checklist? No worries if now isn't the time."
+        ),
+    }
+
+    def playbook_with_forbidden(*args: object, **kwargs: object) -> object:
+        from app.services.ore.playbook_loader import get_ore_playbook as real_get
+
+        playbook = real_get(*args, **kwargs)
+        playbook = dict(playbook)
+        playbook["forbidden_phrases"] = ["limited time only", "bargain basement"]
+        return playbook
+
+    with patch(
+        "app.services.ore.ore_pipeline.get_ore_playbook",
+        side_effect=playbook_with_forbidden,
+    ), patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=draft_with_forbidden,
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.draft_variants and len(rec.draft_variants) == 1
+    stored = rec.draft_variants[0]
+    assert "limited time only" not in (stored.get("message") or "").lower()
+    assert "No worries" in (stored.get("message") or "") or "no pressure" in (
+        stored.get("message") or ""
+    ).lower()
+
+
 def test_ore_returns_none_when_company_not_found(db: Session) -> None:
     """generate_ore_recommendation returns None when company_id does not exist."""
     from app.services.ore.ore_pipeline import generate_ore_recommendation
@@ -567,3 +699,115 @@ def test_ore_upsert_two_calls_same_key_yield_one_row_updated(db: Session) -> Non
         .count()
     )
     assert count_after == 1, "Second call must not insert a duplicate row"
+
+
+def test_ore_pipeline_passes_snapshot_explain_to_draft(db: Session) -> None:
+    """M4: When ReadinessSnapshot has explain with top_events, generate_ore_draft receives explainability and top_signal_labels."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ExplainCo",
+        website_url="https://explain.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 24)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+        explain={
+            "top_events": [
+                {"event_type": "cto_role_posted", "contribution_points": 25},
+                {"event_type": "funding_raised", "contribution_points": 20},
+            ],
+        },
+    )
+    db.add(snapshot)
+    db.commit()
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ) as mock_draft:
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    mock_draft.assert_called_once()
+    call_kwargs = mock_draft.call_args[1]
+    # M4: pipeline builds explainability context from snapshot.explain and passes to draft
+    assert "explainability_snippet" in call_kwargs
+    assert "top_signal_labels" in call_kwargs
+    # With top_events present, we expect non-empty labels (pack taxonomy or formatted event_type)
+    top_labels = call_kwargs["top_signal_labels"]
+    assert isinstance(top_labels, list)
+    assert len(top_labels) >= 1, "top_events should yield at least one label"
+
+
+def test_ore_pipeline_empty_explain_passes_empty_snippet_and_labels(db: Session) -> None:
+    """M4: When ReadinessSnapshot has no explain or empty top_events, draft receives empty explainability_snippet and top_signal_labels."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="NoExplainCo",
+        website_url="https://noexplain.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 25)
+    # Snapshot with no explain (default None)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ) as mock_draft:
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    mock_draft.assert_called_once()
+    call_kwargs = mock_draft.call_args[1]
+    assert call_kwargs["explainability_snippet"] == ""
+    assert call_kwargs["top_signal_labels"] == []

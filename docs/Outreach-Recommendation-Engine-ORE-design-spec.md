@@ -93,6 +93,8 @@ Critic checks:
  • Plain language?
  • ND-friendly formatting?
 
+Pack playbooks may define **forbidden_phrases** (a list of strings). The critic applies these in addition to the core rules above: any draft containing a forbidden phrase (case-insensitive) fails the critic and the pipeline substitutes a compliant fallback when possible. See playbook YAML (e.g. playbooks/ore_outreach.yaml) and app/services/ore/critic.py.
+
 ⸻
 
 1) Outreach Types and What They Mean
@@ -101,7 +103,7 @@ Observe Only
 
 When:
  • cooldown active
- • instability high
+ • sensitivity high or stability cap triggered
  • low confidence or low alignment
 
 Output:
@@ -110,7 +112,7 @@ Output:
 
 ⸻
 
-Soft Value Share (default for instability/high pressure)
+Soft Value Share (default for high sensitivity / stability cap / high pressure)
 
 Goal: give something useful with zero obligation.
 
@@ -195,6 +197,8 @@ Each template has slots:
  • {pattern_frame} (generic)
  • {value_asset}
  • {cta}
+
+**Pack override prompts (ore_outreach_v1):** If a pack overrides the base `ore_outreach_v1` template (e.g. in a v2 pack’s `prompts/` directory), that template **must** include the same placeholders as the app template, including **EXPLAINABILITY_SNIPPET** and **TOP_SIGNALS** (M4). The loader requires all placeholders to be supplied; omitting them will cause draft generation to fail. When no explainability context is available, the pipeline passes empty string and empty list respectively.
 
 Pattern Frames (safe, non-invasive)
 

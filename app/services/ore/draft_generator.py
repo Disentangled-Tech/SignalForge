@@ -39,14 +39,21 @@ def generate_ore_draft(
     value_asset: str,
     cta: str,
     pack: Pack | None = None,
+    explainability_snippet: str = "",
+    top_signal_labels: list[str] | None = None,
 ) -> dict:
     """Generate ORE-compliant draft (no evidence, no surveillance).
 
     Returns dict with subject, message. On failure returns empty strings.
     When pack is provided (e.g. from ORE pipeline), uses resolve_prompt_content for M4.
+
+    M4: explainability_snippet and top_signal_labels are injected into the prompt for
+    "why now" framing only; no raw observation text. Use for tone/framing; do not
+    reference as "I saw you" or specific events.
     """
     name = (company.founder_name or "").strip() or "there"
     company_name = (company.name or "").strip() or "your company"
+    top_signals_str = ", ".join(top_signal_labels) if top_signal_labels else ""
 
     try:
         prompt = resolve_prompt_content(
@@ -57,6 +64,8 @@ def generate_ore_draft(
             PATTERN_FRAME=pattern_frame,
             VALUE_ASSET=value_asset,
             CTA=cta,
+            EXPLAINABILITY_SNIPPET=explainability_snippet,
+            TOP_SIGNALS=top_signals_str,
         )
     except Exception:
         logger.exception("Failed to render ore_outreach_v1 prompt")

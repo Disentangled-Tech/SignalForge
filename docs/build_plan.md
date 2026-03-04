@@ -136,17 +136,21 @@
 
 ---
 
-### Session 9: Instability / Sensitivity System
+### Session 9: Sensitivity System (Done)
 
 **Issue:** [#148 — Replace Instability Flag with Pack-Aware Sensitivity & Context System](https://github.com/Disentangled-Tech/SignalForge/issues/148)
 
-| Task | Files | Outcome |
-| --- | --- | --- |
-| Add `readiness_instability` alert type | `app/services/readiness/alert_scan.py` | Multiple large deltas in short window |
-| Or add `instability: true` to `readiness_jump` payload | `alert_scan.py` | Per [docs/issues/ISSUE-instability-flag.md](issues/ISSUE-instability-flag.md) |
-| Wire sensitivity from taxonomy | `app/services/esl/` | `signal.sensitivity` from pack |
+Sensitivity system implemented: core taxonomy optional per-signal sensitivity; sensitivity resolver (core default + pack `sensitivity_mapping`, pack overrides core); LeadCard sensitivity badge and constrained explanation on briefing; ORE suppress → no draft and playbook eligibility by `sensitivity_levels`; core hard bans documented in [CORE_BAN_SIGNAL_IDS.md](CORE_BAN_SIGNAL_IDS.md). Readiness-volatility / `readiness_instability` alerts remain out of scope (see [docs/issues/ISSUE-instability-flag.md](issues/ISSUE-instability-flag.md)).
 
-**Verify:** Volatile snapshots produce instability alerts.
+| Delivered | Location |
+| --- | --- |
+| Core taxonomy optional `signals` + validator + loader | `app/core_taxonomy/` |
+| `get_effective_sensitivity_level` + ESL merge | `app/services/esl/esl_decision.py` |
+| LeadCard sensitivity badge + tone_constraint | `app/templates/briefing/today.html`, `app/api/briefing_views.py` |
+| ORE: suppress → no draft; playbook by sensitivity | `app/services/ore/ore_pipeline.py`, `app/services/ore/draft_generator.py` |
+| Core hard bans documentation | [CORE_BAN_SIGNAL_IDS.md](CORE_BAN_SIGNAL_IDS.md) |
+
+**Verify:** Parity tests pass; suppressed leads excluded; sensitivity badge and ORE behavior per plan.
 
 ---
 
@@ -201,7 +205,7 @@
 | 6 | [#137](https://github.com/Disentangled-Tech/SignalForge/issues/137) | Pack-scoped signal alerts |
 | 7 | [#194](https://github.com/Disentangled-Tech/SignalForge/issues/194) | Explainability renderer |
 | 8 | [#187](https://github.com/Disentangled-Tech/SignalForge/issues/187) | LeadCard pack taxonomy labels |
-| 9 | [#148](https://github.com/Disentangled-Tech/SignalForge/issues/148) | Instability / sensitivity system |
+| 9 | [#148](https://github.com/Disentangled-Tech/SignalForge/issues/148) | Sensitivity system (done) |
 | 10 | [#123](https://github.com/Disentangled-Tech/SignalForge/issues/123) | ORE draft versioning |
 
 **Deferred (outside 2 weeks):** #177, #178, #179, #180–185, #186, #191, #193, #196, #197.

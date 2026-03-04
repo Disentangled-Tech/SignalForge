@@ -75,6 +75,32 @@ Canonical score schema for composite + dimensions. Aligns with ReadinessSnapshot
 
 ---
 
+### 1.4 OutreachRecommendation (ORE output)
+
+**Location**: `app/models/outreach_recommendation.py`, read schema `app/schemas/outreach.py` (`OutreachRecommendationRead`)
+
+ORE (Outreach Recommendation Engine) writes one row per company per snapshot date per pack. Used for briefing and weekly review; no direct API that returns rows by id today. Relationship: `Company.outreach_recommendations` (cascade delete). See [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) and Issue #115.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | int | Primary key (integer retained for compatibility; UUID PK deferred per Issue #115) |
+| company_id | int | FK to companies.id, CASCADE on delete |
+| as_of | date | Snapshot date for which the recommendation was produced |
+| recommendation_type | str | e.g. Observe Only, Soft Value Share, Standard Outreach |
+| outreach_score | int | TRS × ESL–derived score |
+| channel | str \| None | e.g. LinkedIn DM, email |
+| draft_variants | list \| None | JSONB; list of draft objects (subject, message, etc.) |
+| strategy_notes | dict \| None | JSONB; why-this-works notes |
+| safeguards_triggered | list \| None | JSONB; e.g. cooldown, sensitivity |
+| generation_version | str \| None | Pack/config version at generation time (Issue #115) |
+| pack_id | UUID \| None | FK to signal_packs.id; pack that produced this recommendation |
+| playbook_id | str \| None | Playbook identifier used for this recommendation |
+| created_at | datetime | When the row was created (UTC) |
+
+**Unique constraint**: `uq_outreach_recommendations_company_as_of_pack` on `(company_id, as_of, pack_id)`. Ensures one recommendation per company per date per pack; aligns with ReadinessSnapshot/EngagementSnapshot pack-scoping. ORE pipeline uses upsert by this key so re-runs do not insert duplicates.
+
+---
+
 ## 2. Event Type Contract
 
 ### 2.1 v2-Spec Event Types (v2-spec §3)
@@ -129,10 +155,14 @@ Each workspace has an `active_pack_id`. Pack resolution: `get_pack_for_workspace
 - Events are shared upstream; one event stored once.
 - `pack_id` on SignalEvent is for attribution, not deduplication.
 
+### Pack-scoped signal tables (Issue #193)
+
+- **SignalEvent**, **ReadinessSnapshot**, and **EngagementSnapshot** have `pack_id` NOT NULL (Issue #193 M1). All reads and writes of these tables must use an explicit pack_id; there is no "default pack" NULL sentinel in the schema.
+
 ### AnalysisRecord (when pack_id added)
 
 - `AnalysisRecord.pack_id` attributes analysis to a pack.
-- `pack_id IS NULL` treated as default pack until backfill completes.
+- `pack_id IS NULL` on AnalysisRecord is treated as default pack until backfill completes (AnalysisRecord is not part of the M1 NOT NULL migration).
 - **Backfill**: When `pack_id` column is added to AnalysisRecord (Phase 2), existing rows can be backfilled with default pack UUID. Backfill is optional and can be lazy (on next analysis) or via data migration.
 
 ### Companies Are Global; Scores and Analyses Are Pack-Scoped (Phase 3)
