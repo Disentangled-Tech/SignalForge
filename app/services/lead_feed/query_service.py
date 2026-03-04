@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.company import Company
@@ -115,16 +114,12 @@ def get_leads_from_feed(
         return []
 
     entity_ids = [r.entity_id for r in rows]
-    pack_filter = or_(
-        EngagementSnapshot.pack_id == pack_uuid,
-        EngagementSnapshot.pack_id.is_(None),
-    )
     es_rows = (
         db.query(EngagementSnapshot)
         .filter(
             EngagementSnapshot.company_id.in_(entity_ids),
             EngagementSnapshot.as_of == as_of,
-            pack_filter,
+            EngagementSnapshot.pack_id == pack_uuid,
         )
         .all()
     )
@@ -208,15 +203,7 @@ def get_emerging_companies_from_feed(
         return []
 
     entity_ids = [lead["entity_id"] for lead in leads]
-    pack_match = or_(
-        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
-        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
-    )
-    pack_filter = or_(
-        ReadinessSnapshot.pack_id == pack_uuid,
-        ReadinessSnapshot.pack_id.is_(None),
-    )
-
+    pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
         .join(
@@ -229,7 +216,7 @@ def get_emerging_companies_from_feed(
         .filter(
             ReadinessSnapshot.company_id.in_(entity_ids),
             ReadinessSnapshot.as_of == as_of,
-            pack_filter,
+            ReadinessSnapshot.pack_id == pack_uuid,
         )
         .all()
     )
@@ -295,15 +282,7 @@ def get_weekly_review_companies_from_feed(
         return []
 
     entity_ids = [lead["entity_id"] for lead in leads]
-    pack_match = or_(
-        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
-        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
-    )
-    pack_filter = or_(
-        ReadinessSnapshot.pack_id == pack_uuid,
-        ReadinessSnapshot.pack_id.is_(None),
-    )
-
+    pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
         .join(
@@ -316,7 +295,7 @@ def get_weekly_review_companies_from_feed(
         .filter(
             ReadinessSnapshot.company_id.in_(entity_ids),
             ReadinessSnapshot.as_of == as_of,
-            pack_filter,
+            ReadinessSnapshot.pack_id == pack_uuid,
         )
         .all()
     )

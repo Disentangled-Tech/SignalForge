@@ -9,7 +9,6 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_db, require_ui_auth, validate_uuid_param_or_422
@@ -167,14 +166,7 @@ def get_briefing_data(
     pack_id = get_pack_for_workspace(db, ws_id) or get_default_pack_id(db)
     if items and pack_id is not None:
         company_ids = [item.company_id for item in items]
-        pack_match = or_(
-            ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
-            (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
-        )
-        pack_filter = or_(
-            ReadinessSnapshot.pack_id == pack_id,
-            ReadinessSnapshot.pack_id.is_(None),
-        )
+        pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
         pairs = (
             db.query(ReadinessSnapshot, EngagementSnapshot)
             .join(
@@ -186,7 +178,7 @@ def get_briefing_data(
             .filter(
                 ReadinessSnapshot.company_id.in_(company_ids),
                 ReadinessSnapshot.as_of == briefing_date,
-                pack_filter,
+                ReadinessSnapshot.pack_id == pack_id,
             )
             .all()
         )
@@ -200,6 +192,8 @@ def get_briefing_data(
             )
             esl_decision = es.esl_decision or (es.explain or {}).get("esl_decision")
             sensitivity_level = es.sensitivity_level or (es.explain or {}).get("sensitivity_level")
+            tone_constraint = (es.explain or {}).get("tone_constraint")
+            esl_reason_code = es.esl_reason_code or (es.explain or {}).get("esl_reason_code")
             esl_by_company[rs.company_id] = {
                 "esl_score": es.esl_score,
                 "outreach_score": compute_outreach_score(rs.composite, es.esl_score),
@@ -208,6 +202,8 @@ def get_briefing_data(
                 "stability_cap_triggered": (es.explain or {}).get("stability_cap_triggered", False),
                 "esl_decision": esl_decision,
                 "sensitivity_level": sensitivity_level,
+                "tone_constraint": tone_constraint,
+                "esl_reason_code": esl_reason_code,
             }
         # Filter items: exclude companies with esl_decision == "suppress" (Issue #175)
         items = [i for i in items if i.company_id not in suppressed_company_ids]
@@ -252,6 +248,10 @@ def get_briefing_data(
         sensitivity_level = engagement_snap.sensitivity_level or (
             engagement_snap.explain or {}
         ).get("sensitivity_level")
+        tone_constraint = (engagement_snap.explain or {}).get("tone_constraint")
+        esl_reason_code = engagement_snap.esl_reason_code or (
+            engagement_snap.explain or {}
+        ).get("esl_reason_code")
         recommendation_band = None
         if readiness_snap.explain:
             band_val = readiness_snap.explain.get("recommendation_band")
@@ -271,6 +271,8 @@ def get_briefing_data(
                 ),
                 "esl_decision": esl_decision,
                 "sensitivity_level": sensitivity_level,
+                "tone_constraint": tone_constraint,
+                "esl_reason_code": esl_reason_code,
                 "top_signals": top_signals,
                 "recommendation_band": recommendation_band,
             }

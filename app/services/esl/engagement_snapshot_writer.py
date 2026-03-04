@@ -11,7 +11,6 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -86,17 +85,12 @@ def compute_esl_from_context(
 
     pack = resolve_pack(db, pack_id)
 
-    # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
-    pack_filter = or_(
-        ReadinessSnapshot.pack_id == pack_id,
-        ReadinessSnapshot.pack_id.is_(None),
-    )
     readiness = (
         db.query(ReadinessSnapshot)
         .filter(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of == as_of,
-            pack_filter,
+            ReadinessSnapshot.pack_id == pack_id,
         )
         .first()
     )
@@ -110,17 +104,12 @@ def compute_esl_from_context(
     cutoff_dt = datetime.combine(as_of - timedelta(days=365), datetime.min.time()).replace(
         tzinfo=UTC
     )
-    # Pack-scoped: only use events for this pack or legacy NULL (Issue #189)
-    event_pack_filter = or_(
-        SignalEvent.pack_id == pack_id,
-        SignalEvent.pack_id.is_(None),
-    )
     events = (
         db.query(SignalEvent)
         .filter(
             SignalEvent.company_id == company_id,
             SignalEvent.event_time >= cutoff_dt,
-            event_pack_filter,
+            SignalEvent.pack_id == pack_id,
         )
         .order_by(SignalEvent.event_time.asc())
         .all()
@@ -133,7 +122,7 @@ def compute_esl_from_context(
             ReadinessSnapshot.company_id == company_id,
             ReadinessSnapshot.as_of >= spi_cutoff,
             ReadinessSnapshot.as_of <= as_of,
-            pack_filter,
+            ReadinessSnapshot.pack_id == pack_id,
         )
         .order_by(ReadinessSnapshot.as_of.asc())
         .all()

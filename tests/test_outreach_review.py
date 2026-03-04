@@ -37,8 +37,12 @@ def _add_snapshots(
     esl_score: float = 0.8,
     outreach_score: int | None = None,
     explain: dict | None = None,
+    pack_id=None,
 ) -> None:
     """Create ReadinessSnapshot + EngagementSnapshot for a company."""
+    if pack_id is None:
+        from app.services.pack_resolver import get_default_pack_id
+        pack_id = get_default_pack_id(db)
     rs = ReadinessSnapshot(
         company_id=company_id,
         as_of=as_of,
@@ -47,6 +51,7 @@ def _add_snapshots(
         pressure=55,
         leadership_gap=40,
         composite=composite,
+        pack_id=pack_id,
     )
     db.add(rs)
     es = EngagementSnapshot(
@@ -56,6 +61,7 @@ def _add_snapshots(
         engagement_type="Standard Outreach",
         outreach_score=outreach_score or round(composite * esl_score),
         explain=explain,
+        pack_id=pack_id,
     )
     db.add(es)
     db.commit()

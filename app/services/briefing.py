@@ -207,16 +207,8 @@ def get_emerging_companies(
 
     pack_id = resolved_pack
 
-    # Fallback: legacy join query
-    # Treat pack_id IS NULL as default pack until backfill completes (Issue #189)
-    pack_match = or_(
-        ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id,
-        (ReadinessSnapshot.pack_id.is_(None)) & (EngagementSnapshot.pack_id.is_(None)),
-    )
-    pack_filter = or_(
-        ReadinessSnapshot.pack_id == pack_id,
-        ReadinessSnapshot.pack_id.is_(None),
-    )
+    # Fallback: legacy join query (pack_id NOT NULL after M1)
+    pack_match = ReadinessSnapshot.pack_id == EngagementSnapshot.pack_id
     pairs = (
         db.query(ReadinessSnapshot, EngagementSnapshot)
         .join(
@@ -226,7 +218,7 @@ def get_emerging_companies(
             & pack_match,
         )
         .options(joinedload(ReadinessSnapshot.company))
-        .filter(ReadinessSnapshot.as_of == as_of, pack_filter)
+        .filter(ReadinessSnapshot.as_of == as_of, ReadinessSnapshot.pack_id == pack_id)
         .all()
     )
     results: list[tuple[ReadinessSnapshot, EngagementSnapshot, Company]] = []

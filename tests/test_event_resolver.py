@@ -65,7 +65,7 @@ class TestGetEventLikeListFromCoreInstances:
         assert getattr(result[0], "confidence", None) == 0.9
 
     def test_resolves_evidence_events_when_present(
-        self, db: Session, core_pack_id: uuid.UUID
+        self, db: Session, core_pack_id: uuid.UUID, fractional_cto_pack_id: uuid.UUID
     ) -> None:
         """When evidence_event_ids is set, resolves to SignalEvents."""
         company = Company(name="EvidenceCo", website_url="https://evidence.example.com")
@@ -79,6 +79,7 @@ class TestGetEventLikeListFromCoreInstances:
             event_type="funding_raised",
             event_time=_days_ago(3),
             confidence=0.85,
+            pack_id=fractional_cto_pack_id,
         )
         db.add(ev)
         db.commit()
@@ -125,7 +126,7 @@ class TestGetEventLikeListFromCoreInstances:
         assert len(result) == 0
 
     def test_deduplicates_evidence_events_shared_across_instances(
-        self, db: Session, core_pack_id: uuid.UUID
+        self, db: Session, core_pack_id: uuid.UUID, fractional_cto_pack_id: uuid.UUID
     ) -> None:
         """Same SignalEvent in two instances' evidence is only included once."""
         company = Company(name="DedupCo", website_url="https://dedup.example.com")
@@ -139,6 +140,7 @@ class TestGetEventLikeListFromCoreInstances:
             event_type="funding_raised",
             event_time=_days_ago(5),
             confidence=0.9,
+            pack_id=fractional_cto_pack_id,
         )
         db.add(ev)
         db.commit()

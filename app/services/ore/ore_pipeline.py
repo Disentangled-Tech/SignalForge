@@ -11,7 +11,7 @@ from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
 from app.services.ore.draft_generator import generate_ore_draft, get_ore_playbook
-from app.services.ore.policy_gate import check_policy_gate
+from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
 from app.services.pack_resolver import get_default_pack_id, resolve_pack
 
 
@@ -23,11 +23,18 @@ def generate_ore_recommendation(
     stability_modifier: float | None = None,
     cooldown_active: bool | None = None,
     alignment_high: bool | None = None,
+    esl_decision: str | None = None,
+    sensitivity_level: str | None = None,
 ) -> OutreachRecommendation | None:
-    """Run full ORE pipeline: policy gate → ESL → draft → critic → persist.
+    """Run full ORE pipeline: ESL suppress check → policy gate → draft → critic → persist.
 
     When stability_modifier is None, computes ESL from context (ReadinessSnapshot,
-    SignalEvents, OutreachHistory, Company). Pass explicit values for tests.
+    SignalEvents, OutreachHistory, Company) and uses ctx esl_decision/sensitivity_level.
+    Pass explicit values for tests (including esl_decision/sensitivity_level when injecting).
+
+    M4: If esl_decision == "suppress", no draft is generated (Observe Only). When playbook
+    defines sensitivity_levels and entity sensitivity_level is not in the list, no draft
+    and recommendation capped at Soft Value Share.
 
     Returns OutreachRecommendation or None if company/snapshot not found.
     """
@@ -63,6 +70,7 @@ def generate_ore_recommendation(
         esl_composite = sm
         cooldown = cooldown_active if cooldown_active is not None else False
         align = alignment_high if alignment_high is not None else True
+        # Injected path: esl_decision/sensitivity_level from params (default None)
     else:
         ctx = compute_esl_from_context(db, company_id, as_of, pack_id=pack_id)
         if not ctx:
@@ -71,15 +79,35 @@ def generate_ore_recommendation(
         esl_composite = ctx["esl_composite"]
         cooldown = ctx["cadence_blocked"] if cooldown_active is None else cooldown_active
         align = ctx["alignment_high"] if alignment_high is None else alignment_high
+        esl_decision = ctx.get("esl_decision")
+        sensitivity_level = ctx.get("sensitivity_level")
 
     outreach_score = compute_outreach_score(trs, esl_composite)
 
-    gate = check_policy_gate(
-        cooldown_active=cooldown,
-        stability_modifier=sm,
-        alignment_high=align,
-        pack=pack,
-    )
+    # M4: ESL suppress → no draft (Observe Only); then policy gate (cooldown/stability)
+    if esl_decision == "suppress":
+        gate = PolicyGateResult(
+            recommendation_type="Observe Only",
+            should_generate_draft=False,
+            safeguards_triggered=["ESL suppress → Do not contact"],
+        )
+    else:
+        gate = check_policy_gate(
+            cooldown_active=cooldown,
+            stability_modifier=sm,
+            alignment_high=align,
+            pack=pack,
+        )
+
+    # M4: Playbook eligibility by sensitivity: if playbook restricts and entity level not allowed, no draft
+    playbook = get_ore_playbook(pack)
+    allowed_levels = playbook.get("sensitivity_levels") if isinstance(playbook.get("sensitivity_levels"), list) else None
+    if gate.should_generate_draft and allowed_levels and sensitivity_level and sensitivity_level not in allowed_levels:
+        gate = PolicyGateResult(
+            recommendation_type="Soft Value Share",
+            should_generate_draft=False,
+            safeguards_triggered=(gate.safeguards_triggered or []) + ["Playbook excludes sensitivity level"],
+        )
 
     draft_variants: list[dict] = []
     if gate.should_generate_draft:
@@ -126,6 +154,29 @@ def generate_ore_recommendation(
 
     # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
     generation_version = (pack.manifest.get("version") or "1")[:64]
+
+    # Issue #115 M2: upsert by (company_id, as_of, pack_id) — update existing or insert
+    existing = (
+        db.query(OutreachRecommendation)
+        .filter(
+            OutreachRecommendation.company_id == company_id,
+            OutreachRecommendation.as_of == as_of,
+            OutreachRecommendation.pack_id == pack_id,
+        )
+        .first()
+    )
+    if existing:
+        existing.recommendation_type = gate.recommendation_type
+        existing.outreach_score = outreach_score
+        existing.channel = "LinkedIn DM"
+        existing.draft_variants = draft_variants if draft_variants else None
+        existing.strategy_notes = None
+        existing.safeguards_triggered = gate.safeguards_triggered or None
+        existing.generation_version = generation_version
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     rec = OutreachRecommendation(
         company_id=company_id,
         as_of=as_of,

@@ -16,8 +16,12 @@ def _create_snapshots(
     company_id: int,
     as_of: date,
     composite: int,
+    pack_id=None,
 ) -> ReadinessSnapshot:
     """Create a readiness snapshot for a company."""
+    if pack_id is None:
+        from app.services.pack_resolver import get_default_pack_id
+        pack_id = get_default_pack_id(db)
     snap = ReadinessSnapshot(
         company_id=company_id,
         as_of=as_of,
@@ -27,6 +31,7 @@ def _create_snapshots(
         leadership_gap=composite // 4,
         composite=composite,
         explain={"delta_1d": 0},
+        pack_id=pack_id,
     )
     db.add(snap)
     db.commit()

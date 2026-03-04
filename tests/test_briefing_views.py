@@ -758,6 +758,201 @@ class TestEmergingCompaniesSection:
         assert "Daily Briefing" in resp.text
         assert "Congrats on the raise" in resp.text
 
+    @patch("app.api.briefing_views.get_briefing_data")
+    def test_emerging_section_shows_sensitivity_badge_suppressed(
+        self, mock_get_data, mock_db, mock_user
+    ):
+        """Emerging section displays Suppressed sensitivity badge when esl_decision is suppress (M3)."""
+        co = MagicMock()
+        co.id = 1
+        co.name = "Suppressed Co"
+        co.website_url = "https://suppressed.example.com"
+        snap = MagicMock()
+        snap.composite = 50
+        snap.momentum = 40
+        snap.complexity = 45
+        snap.pressure = 40
+        snap.leadership_gap = 35
+        snap.explain = {}
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 0.3
+        eng_snap.engagement_type = "Observe Only"
+        eng_snap.cadence_blocked = False
+        eng_snap.explain = {}
+        mock_get_data.return_value = {
+            "items": [],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 15,
+                    "esl_score": 0.3,
+                    "engagement_type": "Observe Only",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": False,
+                    "esl_decision": "suppress",
+                    "sensitivity_level": "high",
+                    "tone_constraint": None,
+                    "esl_reason_code": None,
+                    "top_signals": [],
+                    "recommendation_band": None,
+                }
+            ],
+            "display_scores": {},
+            "esl_by_company": {},
+        }
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Suppressed" in resp.text
+        assert "Suppressed Co" in resp.text
+
+    @patch("app.api.briefing_views.get_briefing_data")
+    def test_emerging_section_shows_sensitivity_badge_constrained_and_tone_constraint(
+        self, mock_get_data, mock_db, mock_user
+    ):
+        """Emerging section displays Constrained badge and Max: tone_constraint when allow_with_constraints (M3)."""
+        co = MagicMock()
+        co.id = 2
+        co.name = "Constrained Co"
+        co.website_url = "https://constrained.example.com"
+        snap = MagicMock()
+        snap.composite = 65
+        snap.momentum = 60
+        snap.complexity = 55
+        snap.pressure = 60
+        snap.leadership_gap = 50
+        snap.explain = {}
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 0.6
+        eng_snap.engagement_type = "Soft Value Share"
+        eng_snap.cadence_blocked = False
+        eng_snap.explain = {"tone_constraint": "Soft Value Share"}
+        mock_get_data.return_value = {
+            "items": [],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 39,
+                    "esl_score": 0.6,
+                    "engagement_type": "Soft Value Share",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": False,
+                    "esl_decision": "allow_with_constraints",
+                    "sensitivity_level": "medium",
+                    "tone_constraint": "Soft Value Share",
+                    "esl_reason_code": "stability_cap",
+                    "top_signals": [],
+                    "recommendation_band": None,
+                }
+            ],
+            "display_scores": {},
+            "esl_by_company": {},
+        }
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Constrained" in resp.text
+        assert "Max: Soft Value Share" in resp.text
+        assert "Constrained Co" in resp.text
+
+    @patch("app.api.briefing_views.get_briefing_data")
+    def test_emerging_section_shows_sensitivity_badge_low_level(
+        self, mock_get_data, mock_db, mock_user
+    ):
+        """Emerging section displays Low/Medium/High sensitivity badge when sensitivity_level set (M3)."""
+        co = MagicMock()
+        co.id = 3
+        co.name = "LowSens Co"
+        co.website_url = "https://lowsens.example.com"
+        snap = MagicMock()
+        snap.composite = 80
+        snap.momentum = 75
+        snap.complexity = 70
+        snap.pressure = 65
+        snap.leadership_gap = 60
+        snap.explain = {}
+        eng_snap = MagicMock()
+        eng_snap.esl_score = 1.0
+        eng_snap.engagement_type = "Standard Outreach"
+        eng_snap.cadence_blocked = False
+        eng_snap.explain = {}
+        mock_get_data.return_value = {
+            "items": [],
+            "emerging_companies": [
+                {
+                    "company": co,
+                    "snapshot": snap,
+                    "engagement_snapshot": eng_snap,
+                    "outreach_score": 80,
+                    "esl_score": 1.0,
+                    "engagement_type": "Standard Outreach",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": False,
+                    "esl_decision": "allow",
+                    "sensitivity_level": "low",
+                    "tone_constraint": None,
+                    "esl_reason_code": None,
+                    "top_signals": [],
+                    "recommendation_band": None,
+                }
+            ],
+            "display_scores": {},
+            "esl_by_company": {},
+        }
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Low" in resp.text
+        assert "LowSens Co" in resp.text
+
+    @patch("app.api.briefing_views.get_briefing_data")
+    def test_main_card_shows_sensitivity_badge_and_tone_constraint(
+        self, mock_get_data, mock_db, mock_user
+    ):
+        """Main briefing card shows sensitivity badge and tone_constraint when in esl_by_company (M3)."""
+        co = _make_company(id=1)
+        item = _make_briefing_item(company=co)
+        mock_get_data.return_value = {
+            "items": [item],
+            "emerging_companies": [],
+            "display_scores": {},
+            "esl_by_company": {
+                1: {
+                    "esl_score": 0.65,
+                    "outreach_score": 55,
+                    "engagement_type": "Soft Value Share",
+                    "cadence_blocked": False,
+                    "stability_cap_triggered": False,
+                    "esl_decision": "allow_with_constraints",
+                    "sensitivity_level": "medium",
+                    "tone_constraint": "Soft Value Share",
+                    "esl_reason_code": "stability_cap",
+                },
+            },
+        }
+
+        app = _create_test_app(mock_db, mock_user)
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/briefing")
+
+        assert resp.status_code == 200
+        assert "Constrained" in resp.text
+        assert "Max: Soft Value Share" in resp.text
+        assert "Acme Corp" in resp.text
+
 
 @patch("app.api.briefing_views.get_settings")
 @patch("app.api.briefing_views.get_briefing_data")
