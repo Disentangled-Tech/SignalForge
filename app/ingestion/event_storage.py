@@ -63,12 +63,21 @@ def store_signal_event(
     SignalEvent | None
         The new record, or None if duplicate.
     """
+    # Resolve pack_id first so dedup and insert use the same pack (M2, Issue #193).
+    resolved_pack_id = pack_id if pack_id is not None else get_default_pack_id(db)
+    if resolved_pack_id is None:
+        logger.warning(
+            "Cannot store signal event: no pack_id and no default pack (run migrations)."
+        )
+        return None
+
     if source_event_id is not None and source_event_id.strip():
         existing = (
             db.query(SignalEvent)
             .filter(
                 SignalEvent.source == source,
                 SignalEvent.source_event_id == source_event_id,
+                SignalEvent.pack_id == resolved_pack_id,
             )
             .first()
         )
@@ -79,14 +88,6 @@ def store_signal_event(
                 source_event_id,
             )
             return None
-
-    if pack_id is None:
-        pack_id = get_default_pack_id(db)
-    if pack_id is None:
-        logger.warning(
-            "Cannot store signal event: no pack_id and no default pack (run migrations)."
-        )
-        return None
 
     if evidence_bundle_id is not None:
         logger.debug(
@@ -105,7 +106,7 @@ def store_signal_event(
         url=url,
         raw=raw,
         confidence=confidence,
-        pack_id=pack_id,
+        pack_id=resolved_pack_id,
         evidence_bundle_id=evidence_bundle_id,
     )
     db.add(event)
