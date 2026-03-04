@@ -194,6 +194,8 @@ rules/              # ADRs, TDD rules, design docs
 docs/               # Comprehensive documentation
 ```
 
+**HTML→text:** `app/services/extractor.py` is the shared extraction used by scan, Scout, and monitor (no pack-specific logic).
+
 ---
 
 ## Database Patterns
