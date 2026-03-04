@@ -849,7 +849,8 @@ class TestRunDeriver:
         assert instances_core[0].signal_id == "funding_raised"
         assert instances_core[0].pack_id == core_pack_id
 
-        # Cleanup: remove test pack
+        # Cleanup: delete events referencing test pack first (pack_id NOT NULL, Issue #193)
+        db.query(SignalEvent).filter(SignalEvent.pack_id == pack_b_id).delete()
         db.query(SignalPack).filter(SignalPack.id == pack_b_id).delete()
         db.commit()
 

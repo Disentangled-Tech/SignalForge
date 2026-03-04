@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -21,9 +22,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 
+if TYPE_CHECKING:
+    from app.models.company import Company
+
 
 class EngagementSnapshot(Base):
-    """Daily engagement suitability score snapshot for a company (ESL)."""
+    """Daily engagement suitability score snapshot for a company (ESL).
+
+    pack_id is required (Issue #193; NOT NULL in DB). All snapshot access is pack-scoped.
+    """
 
     __tablename__ = "engagement_snapshots"
 

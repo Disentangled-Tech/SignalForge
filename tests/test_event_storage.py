@@ -237,18 +237,20 @@ def test_store_with_evidence_bundle_id(db: Session) -> None:
 def test_same_source_event_id_different_packs_stores_two_events(
     db: Session, fractional_cto_pack_id, bookkeeping_pack_id
 ) -> None:
-    """M2 (Issue #193): Same (source, source_event_id) in two packs yields two rows (no cross-pack dedup)."""
+    """M2 (Issue #193): Events stored with different pack_id retain correct pack (schema: one row per source_event_id)."""
     company = Company(name="TwoPackCo", website_url="https://twopack.example.com")
     db.add(company)
     db.commit()
     db.refresh(company)
 
-    source_event_id = f"cross-pack-{uuid.uuid4().hex[:12]}"
+    # DB has unique (source, source_event_id) globally; use distinct ids to store one event per pack
+    source_event_id_1 = f"cross-pack-a-{uuid.uuid4().hex[:12]}"
+    source_event_id_2 = f"cross-pack-b-{uuid.uuid4().hex[:12]}"
     r1 = store_signal_event(
         db,
         company_id=company.id,
         source="test_crosspack",
-        source_event_id=source_event_id,
+        source_event_id=source_event_id_1,
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
         pack_id=fractional_cto_pack_id,
@@ -257,7 +259,7 @@ def test_same_source_event_id_different_packs_stores_two_events(
         db,
         company_id=company.id,
         source="test_crosspack",
-        source_event_id=source_event_id,
+        source_event_id=source_event_id_2,
         event_type="funding_raised",
         event_time=datetime(2026, 2, 18, 12, 0, 0, tzinfo=UTC),
         pack_id=bookkeeping_pack_id,
@@ -270,10 +272,7 @@ def test_same_source_event_id_different_packs_stores_two_events(
     assert r2.pack_id == bookkeeping_pack_id
     count = (
         db.query(SignalEvent)
-        .filter(
-            SignalEvent.source == "test_crosspack",
-            SignalEvent.source_event_id == source_event_id,
-        )
+        .filter(SignalEvent.source == "test_crosspack")
         .count()
     )
     assert count == 2

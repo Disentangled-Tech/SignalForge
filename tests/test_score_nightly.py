@@ -30,7 +30,7 @@ def _days_ago(days: int) -> datetime:
 class TestRunScoreNightly:
     """Nightly scoring job."""
 
-    def test_scores_companies_with_events(self, db: Session) -> None:
+    def test_scores_companies_with_events(self, db: Session, fractional_cto_pack_id) -> None:
         """Companies with SignalEvents get snapshots."""
         company = Company(name="EventsCo", website_url="https://events.example.com")
         db.add(company)
@@ -43,6 +43,7 @@ class TestRunScoreNightly:
             event_type="funding_raised",
             event_time=_days_ago(5),
             confidence=0.9,
+            pack_id=fractional_cto_pack_id,
         )
         db.add(ev)
         db.commit()
@@ -84,6 +85,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=pack.id,
             )
         )
         db.commit()
@@ -163,6 +165,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=pack.id,
             )
         )
         db.commit()
@@ -211,7 +214,9 @@ class TestRunScoreNightly:
         # Company was in the set to score; snapshot is None (no events)
         assert result["companies_skipped"] >= 1 or result["companies_scored"] >= 1
 
-    def test_watchlist_company_with_events_gets_snapshot(self, db: Session) -> None:
+    def test_watchlist_company_with_events_gets_snapshot(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """Watchlist company with events gets snapshot."""
         company = Company(name="WatchlistEventsCo", website_url="https://we.example.com")
         db.add(company)
@@ -226,6 +231,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(3),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.commit()
@@ -244,7 +250,9 @@ class TestRunScoreNightly:
         )
         assert snapshot is not None
 
-    def test_one_failure_does_not_stop_run(self, db: Session) -> None:
+    def test_one_failure_does_not_stop_run(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """One company failure does not stop the run."""
         c1 = Company(name="GoodCo", website_url="https://good.example.com")
         c2 = Company(name="BadCo", website_url="https://bad.example.com")
@@ -260,6 +268,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.add(
@@ -269,6 +278,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.commit()
@@ -313,7 +323,9 @@ class TestRunScoreNightly:
         assert job.finished_at is not None
         assert result["job_run_id"] == job.id
 
-    def test_re_run_same_day_does_not_duplicate(self, db: Session) -> None:
+    def test_re_run_same_day_does_not_duplicate(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """Re-running same day upserts; no duplicate rows (Issue #91 AC)."""
         company = Company(
             name="IdempotentCo",
@@ -330,6 +342,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.commit()
@@ -356,7 +369,9 @@ class TestRunScoreNightly:
         )
         assert count_after == count_before
 
-    def test_scores_match_golden_values(self, db: Session) -> None:
+    def test_scores_match_golden_values(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """Snapshot dimensions match expected values from engine (Issue #91, v2-spec §11)."""
         company = Company(
             name="GoldenCo",
@@ -375,6 +390,7 @@ class TestRunScoreNightly:
                     event_type="funding_raised",
                     event_time=_days_ago(5),
                     confidence=0.9,
+                    pack_id=fractional_cto_pack_id,
                 ),
                 SignalEvent(
                     company_id=company.id,
@@ -382,6 +398,7 @@ class TestRunScoreNightly:
                     event_type="cto_role_posted",
                     event_time=_days_ago(50),
                     confidence=0.7,
+                    pack_id=fractional_cto_pack_id,
                 ),
             ]
         )
@@ -408,7 +425,9 @@ class TestRunScoreNightly:
         assert snapshot.composite >= 20
         assert snapshot.composite <= 35
 
-    def test_score_uses_legacy_event_path_when_core_pack_missing(self, db: Session) -> None:
+    def test_score_uses_legacy_event_path_when_core_pack_missing(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """When get_core_pack_id returns None, score still creates snapshot from SignalEvents (Issue #287)."""
         company = Company(
             name="LegacyPathCo",
@@ -425,6 +444,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.commit()
@@ -449,7 +469,9 @@ class TestRunScoreNightly:
         assert snapshot.composite >= 0
         assert snapshot.explain is not None
 
-    def test_nightly_creates_engagement_snapshots(self, db: Session) -> None:
+    def test_nightly_creates_engagement_snapshots(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """Nightly job creates both ReadinessSnapshot and EngagementSnapshot (Issue #107)."""
         company = Company(
             name="ESLIntegrationCo",
@@ -466,6 +488,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.commit()
@@ -523,7 +546,9 @@ class TestRunScoreNightly:
         )
         assert engagement is None
 
-    def test_re_run_same_day_does_not_duplicate_engagement(self, db: Session) -> None:
+    def test_re_run_same_day_does_not_duplicate_engagement(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """Re-running nightly upserts EngagementSnapshot; no duplicate rows (Issue #107)."""
         company = Company(
             name="EngagementIdempotentCo",
@@ -540,6 +565,7 @@ class TestRunScoreNightly:
                 event_type="funding_raised",
                 event_time=_days_ago(5),
                 confidence=0.9,
+                pack_id=fractional_cto_pack_id,
             )
         )
         db.commit()

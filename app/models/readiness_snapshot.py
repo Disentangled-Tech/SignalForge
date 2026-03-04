@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -11,9 +12,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 
+if TYPE_CHECKING:
+    from app.models.company import Company
+
 
 class ReadinessSnapshot(Base):
-    """Daily readiness score snapshot for a company (v2 readiness engine)."""
+    """Daily readiness score snapshot for a company (v2 readiness engine).
+
+    pack_id is required (Issue #193; NOT NULL in DB). All snapshot access is pack-scoped.
+    """
 
     __tablename__ = "readiness_snapshots"
 
