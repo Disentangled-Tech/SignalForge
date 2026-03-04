@@ -41,6 +41,10 @@ class OutreachRecommendation(Base):
     strategy_notes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     safeguards_triggered: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     generation_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Issue #123: per-recommendation regeneration counter; incremented on each regenerate.
+    draft_generation_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Issue #123: list of {version: int, subject, message, created_at_utc}; current draft stays in draft_variants.
+    draft_version_history: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     pack_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("signal_packs.id", ondelete="SET NULL"),
