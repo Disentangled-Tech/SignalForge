@@ -305,3 +305,41 @@ class TestCoreTaxonomyIntegrity:
         data = load_core_taxonomy()
         ids = data["signal_ids"]
         assert len(ids) == len(set(ids)), "taxonomy.yaml contains duplicate signal_ids"
+
+
+class TestGetCoreSignalSensitivity:
+    """get_core_signal_sensitivity() returns core sensitivity when present, else None."""
+
+    def test_unknown_signal_returns_none(self) -> None:
+        from app.core_taxonomy.loader import get_core_signal_sensitivity
+
+        assert get_core_signal_sensitivity("totally_unknown_signal_xyz") is None
+
+    def test_with_taxonomy_returns_sensitivity_when_defined(self) -> None:
+        from app.core_taxonomy.loader import get_core_signal_sensitivity
+
+        taxonomy = {
+            "signal_ids": ["foo", "bar"],
+            "signals": {"foo": {"sensitivity": "medium"}, "bar": {}},
+        }
+        assert get_core_signal_sensitivity("foo", taxonomy=taxonomy) == "medium"
+        assert get_core_signal_sensitivity("bar", taxonomy=taxonomy) is None
+        assert get_core_signal_sensitivity("baz", taxonomy=taxonomy) is None
+
+    def test_with_taxonomy_no_signals_key_returns_none(self) -> None:
+        from app.core_taxonomy.loader import get_core_signal_sensitivity
+
+        taxonomy = {"signal_ids": ["foo"]}
+        assert get_core_signal_sensitivity("foo", taxonomy=taxonomy) is None
+
+    def test_without_taxonomy_uses_loader(self) -> None:
+        """When taxonomy is None, uses load_core_taxonomy(); result depends on taxonomy.yaml."""
+        from app.core_taxonomy.loader import get_core_signal_sensitivity, load_core_taxonomy
+
+        data = load_core_taxonomy()
+        # If taxonomy.yaml has optional "signals", check a signal that may have sensitivity
+        sens = get_core_signal_sensitivity("funding_raised")
+        assert sens is None or sens in ("low", "medium", "high")
+        # Passing pre-loaded taxonomy gives same result as no arg when using file
+        sens_with_data = get_core_signal_sensitivity("funding_raised", taxonomy=data)
+        assert sens_with_data == sens
