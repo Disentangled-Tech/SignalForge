@@ -93,6 +93,8 @@ ORE (Outreach Recommendation Engine) writes one row per company per snapshot dat
 | strategy_notes | dict \| None | JSONB; why-this-works notes |
 | safeguards_triggered | list \| None | JSONB; e.g. cooldown, sensitivity |
 | generation_version | str \| None | Pack/config version at generation time (Issue #115) |
+| draft_generation_number | int | Per-recommendation regeneration counter; default 0, incremented on each manual regenerate (Issue #123) |
+| draft_version_history | list \| None | JSONB; list of `{version: int, subject, message, created_at_utc}`; old versions preserved; current draft remains in draft_variants (Issue #123) |
 | pack_id | UUID \| None | FK to signal_packs.id; pack that produced this recommendation |
 | playbook_id | str \| None | Playbook identifier used for this recommendation |
 | created_at | datetime | When the row was created (UTC) |
