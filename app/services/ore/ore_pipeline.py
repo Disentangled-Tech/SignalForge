@@ -13,6 +13,7 @@ from app.models import Company, OutreachRecommendation, ReadinessSnapshot
 from app.services.esl.engagement_snapshot_writer import compute_esl_from_context
 from app.services.esl.esl_engine import compute_outreach_score
 from app.services.ore.critic import check_critic
+from app.services.ore.dominant_dimension import get_dominant_trs_dimension
 from app.services.ore.draft_generator import generate_ore_draft
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
@@ -227,11 +228,17 @@ def generate_ore_recommendation(
 
     draft_variants: list[dict] = []
     if gate.should_generate_draft:
-        # Pick pattern frame from dominant dimension (simplified: use complexity)
-        pattern_frames = playbook["pattern_frames"]
-        value_assets = playbook["value_assets"]
-        ctas = playbook["ctas"]
-        pattern_frame = pattern_frames.get("complexity", pattern_frames.get("momentum", ""))
+        # Pick pattern frame from dominant TRS dimension (Issue #121 M2).
+        pattern_frames = playbook.get("pattern_frames") or {}
+        value_assets = playbook.get("value_assets") or []
+        ctas = playbook.get("ctas") or []
+        dominant = get_dominant_trs_dimension(
+            snapshot.momentum,
+            snapshot.complexity,
+            snapshot.pressure,
+            snapshot.leadership_gap,
+        )
+        pattern_frame = pattern_frames.get(dominant, pattern_frames.get("momentum", ""))
         value_asset = value_assets[0] if value_assets else ""
         cta = ctas[0] if ctas else ""
 

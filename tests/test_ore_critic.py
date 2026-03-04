@@ -91,3 +91,85 @@ def test_forbidden_phrases_none_or_empty_unchanged() -> None:
     result_empty = check_critic(draft_subject, draft_message, forbidden_phrases=[])
     assert result_none.passed is True
     assert result_empty.passed is True
+
+
+# --- Issue #120 M2: critic context and suppressed-signal check ---
+
+
+def test_critic_result_has_violation_details() -> None:
+    """CriticResult includes violation_details for logging (M2)."""
+    result = check_critic(
+        "Quick question about TestCo",
+        "Hi Jane, teams often hit a complexity step-change. "
+        "Want me to send a 2-page Tech Inflection Checklist? No worries if now isn't the time.",
+    )
+    assert hasattr(result, "violation_details")
+    assert isinstance(result.violation_details, list)
+    assert len(result.violation_details) == 0
+
+
+def test_suppressed_signal_ids_none_or_empty_no_extra_check() -> None:
+    """When suppressed_signal_ids is None or empty, no suppressed-signal check (backward compat)."""
+    draft_subject = "Quick question about TestCo"
+    draft_message = (
+        "Hi Jane, teams often hit a complexity step-change. "
+        "Want me to send a 2-page Tech Inflection Checklist? No worries if now isn't the time."
+    )
+    result_none = check_critic(draft_subject, draft_message, suppressed_signal_ids=None)
+    result_empty = check_critic(draft_subject, draft_message, suppressed_signal_ids=set())
+    assert result_none.passed is True
+    assert result_empty.passed is True
+    assert result_none.violation_details == []
+    assert result_empty.violation_details == []
+
+
+def test_rejects_draft_mentioning_suppressed_signal_phrase() -> None:
+    """When suppressed_signal_ids is set and draft contains a reference phrase, critic fails (M2)."""
+    result = check_critic(
+        "Quick question",
+        "Hi Jane, I see you are struggling financially. Want me to send a checklist? No worries if now isn't the time.",
+        suppressed_signal_ids={"financial_distress"},
+    )
+    assert result.passed is False
+    assert any("suppressed signal" in v.lower() or "financial" in v.lower() for v in result.violations)
+    assert len(result.violation_details) >= 1
+    detail = result.violation_details[0]
+    assert detail.get("violation_type") == "suppressed_signal"
+    assert detail.get("signal_id") == "financial_distress"
+    assert "phrase" in detail
+
+
+def test_passes_when_suppressed_signal_phrase_absent() -> None:
+    """When suppressed_signal_ids is set but draft does not contain reference phrases, no violation (M2)."""
+    result = check_critic(
+        "Quick question about TestCo",
+        "Hi Jane, teams often hit a complexity step-change when product and hiring accelerate. "
+        "Want me to send a 2-page Tech Inflection Checklist? No worries if now isn't the time.",
+        suppressed_signal_ids={"financial_distress"},
+    )
+    assert result.passed is True
+    assert not any(d.get("violation_type") == "suppressed_signal" for d in result.violation_details)
+
+
+def test_suppressed_signal_check_case_insensitive() -> None:
+    """Suppressed-signal phrase check is case-insensitive (M2)."""
+    result = check_critic(
+        "Quick question",
+        "Hi Jane, they are in DISTRESS. Want me to send a checklist? No worries if now isn't the time.",
+        suppressed_signal_ids={"distress_mentioned"},
+    )
+    assert result.passed is False
+    assert any(d.get("violation_type") == "suppressed_signal" and d.get("signal_id") == "distress_mentioned" for d in result.violation_details)
+
+
+def test_optional_kwargs_pack_id_tone_allowed_labels_do_not_break() -> None:
+    """Optional kwargs pack_id, tone_constraint, allowed_signal_labels accepted (M2; tone check in M4)."""
+    result = check_critic(
+        "Quick question about TestCo",
+        "Hi Jane, teams often hit a complexity step-change. Want me to send a checklist? No worries if now isn't the time.",
+        suppressed_signal_ids=None,
+        tone_constraint="Soft Value Share",
+        pack_id=None,
+        allowed_signal_labels=None,
+    )
+    assert result.passed is True

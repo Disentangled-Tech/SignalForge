@@ -113,13 +113,16 @@ def test_signal_records_has_pack_id_column(db: Session) -> None:
 
 @pytest.mark.integration
 def test_outreach_recommendations_has_pack_id_and_playbook_id(db: Session) -> None:
-    """outreach_recommendations has pack_id and playbook_id columns."""
+    """outreach_recommendations has pack_id, playbook_id, and Issue #123 M1 columns."""
     result = db.execute(
         text(
             """
             SELECT column_name FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'outreach_recommendations'
-            AND column_name IN ('pack_id', 'playbook_id', 'generation_version')
+            AND column_name IN (
+                'pack_id', 'playbook_id', 'generation_version',
+                'draft_generation_number', 'draft_version_history'
+            )
             ORDER BY column_name
             """
         )
@@ -128,6 +131,8 @@ def test_outreach_recommendations_has_pack_id_and_playbook_id(db: Session) -> No
     assert "pack_id" in cols
     assert "playbook_id" in cols
     assert "generation_version" in cols
+    assert "draft_generation_number" in cols
+    assert "draft_version_history" in cols
 
 
 @pytest.mark.integration

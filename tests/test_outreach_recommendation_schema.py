@@ -1,7 +1,8 @@
-"""Outreach recommendation schema tests (Issue #115 M1, M3, M4).
+"""Outreach recommendation schema tests (Issue #115 M1, M3, M4; Issue #123 M1).
 
 Model and insert/retrieve for generation_version; unique constraint in M3;
-Pydantic read schema and docs in M4.
+Pydantic read schema and docs in M4. Issue #123 M1: draft_generation_number and
+draft_version_history columns and defaults.
 """
 
 from __future__ import annotations
@@ -39,6 +40,106 @@ def test_outreach_recommendation_model_accepts_generation_version() -> None:
         generation_version="2",
     )
     assert rec.generation_version == "2"
+
+
+@pytest.mark.integration
+def test_outreach_recommendation_draft_generation_number_defaults_to_zero_on_persist(
+    db: Session,
+) -> None:
+    """Persisted row without draft_generation_number gets default 0 (Issue #123 M1)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    assert pack is not None
+    company = Company(
+        name="DefaultGenCo",
+        website_url="https://defaultgen.example.com",
+        founder_name="Default Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+    rec = OutreachRecommendation(
+        company_id=company.id,
+        as_of=date(2026, 3, 7),
+        recommendation_type="Observe Only",
+        outreach_score=0,
+        pack_id=pack.id,
+        playbook_id="default",
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    assert rec.draft_generation_number == 0
+
+
+def test_outreach_recommendation_model_draft_version_history_nullable() -> None:
+    """OutreachRecommendation has draft_version_history nullable (Issue #123 M1)."""
+    rec = OutreachRecommendation(
+        company_id=1,
+        as_of=date(2026, 2, 18),
+        recommendation_type="Observe Only",
+        outreach_score=0,
+    )
+    assert rec.draft_version_history is None
+    rec.draft_version_history = [
+        {"version": 1, "subject": "S", "message": "M", "created_at_utc": "2026-03-09T12:00:00Z"}
+    ]
+    assert len(rec.draft_version_history) == 1
+    assert rec.draft_version_history[0]["version"] == 1
+
+
+@pytest.mark.integration
+def test_insert_and_retrieve_outreach_recommendation_with_draft_version_fields(
+    db: Session,
+) -> None:
+    """Insert and retrieve row with draft_generation_number and draft_version_history (Issue #123 M1)."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    assert pack is not None
+    company = Company(
+        name="VersionHistoryCo",
+        website_url="https://versionhistory.example.com",
+        founder_name="Version Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    history = [
+        {
+            "version": 1,
+            "subject": "Old subj",
+            "message": "Old msg",
+            "created_at_utc": "2026-03-09T10:00:00Z",
+        },
+    ]
+    rec = OutreachRecommendation(
+        company_id=company.id,
+        as_of=date(2026, 3, 6),
+        recommendation_type="Standard Outreach",
+        outreach_score=55,
+        draft_variants=[{"subject": "Current", "message": "Current draft"}],
+        draft_generation_number=2,
+        draft_version_history=history,
+        pack_id=pack.id,
+        playbook_id="default",
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+
+    assert rec.draft_generation_number == 2
+    assert rec.draft_version_history == history
+    found = (
+        db.query(OutreachRecommendation)
+        .filter(
+            OutreachRecommendation.company_id == company.id,
+            OutreachRecommendation.as_of == rec.as_of,
+            OutreachRecommendation.pack_id == pack.id,
+        )
+        .first()
+    )
+    assert found is not None
+    assert found.draft_generation_number == 2
+    assert found.draft_version_history == history
 
 
 @pytest.mark.integration
