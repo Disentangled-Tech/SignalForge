@@ -43,7 +43,10 @@ def scout_list(
     db: Session = Depends(get_db),
     user: User = Depends(require_ui_auth),
 ):
-    """List Scout runs for the current workspace. Workspace-scoped; no cross-tenant data."""
+    """List Scout runs for the current workspace.
+
+    Workspace-scoped; no cross-tenant data. No raw_llm_output (list shows metadata only).
+    """
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
         workspace_id = DEFAULT_WORKSPACE_ID
@@ -97,7 +100,10 @@ def scout_run_new(
     db: Session = Depends(get_db),
     user: User = Depends(require_ui_auth),
 ):
-    """Show form to trigger a new Scout run. Workspace-scoped when multi_workspace enabled."""
+    """Show form to trigger a new Scout run.
+
+    Workspace-scoped when multi_workspace enabled. No raw_llm_output (form only).
+    """
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
         workspace_id = DEFAULT_WORKSPACE_ID
@@ -122,8 +128,10 @@ def scout_run_detail(
     user: User = Depends(require_ui_auth),
 ):
     """Run detail: show run metadata and bundles (candidate, website, hypothesis, evidence).
-    No raw_llm_output. 404 if run does not exist or user lacks access to its workspace.
-    When workspace_id query is omitted (e.g. redirect from trigger), resolve from run."""
+
+    Workspace-scoped; raw_llm_output is never passed to the template. 404 if run does not
+    exist or user lacks access to its workspace. When workspace_id query is omitted
+    (e.g. redirect from trigger), workspace is resolved from the run."""
     validate_uuid_param_or_422(str(run_id), "run_id")
     workspace_id = _resolve_workspace_id(request)
     if get_settings().multi_workspace_enabled and workspace_id is None:
@@ -192,7 +200,11 @@ def scout_run_trigger(
     exclusion_rules: str | None = Form(None),
     page_fetch_limit: int = Form(DEFAULT_PAGE_FETCH_LIMIT, ge=0, le=100),
 ):
-    """Trigger a Scout run. Resolve workspace from request; enforce access; redirect to list with success or error flash."""
+    """Trigger a Scout run.
+
+    Workspace-scoped: resolve workspace from request and enforce access. Redirects to
+    list with success or error flash. No raw_llm_output (persistence is server-side only).
+    """
     import asyncio
 
     workspace_id = _resolve_workspace_id(request)

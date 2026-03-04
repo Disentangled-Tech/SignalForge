@@ -125,7 +125,7 @@ The **LLM Discovery Scout** is a **separate flow** outside the ingest → derive
 
 | Aspect   | Description |
 | -------- | ----------- |
-| **Entry** | `POST /internal/run_scout` — requires `X-Internal-Token`. |
+| **Entry** | Internal: `POST /internal/run_scout` — requires `X-Internal-Token`. UI: **GET /scout**, **GET /scout/runs/{run_id}**, **POST /scout/runs** — session auth, workspace-scoped. |
 | **Data model** | Query Planner (families, rotation, optional `query_families.yaml`) → allowed sources only → fetch (page limit) → LLM → Evidence Bundles only. |
 | **Output** | `scout_runs` + `scout_evidence_bundles`; no writes to `companies`, `signal_events`, or `signal_instances`. |
 | **Purpose** | Candidate discovery and evidence collection; optional pack_id is for query emphasis hints only, not derivation or storage. |
