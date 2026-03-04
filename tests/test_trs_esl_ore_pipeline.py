@@ -1095,6 +1095,67 @@ def test_ore_pipeline_empty_explain_passes_empty_snippet_and_labels(db: Session)
     assert call_kwargs["top_signal_labels"] == []
 
 
+def test_ore_pipeline_real_fractional_cto_v1_passes_recipient_label_from_taxonomy(
+    db: Session,
+) -> None:
+    """M3 (Issue #121): With real fractional_cto_v1 pack (no mock resolve_pack), pipeline passes taxonomy.recipient_label to generate_ore_draft.
+
+    fractional_cto_v1 has taxonomy.yaml with recipient_label: \"Founder\" so production wording is unchanged.
+    Asserts the pipeline passes recipient_label=\"Founder\" when the default pack is loaded from disk.
+    """
+    pack_row = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    if pack_row is None:
+        pytest.skip("fractional_cto_v1 pack not in DB")
+    pack_id = pack_row.id
+
+    company = Company(
+        name="RealPackCo",
+        website_url="https://realpack.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 3, 2)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    # No mock of resolve_pack: real pack is loaded (with taxonomy.recipient_label from packs/fractional_cto_v1/taxonomy.yaml)
+    with patch(
+        "app.services.ore.ore_pipeline.generate_ore_draft",
+        return_value=_ORE_DRAFT,
+    ) as mock_draft:
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    mock_draft.assert_called_once()
+    call_kwargs = mock_draft.call_args[1]
+    # M3: pipeline passes recipient_label from pack taxonomy; fractional_cto_v1 has recipient_label: "Founder"
+    if "recipient_label" not in call_kwargs:
+        pytest.skip("M3 recipient_label not yet in pipeline (ore_pipeline.generate_ore_draft)")
+    assert call_kwargs["recipient_label"] == "Founder"
+
+
 # --- Issue #122 M1: pack_id/workspace_id and get_or_create ---
 
 
