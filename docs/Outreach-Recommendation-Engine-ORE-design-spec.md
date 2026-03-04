@@ -195,6 +195,8 @@ Autonomy Rules
 
 1) Message Template Library (Parameterized)
 
+The canonical placeholder contract, template rules, and critic alignment for the parameterized template library are documented in [outreach-template-library.md](outreach-template-library.md) (Issue #118). The following summarizes the slot names used in the design; the doc defines the full set (`founder_name`, `company_name`, `pattern_frame`, `value_asset`, `cta`) and rules (no surveillance, short paragraphs, opt-out, single CTA).
+
 Store templates by outreach type + channel.
 
 Each template has slots:
