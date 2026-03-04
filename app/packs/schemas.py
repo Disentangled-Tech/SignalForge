@@ -419,7 +419,7 @@ def _validate_playbooks(
     taxonomy: dict[str, Any],
     esl_policy: dict[str, Any],
 ) -> None:
-    """Validate playbooks reference valid sensitivity levels when present."""
+    """Validate playbooks: sensitivity refs when present; optional ORE keys (Issue #176 M1)."""
     if not isinstance(playbooks, dict):
         return
     valid_recommendation_types: set[str] = set()
@@ -427,23 +427,62 @@ def _validate_playbooks(
     for b in boundaries:
         if isinstance(b, (list, tuple)) and len(b) >= 2:
             valid_recommendation_types.add(str(b[1]))
-    if not valid_recommendation_types:
-        return
     for name, content in playbooks.items():
         if not isinstance(content, dict):
             continue
-        for key in ("sensitivity_levels", "recommendation_types"):
-            refs = content.get(key)
-            if refs is None:
-                continue
-            if not isinstance(refs, list):
-                raise ValidationError(f"playbook '{name}' {key} must be a list")
-            for ref in refs:
-                if ref not in valid_recommendation_types:
-                    raise ValidationError(
-                        f"playbook '{name}' {key} references '{ref}' not in "
-                        f"esl_policy recommendation_boundaries"
-                    )
+        if valid_recommendation_types:
+            for key in ("sensitivity_levels", "recommendation_types"):
+                refs = content.get(key)
+                if refs is None:
+                    continue
+                if not isinstance(refs, list):
+                    raise ValidationError(f"playbook '{name}' {key} must be a list")
+                for ref in refs:
+                    if ref not in valid_recommendation_types:
+                        raise ValidationError(
+                            f"playbook '{name}' {key} references '{ref}' not in "
+                            f"esl_policy recommendation_boundaries"
+                        )
+        # Optional ORE playbook keys (Issue #176 M1): validate type when present
+        _validate_playbook_optional_ore_keys(name, content)
+
+
+def _validate_playbook_optional_ore_keys(playbook_name: str, content: dict[str, Any]) -> None:
+    """Validate optional ORE playbook keys when present (Issue #176 M1).
+
+    When opening_templates, value_statements, forbidden_phrases, or tone are present,
+    they must have the correct type. Existing playbooks with only pattern_frames,
+    value_assets, ctas are unchanged.
+    """
+    forbidden_phrases = content.get("forbidden_phrases")
+    if forbidden_phrases is not None:
+        if not isinstance(forbidden_phrases, list):
+            raise ValidationError(
+                f"playbook '{playbook_name}' forbidden_phrases must be a list"
+            )
+        for i, item in enumerate(forbidden_phrases):
+            if not isinstance(item, str):
+                raise ValidationError(
+                    f"playbook '{playbook_name}' forbidden_phrases[{i}] must be a string"
+                )
+    opening_templates = content.get("opening_templates")
+    if opening_templates is not None:
+        if not isinstance(opening_templates, list):
+            raise ValidationError(
+                f"playbook '{playbook_name}' opening_templates must be a list"
+            )
+    value_statements = content.get("value_statements")
+    if value_statements is not None:
+        if not isinstance(value_statements, list):
+            raise ValidationError(
+                f"playbook '{playbook_name}' value_statements must be a list"
+            )
+    tone = content.get("tone")
+    if tone is not None:
+        if not isinstance(tone, (str, dict)):
+            raise ValidationError(
+                f"playbook '{playbook_name}' tone must be a string or dict"
+            )
 
 
 def _validate_ethical_policy(esl_policy: dict[str, Any]) -> None:
