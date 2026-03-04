@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,14 @@ class OutreachRecommendation(Base):
     """ORE-generated outreach recommendation for a company."""
 
     __tablename__ = "outreach_recommendations"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "as_of",
+            "pack_id",
+            name="uq_outreach_recommendations_company_as_of_pack",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(
