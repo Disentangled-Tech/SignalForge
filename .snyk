@@ -8,7 +8,13 @@ exclude:
 # Snyk Code: Open Redirect (python/OR) in scout_views redirect — false positive.
 # Redirect URL uses only server-generated run_id (uuid.uuid4() in discovery_scout_service.run())
 # and fixed paths; same-origin only. No user input in redirect (CWE-601).
+# Snyk Code: NoHardcodedCredentials in test_scout_views — false positive.
+# Test fixtures use TEST_PASSWORD from tests/test_constants.py, which reads from env (TEST_PASSWORD)
+# with a non-secret placeholder fallback; test-only, never used in production (CWE-798).
 ignore:
   python/OR:
     - app/api/scout_views.py:
         reason: "Redirect uses only server-generated run_id and fixed paths; same-origin. No user input."
+  python/NoHardcodedCredentials:
+    - tests/test_scout_views.py:
+        reason: "Test fixtures use TEST_PASSWORD from test_constants (env-backed); test-only, not production."
