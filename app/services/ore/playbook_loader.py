@@ -55,6 +55,15 @@ def get_ore_playbook(
     return _normalize_playbook(raw, playbook_name)
 
 
+def _enable_ore_polish_from_raw(value: Any) -> bool:
+    """Normalize enable_ore_polish from YAML: True, or string 'true'/'yes' (case-insensitive) → True; else False."""
+    if value is True:
+        return True
+    if isinstance(value, str) and value.strip().lower() in ("true", "yes"):
+        return True
+    return False
+
+
 def _normalize_playbook(raw: dict[str, Any], _playbook_name: str) -> dict[str, Any]:
     """Fill required and optional keys with defaults when missing (Issue #176 M3)."""
     forbidden = raw.get("forbidden_phrases")
@@ -78,4 +87,10 @@ def _normalize_playbook(raw: dict[str, Any], _playbook_name: str) -> dict[str, A
         if isinstance(raw.get("value_statements"), list)
         else [],
         "tone": raw.get("tone") if isinstance(raw.get("tone"), (str, dict)) else None,
+        "channel": (
+            raw.get("channel").strip()
+            if isinstance(raw.get("channel"), str) and raw.get("channel", "").strip()
+            else None
+        ),
+        "enable_ore_polish": _enable_ore_polish_from_raw(raw.get("enable_ore_polish")),
     }

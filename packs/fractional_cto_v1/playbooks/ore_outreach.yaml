@@ -4,6 +4,9 @@
 # The "X name:" line in the ORE prompt (e.g. "Founder name: {{NAME}}") is controlled by
 # pack taxonomy.recipient_label (Issue #121 M3). Set in packs/fractional_cto_v1/taxonomy.yaml;
 # when absent, ORE uses "Contact". See docs/pack_v2_contract.md.
+#
+# Optional (Issue #121 M4): channel for persisted OutreachRecommendation; when absent, ORE uses "LinkedIn DM".
+channel: "LinkedIn DM"
 
 pattern_frames:
   momentum: "When a team's pace picks up, tech decisions that worked earlier can start costing more."
