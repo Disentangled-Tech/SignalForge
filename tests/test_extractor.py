@@ -94,6 +94,45 @@ class TestExtractTextCharLimit:
         result = extract_text(html)
         assert result == "Short text"
 
+    def test_default_uses_max_text_length_constant(self):
+        """Default call (no max_length) uses MAX_TEXT_LENGTH (8000)."""
+        long_text = "X" * (MAX_TEXT_LENGTH + 500)
+        html = f"<p>{long_text}</p>"
+        result = extract_text(html)
+        assert len(result) == MAX_TEXT_LENGTH
+
+    def test_optional_max_length_limits_output(self):
+        """When max_length is passed, output is capped at that value."""
+        html = "<p>" + "B" * 500 + "</p>"
+        result = extract_text(html, max_length=100)
+        assert len(result) == 100
+        assert result == "B" * 100
+
+    def test_optional_max_length_larger_than_content_unchanged(self):
+        """When max_length is larger than extracted text, no truncation."""
+        html = "<p>Short</p>"
+        result = extract_text(html, max_length=5000)
+        assert result == "Short"
+
+
+class TestExtractTextContract:
+    """Issue #12 / text-extraction contract: output is plain text, no tags, length capped."""
+
+    def test_output_has_no_html_tags(self):
+        """Contract: extracted text must never contain angle brackets (no HTML)."""
+        html = "<html><body><p>Content</p><a href='/x'>Link</a></body></html>"
+        result = extract_text(html)
+        assert "<" not in result
+        assert ">" not in result
+        assert "Content" in result
+        assert "Link" in result
+
+    def test_output_length_at_most_max_text_length(self):
+        """Contract: output length ≤ MAX_TEXT_LENGTH (8000) for default call."""
+        long_html = "<p>" + "X" * (MAX_TEXT_LENGTH + 500) + "</p>"
+        result = extract_text(long_html)
+        assert len(result) <= MAX_TEXT_LENGTH
+
 
 class TestExtractTextEmpty:
     def test_returns_empty_for_none(self):

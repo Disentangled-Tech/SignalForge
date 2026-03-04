@@ -13,14 +13,14 @@ _STRIP_TAGS = {"script", "style", "nav", "footer", "header", "aside"}
 MAX_TEXT_LENGTH = 8000
 
 
-def extract_text(html: str) -> str:
+def extract_text(html: str | None, *, max_length: int | None = None) -> str:
     """Strip HTML and return clean text.
 
     - Removes script, style, nav, footer, header, aside tags
     - Extracts visible text with spaces between elements
     - Collapses multiple whitespace/newlines into single spaces
-    - Limits output to 8000 characters
-    - Returns empty string for empty/None input
+    - Limits output to max_length characters (default MAX_TEXT_LENGTH, 8000)
+    - Returns empty string for None or empty input
     """
     if not html:
         return ""
@@ -37,8 +37,8 @@ def extract_text(html: str) -> str:
     # Collapse multiple whitespace/newlines into single spaces
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Limit output length
-    if len(text) > MAX_TEXT_LENGTH:
-        text = text[:MAX_TEXT_LENGTH]
+    limit = MAX_TEXT_LENGTH if max_length is None else max_length
+    if len(text) > limit:
+        text = text[:limit]
 
     return text
