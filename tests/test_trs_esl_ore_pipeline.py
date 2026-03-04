@@ -460,13 +460,11 @@ def test_ore_returns_none_when_no_default_pack(db: Session) -> None:
     assert rec is None
 
 
-def test_ore_upsert_two_calls_same_key_yield_one_row_updated(
-    db: Session,
-) -> None:
+def test_ore_upsert_two_calls_same_key_yield_one_row_updated(db: Session) -> None:
     """Issue #115 M2: Two ORE calls for same (company_id, as_of, pack_id) upsert to one row.
 
     First call inserts; second call updates same row (same id). Recommendation type and
-    outreach_score reflect the second call.
+    outreach_score reflect the second call. created_at is preserved on update.
     """
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
     pack_id = pack.id if pack else None
@@ -539,6 +537,7 @@ def test_ore_upsert_two_calls_same_key_yield_one_row_updated(
         )
     assert rec2 is not None
     assert rec1.id == rec2.id, "Second call must update same row (same id)"
+    assert rec2.created_at == rec1.created_at, "Update must preserve created_at"
     assert rec2.recommendation_type != "Soft Value Share", "Second call SM=0.9 → not capped"
     assert rec2.outreach_score == 74, "round(82 * 0.9) = 74"
 
