@@ -81,6 +81,12 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 # Integration tests may deadlock when run in parallel; run with -p no:xdist if using pytest-xdist
 addopts = "-p no:xdist"
+# Treat warnings as errors; except Anthropic SDK model deprecation (third-party; unavoidable until env/model config updated).
+# https://docs.anthropic.com/en/docs/resources/model-deprecations
+filterwarnings = [
+    "ignore:The model .* is deprecated and will reach end-of-life:DeprecationWarning",
+    "error",
+]
 markers = [
     "integration: marks tests requiring real DB (deselect with -m 'not integration')",
     "serial: marks tests that must run serially to avoid ShareLock deadlock (e.g. with pytest-xdist)",

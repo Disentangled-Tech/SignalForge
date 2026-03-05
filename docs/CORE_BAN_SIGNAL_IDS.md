@@ -55,6 +55,10 @@ When adding a new core-banned signal:
 
 5. **Test** that entities with the signal receive `esl_decision="suppress"` and `reason_code="core_ban"`.
 
+## Critic and draft content (Issue #120)
+
+The ORE **critic** ensures that generated drafts do **not** reference core-banned (or pack-blocked) signals in wording. The pipeline computes the set of signal IDs that must not be referenced (union of `CORE_BAN_SIGNAL_IDS`, pack `blocked_signals`, and both sides of `prohibited_combinations`), intersects with the entity's signal set, and passes that as `suppressed_signal_ids` to `check_critic`. The critic uses a core phrase map (`app/services/ore/suppressed_signal_phrases`) to detect draft text that would "mention" those signals; any match fails the critic and is logged with violation_type, pack_id, and signal_id. So even when a draft is generated (allow or allow_with_constraints), it must not contain language that references core-banned or pack-blocked signals. See [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) and [critic_rules.md](critic_rules.md).
+
 ## Constraints
 
 - **Do not** add signals that packs may legitimately use with additional safeguards (e.g. distress with tone constraints). Use pack-level `blocked_signals`, `downgrade_rules`, or `sensitivity_mapping` instead.

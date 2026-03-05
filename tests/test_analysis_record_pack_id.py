@@ -30,6 +30,8 @@ def test_analysis_record_has_pack_id_column(db: Session) -> None:
     assert record.pack_id is None
 
 
+# Anthropic SDK emits DeprecationWarning for deprecated model names (third-party; unavoidable until env/model config updated).
+# See https://docs.anthropic.com/en/docs/resources/model-deprecations
 def test_analyze_company_sets_pack_id_when_pack_provided(db: Session) -> None:
     """analyze_company sets pack_id when pack is provided and default pack exists."""
     from app.services.pack_resolver import get_default_pack, get_default_pack_id
