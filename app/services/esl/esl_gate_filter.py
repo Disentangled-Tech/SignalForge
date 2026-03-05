@@ -1,22 +1,14 @@
 """ESL gate filter — filter suppressed entities, apply tone constraints (Issue #175, Phase 3).
 
 Used by briefing and ORE to exclude suppressed entities and cap engagement_type
-when allow_with_constraints.
+when allow_with_constraints. Tier order: from app.services.ore.critic (source of truth). See docs/critic_rules.md.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-# Recommendation type order: lower index = more conservative.
-# Used to cap engagement_type when tone_constraint applies.
-_RECOMMENDATION_ORDER: tuple[str, ...] = (
-    "Observe Only",
-    "Soft Value Share",
-    "Low-Pressure Intro",
-    "Standard Outreach",
-    "Direct Strategic Outreach",
-)
+from app.services.ore.critic import RECOMMENDATION_ORDER
 
 ESLDecision = Literal["allow", "allow_with_constraints", "suppress"]
 
@@ -61,15 +53,15 @@ def apply_tone_constraint(
     if not tone_constraint or not isinstance(tone_constraint, str):
         return engagement_type
     try:
-        idx_actual = _RECOMMENDATION_ORDER.index(engagement_type)
+        idx_actual = RECOMMENDATION_ORDER.index(engagement_type)
     except ValueError:
         return engagement_type
     try:
-        idx_cap = _RECOMMENDATION_ORDER.index(tone_constraint)
+        idx_cap = RECOMMENDATION_ORDER.index(tone_constraint)
     except ValueError:
         return engagement_type
     capped_idx = min(idx_actual, idx_cap)
-    return _RECOMMENDATION_ORDER[capped_idx]
+    return RECOMMENDATION_ORDER[capped_idx]
 
 
 def get_effective_engagement_type(
