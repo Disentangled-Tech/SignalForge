@@ -1,4 +1,9 @@
-"""ORE pipeline — TRS → ESL → policy gate → draft → critic → persist (Issue #124, #106, #122)."""
+"""ORE pipeline — TRS → ESL → policy gate → draft → critic → persist (Issue #124, #106, #122).
+
+All outreach behavior is pack-driven: pattern frame is chosen by dominant TRS dimension
+(get_dominant_trs_dimension); channel, tone, and recipient label come from pack/playbook.
+No hardcoded domain logic (e.g. no "Founder" unless pack taxonomy defines recipient_label).
+"""
 
 from __future__ import annotations
 
@@ -129,6 +134,10 @@ def generate_ore_recommendation(
     sensitivity_level: str | None = None,
 ) -> OutreachRecommendation | None:
     """Run full ORE pipeline: ESL suppress check → policy gate → draft → critic → persist.
+
+    Pack-driven (Issue #121): pack/playbook supply pattern_frames, channel, tone; pattern
+    frame is selected by dominant TRS dimension (get_dominant_trs_dimension). Recipient
+    label comes from pack taxonomy (recipient_label) when present, else "Contact".
 
     Pack resolution (Issue #122 M1): when pack_id is None, uses get_pack_for_workspace(db,
     workspace_id) if workspace_id is set, else get_default_pack_id(db).
@@ -340,7 +349,7 @@ def generate_ore_recommendation(
                 if critic_result.passed:
                     draft_variants = [candidate_draft]
                 else:
-                    # Rewrite once (simplified: use fallback that passes critic)
+                    # Use critic-compliant fallback when draft fails; retry with original if polish was used
                     fallback = _build_critic_compliant_fallback(
                         company=company,
                         value_asset=strategy.value_asset,
