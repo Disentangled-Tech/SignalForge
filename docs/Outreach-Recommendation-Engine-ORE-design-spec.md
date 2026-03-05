@@ -100,23 +100,28 @@ Strategy selection is **deterministic**: no LLM, no network, no DB. The selector
 
 **Pack vs core:** The playbook supplies the options (pattern_frames, value_assets, ctas, optional channels, soft_ctas); TRS dimensions come from core (ReadinessSnapshot). See ADR-013 and playbook-draft-engine.md.
 
-C) Draft Generator + Critic
+C) Draft Generator + Critic (pack-aware safety layer, Issue #120)
 
-Generate draft → run through critic checks → revise once.
+Generate draft → run through critic checks → revise once (or use fallback). The critic is **pack-aware**: it receives context (pack_id, suppressed_signal_ids, tone_constraint, forbidden_phrases, allowed_signal_labels) so drafts never violate ESL hard bans or pack constraints.
 
-Critic checks:
- • Surveillance language?
- • Urgency pressure?
- • Too many asks?
- • Clear opt-out?
- • Plain language?
- • ND-friendly formatting?
+**Pack-aware critic checks:**
+ • **Core rules (always):** Surveillance language, urgency pressure, single CTA, opt-out language, short paragraphs, shame framing (core phrase list; see docs/critic_rules.md).
+ • **Pack forbidden_phrases:** Playbook list applied case-insensitive; any match fails the critic.
+ • **Suppressed-signal mention:** Draft must not reference phrases associated with signals that are core-banned or pack-blocked (or in prohibited_combinations). The pipeline passes the set of entity signal IDs that must not be referenced; the critic uses a core phrase map (suppressed_signal_phrases) to detect mentions. Violations are logged with violation_type, pack_id, signal_id.
+ • **Tone tier:** When tone_constraint is set (e.g. "Soft Value Share"), the draft must not contain phrases that imply a higher tier (e.g. "book a call" when only Soft Value Share is allowed).
+ • **Unsupported claims (optional/future):** When allowed_signal_labels is provided, drafts should not reference signals outside that set; full enforcement can be staged later.
 
-Pack playbooks may define **forbidden_phrases** (a list of strings). The critic applies these in addition to the core rules above: any draft containing a forbidden phrase (case-insensitive) fails the critic and the pipeline substitutes a compliant fallback when possible. See playbook YAML (e.g. playbooks/ore_outreach.yaml) and app/services/ore/critic.py.
+**Block/regenerate behavior:** If the critic fails, the pipeline (1) tries the template fallback; (2) if fallback also fails, stores the original draft and sets strategy_notes with a "Manual Review" message and violation summary. No automatic send; human always reviews before outreach.
+
+**Logging:** On critic failure, the pipeline logs each violation with structured fields: violation_type, pack_id, signal_id (when applicable), company_id. See app/services/ore/ore_pipeline._log_critic_violations and CriticResult.violation_details.
 
 Pack-driven playbooks and sensitivity (Issue #176)
 
 ORE is pack-driven: the active pack supplies the playbook (e.g. playbooks/ore_outreach.yaml), including pattern_frames, value_assets, ctas, optional opening_templates, value_statements, forbidden_phrases, and tone. The critic applies pack forbidden_phrases in addition to core rules. Sensitivity gating is prompt-only: tone_constraint (e.g. "Soft Value Share") and playbook tone definitions are passed as TONE_INSTRUCTION so the LLM stays within the allowed tier; sensitivity_level is never sent to the LLM. Optional **enable_ore_polish** (Issue #119) defaults to false for backward compatibility; when true, ORE runs an LLM polish step before the critic and falls back to the original draft if the polished draft fails. See docs/playbook-draft-engine.md for YAML shape, loader, and data flow.
+
+**Optional LLM polishing (hybrid mode, Issue #119)**
+
+When a playbook sets **enable_ore_polish** to true, ORE runs an optional polishing step after draft generation and before the critic. Polishing runs only in this hybrid path; the critic runs after polishing. If the polished draft fails the critic, ORE falls back to the **original** draft and re-runs the critic on it; only if the original also fails does the pipeline use the template fallback. Constraints for the polisher: preserve explainability and pack tone; do not add new claims, urgency, or speculation; do not reference events or signals outside the allowed framing list (suppressed refs remain excluded). ESL hard bans and pack forbidden phrases cannot be bypassed; the critic still applies to the chosen draft.
 
 ⸻
 
