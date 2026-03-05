@@ -1,5 +1,9 @@
 # Outreach Recommendation Engine (ORE) — Design Spec
 
+ORE is **pack-driven** (Issue #121): all outreach wording and strategy come from pack/playbook. There is no "Founder" or other domain-specific recipient wording unless the pack defines **taxonomy.recipient_label**. Explainability text can come from pack taxonomy or playbook **explainability_snippet_template**. Structured logs include **pack_id** and **playbook_id** for every recommendation (no PII). See [playbook-draft-engine.md](playbook-draft-engine.md) for YAML shape, pattern frame selection by dominant TRS dimension, and logging fields.
+
+---
+
 1) What the Outreach Engine Produces
 
 For each company surfaced in Weekly Review, ORE outputs a compact “outreach kit”:
