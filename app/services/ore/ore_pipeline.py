@@ -19,6 +19,7 @@ from app.services.ore.draft_generator import generate_ore_draft
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
 from app.services.ore.polisher import polish_ore_draft
+from app.services.ore.strategy_selector import select_outreach_strategy
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace, resolve_pack
 from app.services.readiness.human_labels import event_type_to_label
 
@@ -44,10 +45,13 @@ def _tone_definition_for_recommendation(playbook: dict, recommendation_type: str
 def _build_explainability_context(
     snapshot: ReadinessSnapshot,
     pack: Pack | None,
+    playbook: dict | None = None,
 ) -> tuple[str, list[str]]:
     """Build explainability snippet and top_signal_labels from ReadinessSnapshot.explain (M4).
 
     Uses only signal_id/category labels and safe framing text; no raw observation text.
+    M5: When playbook provides explainability_snippet_template (non-empty string), use it
+    with {{TOP_SIGNALS}} replaced by comma-separated labels; otherwise use built-in snippet.
     """
     explain = getattr(snapshot, "explain", None) or {}
     top_events = explain.get("top_events") or []
@@ -60,11 +64,22 @@ def _build_explainability_context(
         if etype and etype not in seen:
             seen.add(etype)
             labels.append(event_type_to_label(etype, pack=pack))
-    snippet = (
-        "Top contributing categories: see TOP_SIGNALS below. Use for framing only; do not reference specific events."
-        if labels
-        else ""
+    top_signals_str = ", ".join(labels) if labels else ""
+    template = (
+        playbook.get("explainability_snippet_template").strip()
+        if isinstance(playbook, dict)
+        and isinstance(playbook.get("explainability_snippet_template"), str)
+        and playbook.get("explainability_snippet_template", "").strip()
+        else None
     )
+    if template:
+        snippet = template.replace("{{TOP_SIGNALS}}", top_signals_str) if labels else ""
+    else:
+        snippet = (
+            "Top contributing categories: see TOP_SIGNALS below. Use for framing only; do not reference specific events."
+            if labels
+            else ""
+        )
     return (snippet, labels)
 
 
@@ -229,7 +244,9 @@ def generate_ore_recommendation(
         )
 
     # M1 (Issue #121): structured logging — pack_id, playbook_id, sensitivity_level, signals (no PII)
-    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    explainability_snippet, top_signal_labels = _build_explainability_context(
+        snapshot, pack, playbook
+    )
     logger.info(
         "ORE recommendation: pack_id=%s playbook_id=%s sensitivity_level=%s recommendation_type=%s",
         resolved_pack_id,
@@ -245,30 +262,39 @@ def generate_ore_recommendation(
         },
     )
 
-    draft_variants: list[dict] = []
-    strategy_notes_for_persist: str | dict | None = None
-    if gate.should_generate_draft:
-        # Pick pattern frame from dominant TRS dimension (Issue #121 M2).
-        pattern_frames = playbook.get("pattern_frames") or {}
-        value_assets = playbook.get("value_assets") or []
-        ctas = playbook.get("ctas") or []
-        dominant = get_dominant_trs_dimension(
-            snapshot.momentum,
-            snapshot.complexity,
-            snapshot.pressure,
-            snapshot.leadership_gap,
-        )
-        pattern_frame = pattern_frames.get(dominant, pattern_frames.get("momentum", ""))
-        value_asset = value_assets[0] if value_assets else ""
-        cta = ctas[0] if ctas else ""
+    # Issue #117 M4: strategy from selector (channel, cta_type, value_asset, pattern_frame).
+    dominant = get_dominant_trs_dimension(
+        snapshot.momentum,
+        snapshot.complexity,
+        snapshot.pressure,
+        snapshot.leadership_gap,
+    )
+    stability_cap_triggered = gate.recommendation_type == "Soft Value Share" and any(
+        s and "Stability cap" in str(s) for s in (gate.safeguards_triggered or [])
+    )
+    strategy = select_outreach_strategy(
+        recommendation_type=gate.recommendation_type,
+        dominant_dimension=dominant,
+        alignment_high=align,
+        playbook=playbook,
+        stability_cap_triggered=stability_cap_triggered,
+    )
+    strategy_notes_for_persist = {
+        "channel": strategy.channel,
+        "cta_type": strategy.cta_type,
+        "value_asset": strategy.value_asset,
+        "pattern_frame": strategy.pattern_frame,
+    }
 
+    draft_variants: list[dict] = []
+    if gate.should_generate_draft:
         tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
         draft = generate_ore_draft(
             company=company,
             recommendation_type=gate.recommendation_type,
-            pattern_frame=pattern_frame,
-            value_asset=value_asset,
-            cta=cta,
+            pattern_frame=strategy.pattern_frame,
+            value_asset=strategy.value_asset,
+            cta=strategy.cta_type,
             pack=pack,
             explainability_snippet=explainability_snippet,
             top_signal_labels=top_signal_labels,
@@ -317,8 +343,8 @@ def generate_ore_recommendation(
                     # Rewrite once (simplified: use fallback that passes critic)
                     fallback = _build_critic_compliant_fallback(
                         company=company,
-                        value_asset=value_asset,
-                        cta=cta,
+                        value_asset=strategy.value_asset,
+                        cta=strategy.cta_type,
                     )
                     fallback_critic = check_critic(
                         fallback.get("subject", ""),
@@ -331,6 +357,7 @@ def generate_ore_recommendation(
                         # Mark for manual review — still store original draft (Issue #120 M3)
                         draft_variants = [draft]
                         strategy_notes_for_persist = {
+                            **strategy_notes_for_persist,
                             "message": _strategy_notes_for_critic_failure(critic_result),
                         }
                         _log_critic_violations(
@@ -340,14 +367,8 @@ def generate_ore_recommendation(
     # Issue #115 M1: generation_version from pack manifest (Pack from loader always has manifest)
     generation_version = (pack.manifest.get("version") or "1")[:64]
 
-    # Issue #121 M4: channel from playbook; fallback "LinkedIn DM" when missing
-    _channel_raw = playbook.get("channel")
-    channel = (
-        _channel_raw.strip()
-        if isinstance(_channel_raw, str) and (_channel_raw or "").strip()
-        else None
-    )
-    channel = channel or "LinkedIn DM"
+    # Issue #117 M4: channel from strategy selector (playbook channels or default "LinkedIn DM")
+    channel = strategy.channel
 
     # Issue #115 M2: upsert by (company_id, as_of, pack_id) — update existing or insert
     existing = (
@@ -539,31 +560,38 @@ def regenerate_ore_draft(
     if not gate.should_generate_draft:
         return None
 
-    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    explainability_snippet, top_signal_labels = _build_explainability_context(
+        snapshot, pack, playbook
+    )
     no_ref_signal_ids = _no_reference_signal_ids(pack)
     entity_signal_ids = ctx.get("signal_ids") or set()
     suppressed_signal_ids_for_critic = entity_signal_ids & no_ref_signal_ids
 
-    pattern_frames = playbook.get("pattern_frames") or {}
-    value_assets = playbook.get("value_assets") or []
-    ctas = playbook.get("ctas") or []
+    # Issue #117 M4: strategy from selector (same as generate_ore_recommendation).
     dominant = get_dominant_trs_dimension(
         snapshot.momentum,
         snapshot.complexity,
         snapshot.pressure,
         snapshot.leadership_gap,
     )
-    pattern_frame = pattern_frames.get(dominant, pattern_frames.get("momentum", ""))
-    value_asset = value_assets[0] if value_assets else ""
-    cta = ctas[0] if ctas else ""
+    stability_cap_triggered = gate.recommendation_type == "Soft Value Share" and any(
+        s and "Stability cap" in str(s) for s in (gate.safeguards_triggered or [])
+    )
+    strategy = select_outreach_strategy(
+        recommendation_type=gate.recommendation_type,
+        dominant_dimension=dominant,
+        alignment_high=align,
+        playbook=playbook,
+        stability_cap_triggered=stability_cap_triggered,
+    )
     tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
 
     draft = generate_ore_draft(
         company=company,
         recommendation_type=gate.recommendation_type,
-        pattern_frame=pattern_frame,
-        value_asset=value_asset,
-        cta=cta,
+        pattern_frame=strategy.pattern_frame,
+        value_asset=strategy.value_asset,
+        cta=strategy.cta_type,
         pack=pack,
         explainability_snippet=explainability_snippet,
         top_signal_labels=top_signal_labels,
@@ -617,8 +645,8 @@ def regenerate_ore_draft(
         else:
             fallback = _build_critic_compliant_fallback(
                 company=company,
-                value_asset=value_asset,
-                cta=cta,
+                value_asset=strategy.value_asset,
+                cta=strategy.cta_type,
             )
             fallback_critic = check_critic(
                 fallback.get("subject", ""),

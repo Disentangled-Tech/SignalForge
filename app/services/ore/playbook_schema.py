@@ -17,6 +17,8 @@ Optional (M1 schema; loader/pipeline use in later milestones):
     sensitivity_level is in this list. Allowed values: "low", "medium", "high" (case-insensitive).
     Missing or not a list = no restriction. Empty list = no one gets a draft (Soft Value Share).
     See GLOSSARY "Sensitivity & Context" and ore_pipeline M4 playbook eligibility.
+  - channel: str — optional; outreach channel (e.g. "LinkedIn DM", "Email"). When absent or
+    empty, pipeline uses "LinkedIn DM" when persisting OutreachRecommendation (Issue #121 M4).
 
 Existing playbooks (e.g. fractional_cto_v1) may only define pattern_frames, value_assets,
 and ctas; validation allows optional keys to be absent.
@@ -44,9 +46,17 @@ class OREPlaybook(TypedDict, total=False):
     tone: str | dict[str, Any]
     sensitivity_levels: list[str]
     recommendation_types: list[str]
+    channel: str
 
 
 # Known optional ORE playbook keys validated in _validate_playbooks when present
 ORE_PLAYBOOK_OPTIONAL_KEYS = frozenset(
-    {"opening_templates", "value_statements", "forbidden_phrases", "tone", "sensitivity_levels"}
+    {
+        "opening_templates",
+        "value_statements",
+        "forbidden_phrases",
+        "tone",
+        "sensitivity_levels",
+        "channel",
+    }
 )

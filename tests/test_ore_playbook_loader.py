@@ -104,3 +104,75 @@ class TestPlaybookLoaderFromPack:
         other_playbook = get_ore_playbook(pack, playbook_name="other_playbook")
         assert default_playbook["pattern_frames"]["momentum"] == "default"
         assert other_playbook["pattern_frames"]["momentum"] == "other"
+
+    def test_enable_ore_polish_default_false(self) -> None:
+        """When enable_ore_polish is missing, normalized playbook has enable_ore_polish False (Issue #119)."""
+        pack = MagicMock()
+        pack.playbooks = {"ore_outreach": {"pattern_frames": {"momentum": "m"}}}
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("enable_ore_polish") is False
+
+    def test_enable_ore_polish_true_when_bool_or_truthy_string(self) -> None:
+        """enable_ore_polish True, 'true', or 'yes' (case-insensitive) normalize to True (Issue #119)."""
+        pack = MagicMock()
+        pack.playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "m"},
+                "enable_ore_polish": True,
+            }
+        }
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("enable_ore_polish") is True
+        pack.playbooks["ore_outreach"]["enable_ore_polish"] = "true"
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("enable_ore_polish") is True
+        pack.playbooks["ore_outreach"]["enable_ore_polish"] = "yes"
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("enable_ore_polish") is True
+
+    def test_enable_ore_polish_false_when_false_or_no(self) -> None:
+        """enable_ore_polish False or 'no' yields False (Issue #119)."""
+        pack = MagicMock()
+        pack.playbooks = {
+            "ore_outreach": {"pattern_frames": {"momentum": "m"}, "enable_ore_polish": False}
+        }
+        assert get_ore_playbook(pack).get("enable_ore_polish") is False
+        pack.playbooks["ore_outreach"]["enable_ore_polish"] = "no"
+        assert get_ore_playbook(pack).get("enable_ore_polish") is False
+
+    def test_channel_passthrough_when_string(self) -> None:
+        """When playbook has channel (non-empty string), normalized playbook includes it (Issue #121 M4)."""
+        pack = MagicMock()
+        pack.playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "m"},
+                "value_assets": ["v"],
+                "ctas": ["c"],
+                "channel": "Email",
+            }
+        }
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("channel") == "Email"
+
+    def test_channel_none_when_missing(self) -> None:
+        """When playbook has no channel, normalized playbook has channel None (Issue #121 M4)."""
+        pack = MagicMock()
+        pack.playbooks = {"ore_outreach": {"pattern_frames": {"momentum": "m"}}}
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("channel") is None
+
+    def test_channel_none_when_empty_string(self) -> None:
+        """When playbook channel is empty or whitespace, normalized playbook has channel None (Issue #121 M4)."""
+        pack = MagicMock()
+        pack.playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "m"},
+                "channel": "",
+            }
+        }
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("channel") is None
+
+        pack.playbooks["ore_outreach"]["channel"] = "   "
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("channel") is None
