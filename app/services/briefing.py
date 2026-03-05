@@ -331,7 +331,7 @@ def generate_briefing(
                 item = _generate_for_company(db, company, workspace_id=ws_id)
                 if item is not None:
                     items.append(item)
-            except Exception as exc:
+            except BaseException as exc:
                 msg = f"Company {company.id} ({company.name}): {exc}"
                 logger.exception(
                     "Briefing generation failed for company %s (id=%s)",
@@ -383,7 +383,7 @@ def generate_briefing(
 
         return items
 
-    except Exception as exc:
+    except BaseException as exc:
         job.finished_at = datetime.now(UTC)
         job.status = "failed"
         job.error_message = str(exc)

@@ -339,8 +339,8 @@ class TestBriefingGenerate:
         assert "/briefing" in resp.headers["location"]
         assert "error" not in resp.headers.get("location", "")
 
-    def test_generate_with_partial_failures_redirects_with_error(self, mock_db, mock_user):
-        """When briefing has partial failures, redirect with error param (issue #32)."""
+    def test_generate_with_partial_failures_redirects_to_briefing(self, mock_db, mock_user):
+        """When briefing has partial failures, redirect to /briefing so user sees partial results (issue #32)."""
         app = _create_test_app(mock_db, mock_user)
         client = TestClient(app, raise_server_exceptions=False)
 
@@ -354,10 +354,9 @@ class TestBriefingGenerate:
             resp = client.post("/briefing/generate", follow_redirects=False)
 
         assert resp.status_code == 303
-        assert "error=" in resp.headers.get("location", "")
-        assert "Partial" in resp.headers.get("location", "") or "failures" in resp.headers.get(
-            "location", ""
-        )
+        assert "/briefing" in resp.headers.get("location", "")
+        # No error param so user sees partial briefing; job_has_failures banner shows on page
+        assert "error=" not in resp.headers.get("location", "")
 
     def test_generate_import_error_redirects_with_error(self, mock_db, mock_user):
         """When service not available, redirects with error."""

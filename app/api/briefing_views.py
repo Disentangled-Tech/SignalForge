@@ -83,19 +83,11 @@ def briefing_generate(
             if workspace_id is not None:
                 validate_uuid_param_or_422(workspace_id, "workspace_id")
         generate_briefing(db, workspace_id=workspace_id)
-        # Check for partial failures (issue #32)
-        latest = (
-            db.query(JobRun)
-            .filter(JobRun.job_type == "briefing")
-            .order_by(JobRun.started_at.desc())
-            .first()
-        )
-        if latest and latest.error_message:
-            return RedirectResponse(
-                url="/briefing?error=Partial+failures.+See+Settings+for+details",
-                status_code=303,
-            )
-        return RedirectResponse(url="/briefing", status_code=303)
+        # Always show briefing page; partial failures are shown via job_has_failures banner (issue #32)
+        redirect_url = "/briefing"
+        if workspace_id:
+            redirect_url = f"/briefing?workspace_id={workspace_id}"
+        return RedirectResponse(url=redirect_url, status_code=303)
     except ImportError:
         logger.warning("Briefing service not available yet")
         return RedirectResponse(
