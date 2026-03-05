@@ -735,6 +735,141 @@ def test_ore_pipeline_pattern_frame_from_dominant_dimension(db: Session) -> None
     )
 
 
+def test_ore_pipeline_m4_channel_and_strategy_notes_from_selector(db: Session) -> None:
+    """M4 (Issue #117): Pipeline persists channel and strategy_notes from select_outreach_strategy."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="StrategyNotesCo",
+        website_url="https://strategynotes.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 26)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=80,
+        complexity=70,
+        pressure=60,
+        leadership_gap=50,
+        composite=65,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    playbook_with_channels = {
+        "pattern_frames": {"momentum": "M frame", "complexity": "C frame", "pressure": "P", "leadership_gap": "G"},
+        "value_assets": ["Checklist asset"],
+        "ctas": ["Want me to send it?"],
+        "channels": ["Email"],
+        "forbidden_phrases": [],
+        "tone": None,
+    }
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_channels,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.channel == "Email", "M4: channel must come from selector (playbook channels)"
+    notes = rec.strategy_notes
+    assert isinstance(notes, dict), "M4: strategy_notes must be dict with selector output"
+    assert notes.get("channel") == "Email"
+    assert notes.get("cta_type") == "Want me to send it?"
+    assert notes.get("value_asset") == "Checklist asset"
+    assert notes.get("pattern_frame") == "M frame", "momentum dominant (80) → momentum frame"
+
+
+def test_ore_pipeline_m4_strategy_notes_default_channel_when_no_channels(db: Session) -> None:
+    """M4: When playbook has no channels key, selector returns default channel and strategy_notes."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="DefaultChannelCo",
+        website_url="https://defaultch.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 27)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    playbook_no_channels = {
+        "pattern_frames": {"momentum": "M", "complexity": "C", "pressure": "P", "leadership_gap": "G"},
+        "value_assets": ["Checklist"],
+        "ctas": ["Send it?"],
+        "forbidden_phrases": [],
+        "tone": None,
+    }
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_no_channels,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.5,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.channel == "LinkedIn DM", "M4: default channel when playbook has no channels"
+    notes = rec.strategy_notes
+    assert isinstance(notes, dict)
+    assert notes.get("channel") == "LinkedIn DM"
+    assert "pattern_frame" in notes
+    assert "cta_type" in notes
+    assert "value_asset" in notes
+
+
 def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -> None:
     """M3: Pipeline passes playbook forbidden_phrases to check_critic (Issue #176)."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
@@ -876,6 +1011,153 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
         "No worries" in (stored.get("message") or "")
         or "no pressure" in (stored.get("message") or "").lower()
     )
+
+
+def test_ore_pipeline_enable_ore_polish_false_or_missing_does_not_call_polisher(
+    db: Session,
+) -> None:
+    """When enable_ore_polish is False or missing, polisher is not called; stored draft is unpolished."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="NoPolishCo",
+        website_url="https://nopolish.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 26)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    playbook_no_polish = {
+        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "value_assets": ["2-page checklist"],
+        "ctas": ["Want me to send that checklist?"],
+        "forbidden_phrases": [],
+        "sensitivity_levels": None,
+        "enable_ore_polish": False,
+    }
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_no_polish,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.polish_ore_draft",
+        ) as mock_polish,
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.draft_variants and len(rec.draft_variants) == 1
+    assert rec.draft_variants[0].get("subject") == _ORE_DRAFT["subject"]
+    mock_polish.assert_not_called()
+
+
+def test_ore_pipeline_enable_ore_polish_true_polished_fails_original_passes_stores_original(
+    db: Session,
+) -> None:
+    """When polish enabled, polished draft fails critic (e.g. surveillance) and original passes, stored is original."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="OriginalWinsCo",
+        website_url="https://originalwins.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 27)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    # Original is critic-compliant; polished contains surveillance phrase (fails real critic)
+    polished_failing = {
+        "subject": "I noticed you are scaling",
+        "message": "Hi Jane, I saw that you raised. Want me to send that checklist? No worries if not.",
+    }
+    playbook_with_polish = {
+        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "value_assets": ["2-page checklist"],
+        "ctas": ["Want me to send that checklist?"],
+        "forbidden_phrases": [],
+        "sensitivity_levels": None,
+        "enable_ore_polish": True,
+    }
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_polish,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.polish_ore_draft",
+            return_value=polished_failing,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert rec.draft_variants and len(rec.draft_variants) == 1
+    stored = rec.draft_variants[0]
+    assert stored.get("subject") == _ORE_DRAFT["subject"], (
+        "Stored draft must be original when polished fails critic"
+    )
+    assert stored.get("message") == _ORE_DRAFT["message"]
 
 
 def test_ore_pipeline_enable_ore_polish_true_uses_polished_draft_when_passes_critic(
