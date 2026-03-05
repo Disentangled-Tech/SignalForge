@@ -2,6 +2,8 @@
 
 This document describes how pack playbooks drive ORE (Outreach Recommendation Engine) draft generation: YAML shape, loader, critic extension, and how explainability and sensitivity flow into drafts. It aligns with the Architecture Contract: **Core = Facts**, **Packs = Interpretation** (see [pack_v2_contract.md](pack_v2_contract.md) and [CORE_VS_PACK_RESPONSIBILITIES.md](CORE_VS_PACK_RESPONSIBILITIES.md)). Outreach tone, templates, and constraints are pack-owned; the pipeline uses core signals and pack interpretation only.
 
+**Pack-driven behavior (Issue #121):** Pattern frame is selected by **dominant TRS dimension** (`get_dominant_trs_dimension`). Channel and recipient label come from playbook and pack taxonomy respectively. Structured logging records `pack_id`, `playbook_id`, `sensitivity_level`, and top signal labels (no PII). See also [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) (no "Founder" unless pack defines `recipient_label`).
+
 ---
 
 ## 1. Playbook YAML shape
@@ -12,7 +14,7 @@ ORE playbooks live under `packs/<pack_id>/playbooks/`. The default playbook name
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `pattern_frames` | `dict[str, str]` | Dimension key (e.g. `momentum`, `complexity`, `pressure`, `leadership_gap`) to generic, non-invasive framing text. Never cite specific events. |
+| `pattern_frames` | `dict[str, str]` | Dimension key (e.g. `momentum`, `complexity`, `pressure`, `leadership_gap`) to generic, non-invasive framing text. The pipeline selects the frame by **dominant TRS dimension** (M/C/P/G from snapshot); fallback key is `momentum`. Never cite specific events. |
 | `value_assets` | `list` | Offer strings (e.g. "2-page Tech Inflection Checklist"). |
 | `ctas` | `list` | Call-to-action strings (consent-based; e.g. "Want me to send that checklist?"). |
 
@@ -102,18 +104,39 @@ Tone gating is prompt-only: it does not change policy gate, critic, or ESL logic
 
 ---
 
-## 6. Data flow (summary)
+## 6. Taxonomy: recipient label (optional)
+
+Pack **taxonomy** may define optional **recipient_label** (string). When present, ORE passes it into the draft prompt as the "X name:" line (e.g. "Founder name: {{NAME}}"); when absent, ORE uses `"Contact"` so that no domain-specific wording (e.g. "Founder") appears unless the pack defines it. See [pack_v2_contract.md](pack_v2_contract.md) and [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) (no "Founder" unless pack); example: `packs/fractional_cto_v1/taxonomy.yaml`.
+
+---
+
+## 7. Structured logging (Issue #121 M1)
+
+When a recommendation is generated, the pipeline logs at INFO with structured context (no PII):
+
+- **pack_id** — Resolved pack UUID.
+- **playbook_id** — Playbook name used (e.g. `ore_outreach`).
+- **sensitivity_level** — Entity sensitivity from ESL context (if any).
+- **recommendation_type** — Policy gate result (e.g. "Soft Value Share", "Observe Only").
+- **signals** — List of top signal labels from the snapshot (for auditing and "changing pack changes behavior" verification).
+
+Logging is implemented in `app/services/ore/ore_pipeline.py` after the policy gate and explainability context are built.
+
+---
+
+## 8. Data flow (summary)
 
 1. **Resolve pack** → `resolve_pack(db, pack_id)` (analysis config: manifest, scoring, ESL, playbooks, prompt_bundles).
 2. **Load playbook** → `get_ore_playbook(pack, "ore_outreach")` → normalized dict with required + optional keys.
 3. **Policy gate** → Cooldown, stability cap, ESL suppress; optionally playbook `sensitivity_levels` (no draft if entity sensitivity not in list).
-4. **Draft** → `generate_ore_draft(..., explainability_snippet, top_signal_labels, tone_constraint, tone_definition)` using pack prompt and playbook pattern_frames/value_assets/ctas.
-5. **Critic** → `check_critic(subject, message, forbidden_phrases=playbook["forbidden_phrases"])`; on failure, pipeline may substitute a compliant fallback.
-6. **Persist** → `OutreachRecommendation` with `pack_id`, `playbook_id="ore_outreach"` (or the playbook name used).
+4. **Pattern frame** → `get_dominant_trs_dimension(snapshot M/C/P/G)` → key into `playbook["pattern_frames"]`; fallback key `momentum`.
+5. **Draft** → `generate_ore_draft(..., explainability_snippet, top_signal_labels, tone_constraint, tone_definition, recipient_label)` using pack prompt and playbook pattern_frames/value_assets/ctas; recipient_label from pack taxonomy or "Contact".
+6. **Critic** → `check_critic(subject, message, forbidden_phrases=playbook["forbidden_phrases"])`; on failure, pipeline may substitute a compliant fallback.
+7. **Persist** → `OutreachRecommendation` with `pack_id`, `playbook_id="ore_outreach"`, `channel` from playbook or default `"LinkedIn DM"`.
 
 ---
 
-## 7. References
+## 9. References
 
 - [Outreach-Recommendation-Engine-ORE-design-spec.md](Outreach-Recommendation-Engine-ORE-design-spec.md) — ORE design, policy gate, message rules, template library.
 - [pack_v2_contract.md](pack_v2_contract.md) — Pack v2 contract; Core = Facts, Packs = Interpretation.
