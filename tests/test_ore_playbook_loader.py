@@ -176,3 +176,42 @@ class TestPlaybookLoaderFromPack:
         pack.playbooks["ore_outreach"]["channel"] = "   "
         playbook = get_ore_playbook(pack)
         assert playbook.get("channel") is None
+
+    def test_explainability_snippet_template_passthrough_when_non_empty(self) -> None:
+        """When playbook has explainability_snippet_template (non-empty string), it is normalized (Issue #121 M5)."""
+        pack = MagicMock()
+        pack.playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "m"},
+                "value_assets": ["v"],
+                "ctas": ["c"],
+                "explainability_snippet_template": "Key drivers: {{TOP_SIGNALS}}. Use for framing only.",
+            }
+        }
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("explainability_snippet_template") == (
+            "Key drivers: {{TOP_SIGNALS}}. Use for framing only."
+        )
+
+    def test_explainability_snippet_template_none_when_missing(self) -> None:
+        """When playbook has no explainability_snippet_template, normalized playbook has it None (Issue #121 M5)."""
+        pack = MagicMock()
+        pack.playbooks = {"ore_outreach": {"pattern_frames": {"momentum": "m"}}}
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("explainability_snippet_template") is None
+
+    def test_explainability_snippet_template_none_when_empty_string(self) -> None:
+        """When explainability_snippet_template is empty or whitespace, normalized playbook has it None (Issue #121 M5)."""
+        pack = MagicMock()
+        pack.playbooks = {
+            "ore_outreach": {
+                "pattern_frames": {"momentum": "m"},
+                "explainability_snippet_template": "",
+            }
+        }
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("explainability_snippet_template") is None
+
+        pack.playbooks["ore_outreach"]["explainability_snippet_template"] = "   "
+        playbook = get_ore_playbook(pack)
+        assert playbook.get("explainability_snippet_template") is None
