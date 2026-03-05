@@ -99,7 +99,7 @@ Pack playbooks may define **forbidden_phrases** (a list of strings). The critic 
 
 Pack-driven playbooks and sensitivity (Issue #176)
 
-ORE is pack-driven: the active pack supplies the playbook (e.g. playbooks/ore_outreach.yaml), including pattern_frames, value_assets, ctas, optional opening_templates, value_statements, forbidden_phrases, and tone. The critic applies pack forbidden_phrases in addition to core rules. Sensitivity gating is prompt-only: tone_constraint (e.g. "Soft Value Share") and playbook tone definitions are passed as TONE_INSTRUCTION so the LLM stays within the allowed tier; sensitivity_level is never sent to the LLM. See docs/playbook-draft-engine.md for YAML shape, loader, and data flow.
+ORE is pack-driven: the active pack supplies the playbook (e.g. playbooks/ore_outreach.yaml), including pattern_frames, value_assets, ctas, optional opening_templates, value_statements, forbidden_phrases, and tone. The critic applies pack forbidden_phrases in addition to core rules. Sensitivity gating is prompt-only: tone_constraint (e.g. "Soft Value Share") and playbook tone definitions are passed as TONE_INSTRUCTION so the LLM stays within the allowed tier; sensitivity_level is never sent to the LLM. Optional **enable_ore_polish** (Issue #119) defaults to false for backward compatibility; when true, ORE runs an LLM polish step before the critic and falls back to the original draft if the polished draft fails. See docs/playbook-draft-engine.md for YAML shape, loader, and data flow.
 
 ⸻
 
@@ -195,6 +195,8 @@ Autonomy Rules
 
 1) Message Template Library (Parameterized)
 
+The canonical placeholder contract, template rules, and critic alignment for the parameterized template library are documented in [outreach-template-library.md](outreach-template-library.md) (Issue #118). The following summarizes the slot names used in the design; the doc defines the full set (`founder_name`, `company_name`, `pattern_frame`, `value_asset`, `cta`) and rules (no surveillance, short paragraphs, opt-out, single CTA).
+
 Store templates by outreach type + channel.
 
 Each template has slots:
@@ -261,6 +263,8 @@ outreach_recommendations
  • strategy_notes (json)
  • safeguards_triggered (json)
  • created_at
+
+**strategy_notes shape (Issue #117 M4):** The pipeline sets `strategy_notes` from the Strategy Selector so each recommendation records the chosen strategy for audit and debugging. The object always includes: `channel`, `cta_type`, `value_asset`, `pattern_frame`. When the draft fails the critic and is stored for manual review, the pipeline also adds a `message` key with a short summary of the critic result (e.g. violation types). Consumers should treat `strategy_notes` as an opaque JSON object; the four selector keys are stable for query/display; `message` is optional and only present on critic failure.
 
 This enables:
  • reviewing later
