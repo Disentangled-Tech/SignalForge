@@ -3,8 +3,8 @@
 Pure helper: given M, C, P, G scores, returns the dominant dimension name.
 Tie-break order (ORE design): momentum > complexity > pressure > leadership_gap.
 
-TODO(M4): Add input validation or test for out-of-range inputs (e.g. negative or >100)
-when pipeline wires this, so caller contract is documented and behavior is defined.
+Callers (ore_pipeline) pass snapshot dimension scores (0–100). Out-of-range values
+are not validated here; behavior is defined by max(scores) and tie-break order.
 """
 
 from __future__ import annotations

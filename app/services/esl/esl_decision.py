@@ -134,9 +134,7 @@ def evaluate_esl_decision(
                 )
 
     # 5. Core default + pack sensitivity_mapping (M2)
-    sensitivity_level = get_effective_sensitivity_level(
-        signal_ids, core_taxonomy, policy
-    )
+    sensitivity_level = get_effective_sensitivity_level(signal_ids, core_taxonomy, policy)
 
     # 6. Default → allow
     return ESLDecisionResult(

@@ -213,6 +213,16 @@ def scout_run_trigger(
     _require_workspace_access(db, user, workspace_id)
     ws_uuid = UUID(workspace_id) if workspace_id else UUID(DEFAULT_WORKSPACE_ID)
 
+    _log_path = Path("/Users/triciaballad/Documents/GitHub/SignalForge/.cursor/debug-481458.log")
+    # #region agent log
+    try:
+        f = open(_log_path, "a", encoding="utf-8")
+        f.write(
+            '{"sessionId":"481458","hypothesisId":"H1","location":"scout_views.py:scout_run_trigger","message":"before_asyncio_run","data":{"workspace_id":"' + str(ws_uuid) + '"},"timestamp":' + str(int(__import__("time").time() * 1000)) + "}\n"
+        )
+        f.close()
+    except Exception: pass
+    # #endregion
     try:
         run_id, _bundles, _metadata = asyncio.run(
             run_scout(
@@ -231,6 +241,17 @@ def scout_run_trigger(
             status_code=303,
         )
     except Exception as exc:
+        # #region agent log
+        try:
+            f = open(_log_path, "a", encoding="utf-8")
+            f.write(
+                '{"sessionId":"481458","hypothesisId":"H_all","location":"scout_views.py:except","message":"scout_run_failed","data":{"exc_type":"'
+                + type(exc).__name__
+                + '","exc_msg":' + __import__("json").dumps(str(exc)) + '},"timestamp":' + str(int(__import__("time").time() * 1000)) + "}\n"
+            )
+            f.close()
+        except Exception: pass
+        # #endregion
         logger.exception("Scout run failed: %s", exc)
         db.rollback()
         return RedirectResponse(

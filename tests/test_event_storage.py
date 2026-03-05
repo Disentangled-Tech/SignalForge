@@ -270,9 +270,5 @@ def test_same_source_event_id_different_packs_stores_two_events(
     assert r1.id != r2.id
     assert r1.pack_id == fractional_cto_pack_id
     assert r2.pack_id == bookkeeping_pack_id
-    count = (
-        db.query(SignalEvent)
-        .filter(SignalEvent.source == "test_crosspack")
-        .count()
-    )
+    count = db.query(SignalEvent).filter(SignalEvent.source == "test_crosspack").count()
     assert count == 2

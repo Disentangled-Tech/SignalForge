@@ -79,13 +79,26 @@ Checks before generation:
  • Low alignment? → require manual confirmation tag “OK to contact”
  • High pressure + leadership gap combo? → force “soft” framing and no time pressure CTA
 
-B) Strategy Selector
+B) Strategy Selector (Deterministic — Issue #117)
 
-Chooses:
- • Channel (DM vs email)
- • Length (short by default)
- • CTA type (consent-based)
- • Value asset type (checklist, pattern note, 2-question diagnostic)
+Strategy selection is **deterministic**: no LLM, no network, no DB. The selector runs after the policy gate and uses only gate output, TRS dominant dimension, alignment, and playbook data.
+
+**Inputs:**
+ • **recommendation_type** — From the policy gate (e.g. Observe Only, Soft Value Share, Low-Pressure Intro, Standard Outreach, Direct Strategic Outreach).
+ • **TRS dominant dimension** — The dimension with the highest score among M/C/P/G (momentum, complexity, pressure, leadership_gap), with a fixed tie-break order. Sourced from ReadinessSnapshot.
+ • **alignment_high** — Alignment flag from ESL context (reserved for future channel/CTA rules).
+ • **playbook** — Normalized ORE playbook (pattern_frames, value_assets, ctas; optional channels, soft_ctas).
+ • **stability_cap_triggered** — When true, the selector must choose a softer CTA (see below).
+
+**Outputs:**
+ • **channel** — e.g. "LinkedIn DM" (default when playbook has no `channels` list or only one option).
+ • **cta_type** — One of the playbook’s consent-based CTAs; when stability cap is triggered, a softer CTA is chosen (from playbook `soft_ctas` if present, else first CTA).
+ • **value_asset** — One of the playbook’s value assets (e.g. by recommendation_type; Soft Value Share may prefer first or “checklist” type).
+ • **pattern_frame** — Framing text keyed by dominant dimension (e.g. momentum, complexity, pressure, leadership_gap) with fallback (e.g. momentum then complexity). Pressure-dominant uses stabilization framing when the playbook defines it.
+
+**Stability cap → softer CTA:** When the stability cap is triggered (e.g. SM < 0.7), the policy gate already caps recommendation at Soft Value Share. The selector additionally chooses a softer CTA: if the playbook defines optional **soft_ctas**, one of those is used; otherwise the first CTA from **ctas** is used. This keeps outreach consent-based and low-pressure for stressed founders.
+
+**Pack vs core:** The playbook supplies the options (pattern_frames, value_assets, ctas, optional channels, soft_ctas); TRS dimensions come from core (ReadinessSnapshot). See ADR-013 and playbook-draft-engine.md.
 
 C) Draft Generator + Critic
 

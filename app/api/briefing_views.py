@@ -249,9 +249,9 @@ def get_briefing_data(
             engagement_snap.explain or {}
         ).get("sensitivity_level")
         tone_constraint = (engagement_snap.explain or {}).get("tone_constraint")
-        esl_reason_code = engagement_snap.esl_reason_code or (
-            engagement_snap.explain or {}
-        ).get("esl_reason_code")
+        esl_reason_code = engagement_snap.esl_reason_code or (engagement_snap.explain or {}).get(
+            "esl_reason_code"
+        )
         recommendation_band = None
         if readiness_snap.explain:
             band_val = readiness_snap.explain.get("recommendation_band")

@@ -250,9 +250,7 @@ class TestRunScoreNightly:
         )
         assert snapshot is not None
 
-    def test_one_failure_does_not_stop_run(
-        self, db: Session, fractional_cto_pack_id
-    ) -> None:
+    def test_one_failure_does_not_stop_run(self, db: Session, fractional_cto_pack_id) -> None:
         """One company failure does not stop the run."""
         c1 = Company(name="GoodCo", website_url="https://good.example.com")
         c2 = Company(name="BadCo", website_url="https://bad.example.com")
@@ -323,9 +321,7 @@ class TestRunScoreNightly:
         assert job.finished_at is not None
         assert result["job_run_id"] == job.id
 
-    def test_re_run_same_day_does_not_duplicate(
-        self, db: Session, fractional_cto_pack_id
-    ) -> None:
+    def test_re_run_same_day_does_not_duplicate(self, db: Session, fractional_cto_pack_id) -> None:
         """Re-running same day upserts; no duplicate rows (Issue #91 AC)."""
         company = Company(
             name="IdempotentCo",
@@ -369,9 +365,7 @@ class TestRunScoreNightly:
         )
         assert count_after == count_before
 
-    def test_scores_match_golden_values(
-        self, db: Session, fractional_cto_pack_id
-    ) -> None:
+    def test_scores_match_golden_values(self, db: Session, fractional_cto_pack_id) -> None:
         """Snapshot dimensions match expected values from engine (Issue #91, v2-spec §11)."""
         company = Company(
             name="GoldenCo",

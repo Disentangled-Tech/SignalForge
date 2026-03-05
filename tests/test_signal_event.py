@@ -59,7 +59,9 @@ def test_signal_event_company_relationship(db: Session, fractional_cto_pack_id) 
     assert company.signal_events[0].title == "Senior Engineer"
 
 
-def test_signal_event_unique_constraint_prevents_duplicate(db: Session, fractional_cto_pack_id) -> None:
+def test_signal_event_unique_constraint_prevents_duplicate(
+    db: Session, fractional_cto_pack_id
+) -> None:
     """Insert two events with same (source, source_event_id); second raises IntegrityError."""
     unique_id = f"cb-{uuid.uuid4().hex[:12]}"
     event1 = SignalEvent(

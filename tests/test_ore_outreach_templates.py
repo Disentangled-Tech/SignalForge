@@ -81,9 +81,7 @@ class TestTemplateContentContract:
 
     @pytest.mark.parametrize("outreach_type", OUTREACH_TYPES)
     @pytest.mark.parametrize("channel", CHANNELS)
-    def test_template_contains_opt_out_language(
-        self, outreach_type: str, channel: str
-    ) -> None:
+    def test_template_contains_opt_out_language(self, outreach_type: str, channel: str) -> None:
         """Each template contains opt-out language (critic requirement)."""
         content = get_template(outreach_type, channel)
         assert content is not None

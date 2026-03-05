@@ -457,9 +457,7 @@ def _validate_playbook_optional_ore_keys(playbook_name: str, content: dict[str, 
     forbidden_phrases = content.get("forbidden_phrases")
     if forbidden_phrases is not None:
         if not isinstance(forbidden_phrases, list):
-            raise ValidationError(
-                f"playbook '{playbook_name}' forbidden_phrases must be a list"
-            )
+            raise ValidationError(f"playbook '{playbook_name}' forbidden_phrases must be a list")
         for i, item in enumerate(forbidden_phrases):
             if not isinstance(item, str):
                 raise ValidationError(
@@ -468,21 +466,15 @@ def _validate_playbook_optional_ore_keys(playbook_name: str, content: dict[str, 
     opening_templates = content.get("opening_templates")
     if opening_templates is not None:
         if not isinstance(opening_templates, list):
-            raise ValidationError(
-                f"playbook '{playbook_name}' opening_templates must be a list"
-            )
+            raise ValidationError(f"playbook '{playbook_name}' opening_templates must be a list")
     value_statements = content.get("value_statements")
     if value_statements is not None:
         if not isinstance(value_statements, list):
-            raise ValidationError(
-                f"playbook '{playbook_name}' value_statements must be a list"
-            )
+            raise ValidationError(f"playbook '{playbook_name}' value_statements must be a list")
     tone = content.get("tone")
     if tone is not None:
         if not isinstance(tone, (str, dict)):
-            raise ValidationError(
-                f"playbook '{playbook_name}' tone must be a string or dict"
-            )
+            raise ValidationError(f"playbook '{playbook_name}' tone must be a string or dict")
     # Issue #121 M4: optional channel (non-empty string when present)
     channel = content.get("channel")
     if channel is not None:
