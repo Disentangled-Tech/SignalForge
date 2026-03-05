@@ -19,6 +19,7 @@ from app.services.ore.draft_generator import generate_ore_draft
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
 from app.services.ore.policy_gate import PolicyGateResult, check_policy_gate
 from app.services.ore.polisher import polish_ore_draft
+from app.services.ore.strategy_selector import select_outreach_strategy
 from app.services.pack_resolver import get_default_pack_id, get_pack_for_workspace, resolve_pack
 from app.services.readiness.human_labels import event_type_to_label
 
@@ -245,30 +246,39 @@ def generate_ore_recommendation(
         },
     )
 
-    draft_variants: list[dict] = []
-    strategy_notes_for_persist: str | dict | None = None
-    if gate.should_generate_draft:
-        # Pick pattern frame from dominant TRS dimension (Issue #121 M2).
-        pattern_frames = playbook.get("pattern_frames") or {}
-        value_assets = playbook.get("value_assets") or []
-        ctas = playbook.get("ctas") or []
-        dominant = get_dominant_trs_dimension(
-            snapshot.momentum,
-            snapshot.complexity,
-            snapshot.pressure,
-            snapshot.leadership_gap,
-        )
-        pattern_frame = pattern_frames.get(dominant, pattern_frames.get("momentum", ""))
-        value_asset = value_assets[0] if value_assets else ""
-        cta = ctas[0] if ctas else ""
+    # Issue #117 M4: strategy from selector (channel, cta_type, value_asset, pattern_frame).
+    dominant = get_dominant_trs_dimension(
+        snapshot.momentum,
+        snapshot.complexity,
+        snapshot.pressure,
+        snapshot.leadership_gap,
+    )
+    stability_cap_triggered = gate.recommendation_type == "Soft Value Share" and any(
+        s and "Stability cap" in str(s) for s in (gate.safeguards_triggered or [])
+    )
+    strategy = select_outreach_strategy(
+        recommendation_type=gate.recommendation_type,
+        dominant_dimension=dominant,
+        alignment_high=align,
+        playbook=playbook,
+        stability_cap_triggered=stability_cap_triggered,
+    )
+    strategy_notes_for_persist = {
+        "channel": strategy.channel,
+        "cta_type": strategy.cta_type,
+        "value_asset": strategy.value_asset,
+        "pattern_frame": strategy.pattern_frame,
+    }
 
+    draft_variants: list[dict] = []
+    if gate.should_generate_draft:
         tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
         draft = generate_ore_draft(
             company=company,
             recommendation_type=gate.recommendation_type,
-            pattern_frame=pattern_frame,
-            value_asset=value_asset,
-            cta=cta,
+            pattern_frame=strategy.pattern_frame,
+            value_asset=strategy.value_asset,
+            cta=strategy.cta_type,
             pack=pack,
             explainability_snippet=explainability_snippet,
             top_signal_labels=top_signal_labels,
@@ -317,8 +327,8 @@ def generate_ore_recommendation(
                     # Rewrite once (simplified: use fallback that passes critic)
                     fallback = _build_critic_compliant_fallback(
                         company=company,
-                        value_asset=value_asset,
-                        cta=cta,
+                        value_asset=strategy.value_asset,
+                        cta=strategy.cta_type,
                     )
                     fallback_critic = check_critic(
                         fallback.get("subject", ""),
@@ -544,26 +554,31 @@ def regenerate_ore_draft(
     entity_signal_ids = ctx.get("signal_ids") or set()
     suppressed_signal_ids_for_critic = entity_signal_ids & no_ref_signal_ids
 
-    pattern_frames = playbook.get("pattern_frames") or {}
-    value_assets = playbook.get("value_assets") or []
-    ctas = playbook.get("ctas") or []
+    # Issue #117 M4: strategy from selector (same as generate_ore_recommendation).
     dominant = get_dominant_trs_dimension(
         snapshot.momentum,
         snapshot.complexity,
         snapshot.pressure,
         snapshot.leadership_gap,
     )
-    pattern_frame = pattern_frames.get(dominant, pattern_frames.get("momentum", ""))
-    value_asset = value_assets[0] if value_assets else ""
-    cta = ctas[0] if ctas else ""
+    stability_cap_triggered = gate.recommendation_type == "Soft Value Share" and any(
+        s and "Stability cap" in str(s) for s in (gate.safeguards_triggered or [])
+    )
+    strategy = select_outreach_strategy(
+        recommendation_type=gate.recommendation_type,
+        dominant_dimension=dominant,
+        alignment_high=align,
+        playbook=playbook,
+        stability_cap_triggered=stability_cap_triggered,
+    )
     tone_def = _tone_definition_for_recommendation(playbook, gate.recommendation_type)
 
     draft = generate_ore_draft(
         company=company,
         recommendation_type=gate.recommendation_type,
-        pattern_frame=pattern_frame,
-        value_asset=value_asset,
-        cta=cta,
+        pattern_frame=strategy.pattern_frame,
+        value_asset=strategy.value_asset,
+        cta=strategy.cta_type,
         pack=pack,
         explainability_snippet=explainability_snippet,
         top_signal_labels=top_signal_labels,
@@ -617,8 +632,8 @@ def regenerate_ore_draft(
         else:
             fallback = _build_critic_compliant_fallback(
                 company=company,
-                value_asset=value_asset,
-                cta=cta,
+                value_asset=strategy.value_asset,
+                cta=strategy.cta_type,
             )
             fallback_critic = check_critic(
                 fallback.get("subject", ""),
