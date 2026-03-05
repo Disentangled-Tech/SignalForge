@@ -43,9 +43,7 @@ def test_compute_esl_from_context_return_includes_signal_ids(
     db.add(readiness)
     db.commit()
 
-    ctx = compute_esl_from_context(
-        db, company.id, as_of, pack_id=fractional_cto_pack_id
-    )
+    ctx = compute_esl_from_context(db, company.id, as_of, pack_id=fractional_cto_pack_id)
     assert ctx is not None
     assert "signal_ids" in ctx
     assert ctx["signal_ids"] == set(), "No SignalInstances → signal_ids empty"
@@ -61,9 +59,7 @@ def test_compute_esl_from_context_return_includes_signal_ids(
     db.add(inst)
     db.commit()
 
-    ctx2 = compute_esl_from_context(
-        db, company.id, as_of, pack_id=fractional_cto_pack_id
-    )
+    ctx2 = compute_esl_from_context(db, company.id, as_of, pack_id=fractional_cto_pack_id)
     assert ctx2 is not None
     assert "signal_ids" in ctx2
     assert ctx2["signal_ids"] == {"funding_raised"}
@@ -100,7 +96,9 @@ def test_engagement_snapshot_writer_persists(db: Session, fractional_cto_pack_id
     db.add(readiness)
     db.commit()
 
-    result = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
+    result = write_engagement_snapshot(
+        db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id
+    )
 
     assert result is not None
     assert result.company_id == company.id
@@ -151,17 +149,23 @@ def test_engagement_snapshot_writer_upserts(db: Session, fractional_cto_pack_id)
     db.add(readiness)
     db.commit()
 
-    first = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
+    first = write_engagement_snapshot(
+        db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id
+    )
     assert first is not None
     first_id = first.id
 
-    second = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
+    second = write_engagement_snapshot(
+        db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id
+    )
     assert second is not None
     assert second.id == first_id
     assert second.esl_score == first.esl_score
 
 
-def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session, fractional_cto_pack_id) -> None:
+def test_engagement_snapshot_with_outreach_history_cadence_blocked(
+    db: Session, fractional_cto_pack_id
+) -> None:
     """Recent outreach sets cadence_blocked=True and lowers ESL."""
     company = Company(name="CadenceCo", source="manual")
     db.add(company)
@@ -190,7 +194,9 @@ def test_engagement_snapshot_with_outreach_history_cadence_blocked(db: Session, 
     db.add(history)
     db.commit()
 
-    result = write_engagement_snapshot(db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id)
+    result = write_engagement_snapshot(
+        db, company.id, date(2026, 2, 18), pack_id=fractional_cto_pack_id
+    )
 
     assert result is not None
     assert result.cadence_blocked is True
@@ -285,9 +291,7 @@ def test_compute_esl_from_context_signal_ids_from_core_pack_when_core_pack_id_pr
     db.commit()
 
     # Without core_pack_id: query uses workspace pack → no instances → signal_ids empty
-    ctx_no_core = compute_esl_from_context(
-        db, company.id, as_of, pack_id=esl_blocked_pack_id
-    )
+    ctx_no_core = compute_esl_from_context(db, company.id, as_of, pack_id=esl_blocked_pack_id)
     assert ctx_no_core is not None
     assert ctx_no_core["signal_ids"] == set()
 

@@ -11,13 +11,19 @@ Issue #121 M2: Pattern frame is selected by get_dominant_trs_dimension(snapshot)
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Company, OutreachRecommendation, ReadinessSnapshot, SignalPack
+from app.models import (
+    Company,
+    OutreachRecommendation,
+    ReadinessSnapshot,
+    SignalInstance,
+    SignalPack,
+)
 from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME
 
 # Critic-compliant draft for integration test (no surveillance, single CTA, opt-out)
@@ -671,7 +677,9 @@ def test_ore_pipeline_pattern_frame_from_dominant_dimension(db: Session) -> None
     db.commit()
     db.refresh(company)
 
-    pressure_frame = "When timelines get tighter, it helps to reduce decision load and get a clean plan."
+    pressure_frame = (
+        "When timelines get tighter, it helps to reduce decision load and get a clean plan."
+    )
     playbook_with_frames = {
         "pattern_frames": {
             "momentum": "Momentum framing text.",
@@ -945,7 +953,12 @@ def test_ore_pipeline_m4_channel_and_strategy_notes_from_selector(db: Session) -
     db.commit()
 
     playbook_with_channels = {
-        "pattern_frames": {"momentum": "M frame", "complexity": "C frame", "pressure": "P", "leadership_gap": "G"},
+        "pattern_frames": {
+            "momentum": "M frame",
+            "complexity": "C frame",
+            "pressure": "P",
+            "leadership_gap": "G",
+        },
         "value_assets": ["Checklist asset"],
         "ctas": ["Want me to send it?"],
         "channels": ["Email"],
@@ -1013,7 +1026,12 @@ def test_ore_pipeline_m4_strategy_notes_default_channel_when_no_channels(db: Ses
     db.commit()
 
     playbook_no_channels = {
-        "pattern_frames": {"momentum": "M", "complexity": "C", "pressure": "P", "leadership_gap": "G"},
+        "pattern_frames": {
+            "momentum": "M",
+            "complexity": "C",
+            "pressure": "P",
+            "leadership_gap": "G",
+        },
         "value_assets": ["Checklist"],
         "ctas": ["Send it?"],
         "forbidden_phrases": [],
@@ -1117,6 +1135,83 @@ def test_ore_pipeline_passes_playbook_forbidden_phrases_to_critic(db: Session) -
         assert isinstance(call["kwargs"]["forbidden_phrases"], list)
 
 
+def test_ore_pipeline_generate_passes_full_critic_kwargs_when_esl_computed(db: Session) -> None:
+    """When ESL is computed (no stability_modifier), generate path passes full critic kwargs."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="FullCriticKwargsCo",
+        website_url="https://fullcritic.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 24)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    critic_calls: list[dict] = []
+
+    def record_critic(subject: str, message: str, **kwargs: object) -> object:
+        critic_calls.append({"kwargs": dict(kwargs)})
+        from app.services.ore.critic import check_critic as real_critic
+
+        return real_critic(subject, message, **kwargs)
+
+    ctx_with_signals = {
+        "esl_composite": 0.9,
+        "stability_modifier": 0.9,
+        "cadence_blocked": False,
+        "alignment_high": True,
+        "esl_decision": "allow",
+        "sensitivity_level": "low",
+        "signal_ids": {"sig_a", "sig_b"},
+        "explain": {},
+    }
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.compute_esl_from_context",
+            return_value=ctx_with_signals,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            return_value=_ORE_DRAFT,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.check_critic",
+            side_effect=record_critic,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(db, company_id=company.id, as_of=as_of)
+
+    assert rec is not None
+    assert len(critic_calls) >= 1, "Generate path must call check_critic when ESL is computed"
+    for call in critic_calls:
+        kwargs = call["kwargs"]
+        assert "suppressed_signal_ids" in kwargs, (
+            "Generate path must pass suppressed_signal_ids to critic when ESL is computed"
+        )
+        assert "tone_constraint" in kwargs
+        assert "pack_id" in kwargs
+        assert "allowed_signal_labels" in kwargs
+
+
 def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallback(
     db: Session,
 ) -> None:
@@ -1194,6 +1289,226 @@ def test_ore_pipeline_critic_rejects_draft_with_pack_forbidden_phrase_uses_fallb
     )
 
 
+def test_ore_pipeline_critic_failure_when_fallback_also_fails_sets_strategy_notes(
+    db: Session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """M5 (Issue #120): When draft and fallback both fail critic, strategy_notes set and violation logged."""
+    from app.services.ore.critic import CriticResult
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="BothFailCo",
+        website_url="https://bothfail.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 25)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    draft_with_forbidden = {
+        "subject": "Quick question",
+        "message": (
+            "Hi Jane, our limited time only offer might help. "
+            "Want me to send the checklist? No worries if now isn't the time."
+        ),
+    }
+
+    def playbook_forbidden_in_fallback(*args: object, **kwargs: object) -> object:
+        from app.services.ore.playbook_loader import get_ore_playbook as real_get
+
+        playbook = real_get(*args, **kwargs)
+        playbook = dict(playbook)
+        playbook["forbidden_phrases"] = ["limited time only", "No worries"]
+        return playbook
+
+    # Mock critic to always fail so we deterministically hit the branch that sets
+    # strategy_notes["message"] (avoids flakiness from real critic/playbook interaction).
+    failing_critic = CriticResult(passed=False, violations=["Pack forbidden phrase: 'limited time only'"])
+
+    with caplog.at_level(logging.WARNING, logger="app.services.ore.ore_pipeline"):
+        with (
+            patch(
+                "app.services.ore.ore_pipeline.get_ore_playbook",
+                side_effect=playbook_forbidden_in_fallback,
+            ),
+            patch(
+                "app.services.ore.ore_pipeline.generate_ore_draft",
+                return_value=draft_with_forbidden,
+            ),
+            patch(
+                "app.services.ore.ore_pipeline.check_critic",
+                return_value=failing_critic,
+            ),
+        ):
+            from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+            rec = generate_ore_recommendation(
+                db,
+                company_id=company.id,
+                as_of=as_of,
+                stability_modifier=0.9,
+                cooldown_active=False,
+                alignment_high=True,
+            )
+
+    assert rec is not None
+    notes = rec.strategy_notes
+    assert isinstance(notes, dict)
+    assert "message" in notes, (
+        f"strategy_notes must contain 'message' when draft and fallback both fail critic; got keys: {list(notes.keys())}"
+    )
+    assert "Manual Review" in str(notes["message"])
+    ore_warnings = [r for r in caplog.records if "ORE critic violation" in (r.getMessage() or "")]
+    assert len(ore_warnings) >= 1, (
+        "Pipeline must log ORE critic violation when storing failed draft"
+    )
+
+
+def test_ore_regenerate_passes_suppressed_signal_ids_to_critic_and_logs_on_failure(
+    db: Session, caplog: pytest.LogCaptureFixture
+) -> None:
+    """M5 (Issue #120): Regenerate path passes suppressed_signal_ids to critic; when critic fails, logs violation_type, pack_id, signal_id."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+    assert pack_id is not None
+
+    company = Company(
+        name="SuppressedSignalCo",
+        website_url="https://suppressed.example.com",
+        founder_name="Jane",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    as_of = date(2026, 2, 28)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=80,
+        pressure=75,
+        leadership_gap=70,
+        composite=82,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    inst = SignalInstance(
+        entity_id=company.id,
+        signal_id="financial_distress",
+        pack_id=pack_id,
+        first_seen=datetime(2026, 2, 1, tzinfo=UTC),
+        last_seen=datetime(2026, 2, 10, tzinfo=UTC),
+    )
+    db.add(inst)
+    db.commit()
+
+    existing = OutreachRecommendation(
+        company_id=company.id,
+        as_of=as_of,
+        recommendation_type="Soft Value Share",
+        outreach_score=41,
+        channel="LinkedIn DM",
+        draft_variants=[_ORE_DRAFT],
+        pack_id=pack_id,
+        playbook_id=DEFAULT_PLAYBOOK_NAME,
+        generation_version="1",
+    )
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
+
+    critic_calls: list[dict] = []
+
+    def record_critic(*args: object, **kwargs: object) -> object:
+        critic_calls.append(dict(kwargs))
+        from app.services.ore.critic import check_critic as real_critic
+
+        return real_critic(*args, **kwargs)
+
+    draft_with_suppressed_phrase = {
+        "subject": "Quick question",
+        "message": (
+            "Hi Jane, I see you are struggling financially. "
+            "Want me to send a checklist? No worries if now isn't the time."
+        ),
+    }
+
+    def playbook_with_no_worries_forbidden(*args: object, **kwargs: object) -> object:
+        from app.services.ore.playbook_loader import get_ore_playbook as real_get
+
+        playbook = real_get(*args, **kwargs)
+        playbook = dict(playbook)
+        playbook["forbidden_phrases"] = (playbook.get("forbidden_phrases") or []) + ["No worries"]
+        return playbook
+
+    with caplog.at_level(logging.WARNING, logger="app.services.ore.ore_pipeline"):
+        with (
+            patch(
+                "app.services.ore.ore_pipeline._no_reference_signal_ids",
+                return_value={"financial_distress"},
+            ),
+            patch(
+                "app.services.ore.ore_pipeline.get_ore_playbook",
+                side_effect=playbook_with_no_worries_forbidden,
+            ),
+            patch(
+                "app.services.ore.ore_pipeline.generate_ore_draft",
+                return_value=draft_with_suppressed_phrase,
+            ),
+            patch(
+                "app.services.ore.ore_pipeline.check_critic",
+                side_effect=record_critic,
+            ),
+        ):
+            from app.services.ore.ore_pipeline import regenerate_ore_draft
+
+            rec = regenerate_ore_draft(
+                db,
+                company_id=company.id,
+                as_of=as_of,
+                pack_id=pack_id,
+            )
+
+    assert rec is not None
+    assert len(critic_calls) >= 1
+    suppressed_in_any = any(
+        (kwargs.get("suppressed_signal_ids") or set()) & {"financial_distress"}
+        for kwargs in critic_calls
+    )
+    assert suppressed_in_any, (
+        "Regenerate path must pass suppressed_signal_ids to critic when entity has no-reference signals"
+    )
+    ore_warnings = [r for r in caplog.records if "ORE critic violation" in (r.getMessage() or "")]
+    assert len(ore_warnings) >= 1, (
+        "Pipeline must log ORE critic violation when storing failed draft"
+    )
+    detail_records = [
+        r for r in ore_warnings if getattr(r, "signal_id", None) == "financial_distress"
+    ]
+    assert len(detail_records) >= 1, (
+        "Log extra must include signal_id when violation is suppressed_signal"
+    )
+
+
 def test_ore_pipeline_enable_ore_polish_false_or_missing_does_not_call_polisher(
     db: Session,
 ) -> None:
@@ -1225,7 +1540,12 @@ def test_ore_pipeline_enable_ore_polish_false_or_missing_does_not_call_polisher(
     db.commit()
 
     playbook_no_polish = {
-        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "pattern_frames": {
+            "momentum": "m",
+            "complexity": "c",
+            "pressure": "p",
+            "leadership_gap": "g",
+        },
         "value_assets": ["2-page checklist"],
         "ctas": ["Want me to send that checklist?"],
         "forbidden_phrases": [],
@@ -1299,7 +1619,12 @@ def test_ore_pipeline_enable_ore_polish_true_polished_fails_original_passes_stor
         "message": "Hi Jane, I saw that you raised. Want me to send that checklist? No worries if not.",
     }
     playbook_with_polish = {
-        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "pattern_frames": {
+            "momentum": "m",
+            "complexity": "c",
+            "pressure": "p",
+            "leadership_gap": "g",
+        },
         "value_assets": ["2-page checklist"],
         "ctas": ["Want me to send that checklist?"],
         "forbidden_phrases": [],
@@ -1380,7 +1705,12 @@ def test_ore_pipeline_enable_ore_polish_true_uses_polished_draft_when_passes_cri
         ),
     }
     playbook_with_polish = {
-        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "pattern_frames": {
+            "momentum": "m",
+            "complexity": "c",
+            "pressure": "p",
+            "leadership_gap": "g",
+        },
         "value_assets": ["2-page checklist"],
         "ctas": ["Want me to send that checklist?"],
         "forbidden_phrases": [],
@@ -1454,7 +1784,12 @@ def test_ore_pipeline_enable_ore_polish_both_fail_critic_stores_fallback_not_pol
 
     polished_draft = {"subject": "Polished only", "message": "Polished body only."}
     playbook_with_polish = {
-        "pattern_frames": {"momentum": "m", "complexity": "c", "pressure": "p", "leadership_gap": "g"},
+        "pattern_frames": {
+            "momentum": "m",
+            "complexity": "c",
+            "pressure": "p",
+            "leadership_gap": "g",
+        },
         "value_assets": ["2-page Tech Inflection Checklist"],
         "ctas": ["Want me to send that checklist?"],
         "forbidden_phrases": [],
@@ -1510,7 +1845,9 @@ def test_ore_pipeline_enable_ore_polish_both_fail_critic_stores_fallback_not_pol
     assert stored.get("subject") != polished_draft["subject"]
     assert "Polished only" not in (stored.get("subject") or "")
     assert "Polished body" not in (stored.get("message") or "")
-    assert "FallbackCo" in (stored.get("subject") or "") or "No worries" in (stored.get("message") or "")
+    assert "FallbackCo" in (stored.get("subject") or "") or "No worries" in (
+        stored.get("message") or ""
+    )
 
 
 def test_ore_returns_none_when_company_not_found(db: Session) -> None:

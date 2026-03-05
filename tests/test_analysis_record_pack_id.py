@@ -36,6 +36,8 @@ def test_analyze_company_sets_pack_id_when_pack_provided(db: Session) -> None:
 
     if not os.getenv("LLM_API_KEY", "").strip():
         pytest.skip("LLM_API_KEY not set (required for analyze_company)")
+    if os.getenv("LLM_PROVIDER", "anthropic").lower() != "anthropic":
+        pytest.skip("LLM_PROVIDER must be anthropic (ADR-012); analyze_company uses get_llm_provider()")
 
     pack_id = get_default_pack_id(db)
     if pack_id is None:

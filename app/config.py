@@ -3,6 +3,7 @@ Application configuration. Loads from environment variables.
 Secrets and sensitive config must never be hardcoded.
 """
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -10,6 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 from functools import lru_cache
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -112,7 +115,16 @@ class Settings:
         self.secret_key = os.getenv("SECRET_KEY", "")
         self.internal_job_token = os.getenv("INTERNAL_JOB_TOKEN", "")
 
-        self.llm_provider = os.getenv("LLM_PROVIDER", self.llm_provider)
+        raw_provider = os.getenv("LLM_PROVIDER", self.llm_provider)
+        # ADR-012: Anthropic only. Coerce legacy/typo values so briefing and LLM flows don't fail.
+        if raw_provider and str(raw_provider).strip().lower() != "anthropic":
+            logger.warning(
+                "LLM_PROVIDER=%r is not supported; using 'anthropic'. Set LLM_PROVIDER=anthropic in .env.",
+                raw_provider,
+            )
+            self.llm_provider = "anthropic"
+        else:
+            self.llm_provider = "anthropic"
         self.llm_api_key = os.getenv("LLM_API_KEY")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY") or self.llm_api_key
         self.llm_model = os.getenv("LLM_MODEL", self.llm_model)

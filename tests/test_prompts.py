@@ -315,19 +315,29 @@ def test_resolve_prompt_content_with_v2_pack_uses_pack_file_when_present() -> No
 
 # Required placeholders for ore_outreach_v1 (app template). Pack overrides must include these (ORE design spec M5).
 ORE_OUTREACH_V1_REQUIRED_PLACEHOLDERS = frozenset(
-    {"NAME", "COMPANY", "PATTERN_FRAME", "VALUE_ASSET", "CTA", "EXPLAINABILITY_SNIPPET", "TOP_SIGNALS", "TONE_INSTRUCTION"}
+    {
+        "NAME",
+        "COMPANY",
+        "PATTERN_FRAME",
+        "VALUE_ASSET",
+        "CTA",
+        "EXPLAINABILITY_SNIPPET",
+        "TOP_SIGNALS",
+        "TONE_INSTRUCTION",
+    }
 )
 
 
 def test_pack_ore_outreach_v1_override_includes_required_placeholders() -> None:
     """Any pack that overrides ore_outreach_v1 must include {{TONE_INSTRUCTION}} and all app placeholders (ORE design spec M5)."""
-    import json
     from pathlib import Path
 
     app_template = load_prompt("ore_outreach_v1")
     app_placeholders = set(_PLACEHOLDER_RE.findall(app_template))
     required = app_placeholders  # same as app template
-    assert ORE_OUTREACH_V1_REQUIRED_PLACEHOLDERS.issubset(required), "Test sanity: app template has required placeholders"
+    assert ORE_OUTREACH_V1_REQUIRED_PLACEHOLDERS.issubset(required), (
+        "Test sanity: app template has required placeholders"
+    )
 
     packs_root = Path(__file__).resolve().parent.parent / "packs"
     if not packs_root.is_dir():

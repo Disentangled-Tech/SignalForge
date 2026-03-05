@@ -301,9 +301,7 @@ class TestValidateCoreTaxonomy:
         """Taxonomy with signals: {} is valid."""
         from app.core_taxonomy.validator import validate_core_taxonomy
 
-        validate_core_taxonomy(
-            {"signal_ids": ["foo"], "dimensions": {"M": ["foo"]}, "signals": {}}
-        )
+        validate_core_taxonomy({"signal_ids": ["foo"], "dimensions": {"M": ["foo"]}, "signals": {}})
 
     def test_signals_valid_structure_passes(self) -> None:
         """Taxonomy with signals map (signal_id -> { sensitivity }) is valid."""
@@ -327,9 +325,7 @@ class TestValidateCoreTaxonomy:
             validate_core_taxonomy,
         )
 
-        with pytest.raises(
-            CoreTaxonomyValidationError, match="sensitivity.*low.*medium.*high"
-        ):
+        with pytest.raises(CoreTaxonomyValidationError, match="sensitivity.*low.*medium.*high"):
             validate_core_taxonomy(
                 {
                     "signal_ids": ["foo"],
@@ -418,9 +414,7 @@ class TestCoreTaxonomyIntegrity:
         if not isinstance(signals, dict):
             return
         for signal_id in signals:
-            assert signal_id in signal_id_set, (
-                f"signals key '{signal_id}' is not in signal_ids"
-            )
+            assert signal_id in signal_id_set, f"signals key '{signal_id}' is not in signal_ids"
 
 
 class TestGetCoreSignalSensitivity:
