@@ -79,6 +79,8 @@ This validates and, when possible, starts:
    alembic upgrade head
    ```
 
+   If migrations are not applied, some features (e.g. company delete) may return 500 due to schema mismatch (e.g. `outreach_recommendations` columns added in Issue #123).
+
 6. **Start the server**
 
    ```bash
