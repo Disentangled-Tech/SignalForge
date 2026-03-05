@@ -44,10 +44,13 @@ def _tone_definition_for_recommendation(playbook: dict, recommendation_type: str
 def _build_explainability_context(
     snapshot: ReadinessSnapshot,
     pack: Pack | None,
+    playbook: dict | None = None,
 ) -> tuple[str, list[str]]:
     """Build explainability snippet and top_signal_labels from ReadinessSnapshot.explain (M4).
 
     Uses only signal_id/category labels and safe framing text; no raw observation text.
+    M5: When playbook provides explainability_snippet_template (non-empty string), use it
+    with {{TOP_SIGNALS}} replaced by comma-separated labels; otherwise use built-in snippet.
     """
     explain = getattr(snapshot, "explain", None) or {}
     top_events = explain.get("top_events") or []
@@ -60,11 +63,22 @@ def _build_explainability_context(
         if etype and etype not in seen:
             seen.add(etype)
             labels.append(event_type_to_label(etype, pack=pack))
-    snippet = (
-        "Top contributing categories: see TOP_SIGNALS below. Use for framing only; do not reference specific events."
-        if labels
-        else ""
+    top_signals_str = ", ".join(labels) if labels else ""
+    template = (
+        playbook.get("explainability_snippet_template").strip()
+        if isinstance(playbook, dict)
+        and isinstance(playbook.get("explainability_snippet_template"), str)
+        and playbook.get("explainability_snippet_template", "").strip()
+        else None
     )
+    if template:
+        snippet = template.replace("{{TOP_SIGNALS}}", top_signals_str) if labels else ""
+    else:
+        snippet = (
+            "Top contributing categories: see TOP_SIGNALS below. Use for framing only; do not reference specific events."
+            if labels
+            else ""
+        )
     return (snippet, labels)
 
 
@@ -229,7 +243,9 @@ def generate_ore_recommendation(
         )
 
     # M1 (Issue #121): structured logging — pack_id, playbook_id, sensitivity_level, signals (no PII)
-    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    explainability_snippet, top_signal_labels = _build_explainability_context(
+        snapshot, pack, playbook
+    )
     logger.info(
         "ORE recommendation: pack_id=%s playbook_id=%s sensitivity_level=%s recommendation_type=%s",
         resolved_pack_id,
@@ -539,7 +555,9 @@ def regenerate_ore_draft(
     if not gate.should_generate_draft:
         return None
 
-    explainability_snippet, top_signal_labels = _build_explainability_context(snapshot, pack)
+    explainability_snippet, top_signal_labels = _build_explainability_context(
+        snapshot, pack, playbook
+    )
     no_ref_signal_ids = _no_reference_signal_ids(pack)
     entity_signal_ids = ctx.get("signal_ids") or set()
     suppressed_signal_ids_for_critic = entity_signal_ids & no_ref_signal_ids
