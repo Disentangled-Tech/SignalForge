@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.ore.critic import check_critic
+from app.services.ore.critic import RECOMMENDATION_ORDER, check_critic
 
 
 def test_rejects_surveillance_phrase() -> None:
@@ -131,7 +131,9 @@ def test_rejects_draft_mentioning_suppressed_signal_phrase() -> None:
         suppressed_signal_ids={"financial_distress"},
     )
     assert result.passed is False
-    assert any("suppressed signal" in v.lower() or "financial" in v.lower() for v in result.violations)
+    assert any(
+        "suppressed signal" in v.lower() or "financial" in v.lower() for v in result.violations
+    )
     assert len(result.violation_details) >= 1
     detail = result.violation_details[0]
     assert detail.get("violation_type") == "suppressed_signal"
@@ -159,7 +161,11 @@ def test_suppressed_signal_check_case_insensitive() -> None:
         suppressed_signal_ids={"distress_mentioned"},
     )
     assert result.passed is False
-    assert any(d.get("violation_type") == "suppressed_signal" and d.get("signal_id") == "distress_mentioned" for d in result.violation_details)
+    assert any(
+        d.get("violation_type") == "suppressed_signal"
+        and d.get("signal_id") == "distress_mentioned"
+        for d in result.violation_details
+    )
 
 
 def test_optional_kwargs_pack_id_tone_allowed_labels_do_not_break() -> None:
@@ -173,3 +179,36 @@ def test_optional_kwargs_pack_id_tone_allowed_labels_do_not_break() -> None:
         allowed_signal_labels=None,
     )
     assert result.passed is True
+
+
+def test_esl_gate_filter_uses_critic_recommendation_order() -> None:
+    """ESL gate filter must use the same RECOMMENDATION_ORDER as critic (single source of truth)."""
+    from app.services.esl.esl_gate_filter import RECOMMENDATION_ORDER as gate_order
+
+    critic_order = RECOMMENDATION_ORDER
+    assert gate_order is critic_order, (
+        "esl_gate_filter must import RECOMMENDATION_ORDER from critic"
+    )
+
+
+def test_rejects_shame_framing() -> None:
+    """Draft with core shame phrase fails critic (M4)."""
+    result = check_critic(
+        "Quick question",
+        "Hi Jane, you're struggling with scale. Want me to send a checklist? No worries if now isn't the time.",
+    )
+    assert result.passed is False
+    assert any("Shame" in v for v in result.violations)
+    assert any(d.get("violation_type") == "shame_framing" for d in (result.violation_details or []))
+
+
+def test_tone_tier_exceeded_fails_when_constraint_set() -> None:
+    """When tone_constraint is Soft Value Share, draft suggesting Standard Outreach fails (M4)."""
+    result = check_critic(
+        "Quick question",
+        "Hi Jane, want to schedule a 15-min call? No worries if now isn't the time.",
+        tone_constraint="Soft Value Share",
+    )
+    assert result.passed is False
+    assert any("Tone tier" in v for v in result.violations)
+    assert any(d.get("violation_type") == "tone_tier" for d in (result.violation_details or []))
