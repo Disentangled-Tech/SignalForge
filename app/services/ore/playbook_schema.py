@@ -19,6 +19,8 @@ Optional (M1 schema; loader/pipeline use in later milestones):
     See GLOSSARY "Sensitivity & Context" and ore_pipeline M4 playbook eligibility.
   - channel: str — optional; outreach channel (e.g. "LinkedIn DM", "Email"). When absent or
     empty, pipeline uses "LinkedIn DM" when persisting OutreachRecommendation (Issue #121 M4).
+  - explainability_snippet_template: str — optional (Issue #121 M5); template for explainability
+    snippet with {{TOP_SIGNALS}} placeholder. When absent, pipeline uses built-in snippet.
 
 Existing playbooks (e.g. fractional_cto_v1) may only define pattern_frames, value_assets,
 and ctas; validation allows optional keys to be absent.
@@ -47,6 +49,7 @@ class OREPlaybook(TypedDict, total=False):
     sensitivity_levels: list[str]
     recommendation_types: list[str]
     channel: str
+    explainability_snippet_template: str
 
 
 # Known optional ORE playbook keys validated in _validate_playbooks when present
@@ -58,5 +61,6 @@ ORE_PLAYBOOK_OPTIONAL_KEYS = frozenset(
         "tone",
         "sensitivity_levels",
         "channel",
+        "explainability_snippet_template",
     }
 )

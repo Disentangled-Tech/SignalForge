@@ -9,7 +9,7 @@ class TestOREPlaybookSchema:
     """ORE playbook TypedDict and optional keys constant."""
 
     def test_optional_keys_defined(self) -> None:
-        """ORE_PLAYBOOK_OPTIONAL_KEYS contains expected optional keys (M1 includes sensitivity_levels)."""
+        """ORE_PLAYBOOK_OPTIONAL_KEYS contains expected optional keys (M1 sensitivity_levels; M4 channel; M5 explainability_snippet_template)."""
         assert ORE_PLAYBOOK_OPTIONAL_KEYS == frozenset(
             {
                 "opening_templates",
@@ -18,6 +18,7 @@ class TestOREPlaybookSchema:
                 "tone",
                 "sensitivity_levels",
                 "channel",
+                "explainability_snippet_template",
             }
         )
 
@@ -33,7 +34,7 @@ class TestOREPlaybookSchema:
         assert minimal["ctas"] == ["CTA1"]
 
     def test_ore_playbook_with_optional_keys(self) -> None:
-        """OREPlaybook accepts all optional keys including channel (Issue #121 M4)."""
+        """OREPlaybook accepts all optional keys including channel (M4) and explainability_snippet_template (M5)."""
         full: OREPlaybook = {
             "pattern_frames": {"momentum": "text"},
             "value_assets": ["a"],
@@ -43,10 +44,12 @@ class TestOREPlaybookSchema:
             "forbidden_phrases": ["I saw you"],
             "tone": "professional",
             "channel": "Email",
+            "explainability_snippet_template": "Key drivers: {{TOP_SIGNALS}}.",
         }
         assert full["forbidden_phrases"] == ["I saw you"]
         assert full["tone"] == "professional"
         assert full["channel"] == "Email"
+        assert full["explainability_snippet_template"] == "Key drivers: {{TOP_SIGNALS}}."
 
     def test_ore_playbook_tone_dict(self) -> None:
         """OREPlaybook accepts tone as dict."""

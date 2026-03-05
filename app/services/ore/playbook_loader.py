@@ -92,5 +92,11 @@ def _normalize_playbook(raw: dict[str, Any], _playbook_name: str) -> dict[str, A
             if isinstance(raw.get("channel"), str) and raw.get("channel", "").strip()
             else None
         ),
+        "explainability_snippet_template": (
+            raw.get("explainability_snippet_template").strip()
+            if isinstance(raw.get("explainability_snippet_template"), str)
+            and raw.get("explainability_snippet_template", "").strip()
+            else None
+        ),
         "enable_ore_polish": _enable_ore_polish_from_raw(raw.get("enable_ore_polish")),
     }
