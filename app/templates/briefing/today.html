@@ -97,6 +97,80 @@
     </div>
 </div>
 
+{% if items %}
+<div class="briefing-toolbar no-print">
+    <p class="text-muted" style="margin-bottom:0;">{{ items|length }} compan{{ 'y' if items|length == 1 else 'ies' }}</p>
+    <div class="sort-controls">
+        <span class="sort-label">Sort by:</span>
+        <a href="{{ briefing_path }}?sort=score" class="sort-link{% if sort == 'score' %} active{% endif %}">Highest score</a>
+        <a href="{{ briefing_path }}?sort=recent" class="sort-link{% if sort == 'recent' %} active{% endif %}">Most recent update</a>
+        <a href="{{ briefing_path }}?sort=outreach" class="sort-link{% if sort == 'outreach' %} active{% endif %}">Last outreach</a>
+        <a href="{{ briefing_path }}?sort=outreach_score" class="sort-link{% if sort == 'outreach_score' %} active{% endif %}">By outreach score</a>
+    </div>
+</div>
+
+{% for item in items %}
+<div class="briefing-card">
+    <div class="company-header">
+        <div class="company-title">
+            <a href="/companies/{{ item.company.id }}">{{ item.company.name }}</a>
+            {% set stage = item.analysis.stage or item.company.current_stage or 'unknown' %}
+            <span class="stage-badge stage-{{ stage }}">{{ stage|replace('_', ' ') }}</span>
+            {% if item.company.founder_name %}
+            <span class="founder">Founded by {{ item.company.founder_name }}</span>
+            {% endif %}
+        </div>
+        {% set item_score = display_scores.get(item.company.id) if item.company.id in display_scores else item.company.cto_need_score %}
+        {% if item_score is not none %}
+        <span class="score-badge">CTO Score: {{ item_score }}</span>
+        {% endif %}
+    </div>
+    {% set item_esl = esl_by_company.get(item.company_id) %}
+    {% if item_esl %}
+    <div class="emerging-badges">
+        <span class="emerging-recommendation">{{ item_esl.engagement_type or item_esl.esl_decision or '—' }}</span>
+        {% if item_esl.recommendation_band %}
+        <span class="badge {% if item_esl.recommendation_band == 'HIGH_PRIORITY' %}badge-green{% elif item_esl.recommendation_band == 'WATCH' %}badge-yellow{% else %}badge-gray{% endif %}">{{ item_esl.recommendation_band }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if item.why_now %}
+    <div class="section-label">Why now</div>
+    <div class="section-text">{{ item.why_now }}</div>
+    {% endif %}
+    {% if item.risk_summary %}
+    <div class="section-label">Risk summary</div>
+    <div class="section-text">{{ item.risk_summary }}</div>
+    {% endif %}
+    {% if item.suggested_angle %}
+    <div class="section-label">Suggested angle</div>
+    <div class="section-text">{{ item.suggested_angle }}</div>
+    {% endif %}
+    {% if item.outreach_subject or item.outreach_message %}
+    <div class="outreach-block">
+        {% if item.outreach_subject %}
+        <div class="outreach-subject">{{ item.outreach_subject }}</div>
+        {% endif %}
+        <div class="outreach-message">{{ item.outreach_message or '' }}</div>
+        <button class="copy-btn" onclick="copyOutreach(this, {{ item.id }})" data-subject="{{ item.outreach_subject or '' }}" data-message="{{ item.outreach_message or '' }}">📋 Copy Outreach</button>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+{% else %}
+<div class="empty-state">
+    <h2>No briefing for {{ briefing_date.strftime('%B %d, %Y') }}</h2>
+    <p>No briefing items have been generated for this date yet.</p>
+    <form method="post" action="{{ generate_action|default('/briefing/generate') }}">
+        <button type="submit" class="btn btn-primary">Generate Now</button>
+    </form>
+    {% if briefing_date != today %}
+    <p style="margin-top:1rem;"><a href="/briefing">Back to today</a></p>
+    {% endif %}
+</div>
+{% endif %}
+
 <section class="emerging-section no-print">
     <h2>Emerging Companies to Watch</h2>
     {% if emerging_companies %}
@@ -154,105 +228,14 @@
     {% endfor %}
     {% else %}
     <div class="empty-state" style="padding: 1.5rem 1rem;">
+        {% if items %}
+        <p style="margin:0;color:#94a3b8;">No additional emerging companies for this date. Run score nightly to populate the watchlist.</p>
+        {% else %}
         <p style="margin:0;color:#94a3b8;">No emerging companies for this date. Run score nightly to populate readiness and engagement snapshots.</p>
+        {% endif %}
     </div>
     {% endif %}
 </section>
-
-{% if items %}
-<div class="briefing-toolbar no-print">
-    <p class="text-muted" style="margin-bottom:0;">{{ items|length }} compan{{ 'y' if items|length == 1 else 'ies' }}</p>
-    <div class="sort-controls">
-        <span class="sort-label">Sort by:</span>
-        <a href="{{ briefing_path }}?sort=score" class="sort-link{% if sort == 'score' %} active{% endif %}">Highest score</a>
-        <a href="{{ briefing_path }}?sort=recent" class="sort-link{% if sort == 'recent' %} active{% endif %}">Most recent update</a>
-        <a href="{{ briefing_path }}?sort=outreach" class="sort-link{% if sort == 'outreach' %} active{% endif %}">Last outreach</a>
-        <a href="{{ briefing_path }}?sort=outreach_score" class="sort-link{% if sort == 'outreach_score' %} active{% endif %}">By outreach score</a>
-    </div>
-</div>
-
-{% for item in items %}
-<div class="briefing-card">
-    <div class="company-header">
-        <div class="company-title">
-            <a href="/companies/{{ item.company.id }}">{{ item.company.name }}</a>
-            {% set stage = item.analysis.stage or item.company.current_stage or 'unknown' %}
-            <span class="stage-badge stage-{{ stage }}">{{ stage|replace('_', ' ') }}</span>
-            {% if item.company.founder_name %}
-            <span class="founder">Founded by {{ item.company.founder_name }}</span>
-            {% endif %}
-        </div>
-        {% set item_score = display_scores.get(item.company.id) if item.company.id in display_scores else item.company.cto_need_score %}
-        {% if item_score is not none %}
-        <span class="score-badge">CTO Score: {{ item_score }}</span>
-        {% endif %}
-    </div>
-    {% set item_esl = esl_by_company.get(item.company_id) %}
-    {% if item_esl %}
-    <div class="emerging-badges">
-        <span class="emerging-recommendation">{{ item_esl.engagement_type }}</span>
-        <span class="score-badge" style="margin-left:0.25rem;">Outreach: {{ item_esl.outreach_score }}</span>
-        <span class="emerging-dim">ESL {{ "%.2f"|format(item_esl.esl_score) }}</span>
-        {% if item_esl.esl_decision == 'suppress' %}
-        <span class="emerging-sensitivity emerging-sensitivity-suppressed">Suppressed</span>
-        {% elif item_esl.esl_decision == 'allow_with_constraints' %}
-        <span class="emerging-sensitivity emerging-sensitivity-constrained">Constrained</span>
-        {% elif item_esl.sensitivity_level %}
-        <span class="emerging-sensitivity emerging-sensitivity-{{ item_esl.sensitivity_level|lower }}">{{ item_esl.sensitivity_level|capitalize }}</span>
-        {% endif %}
-        {% if item_esl.esl_decision == 'allow_with_constraints' and item_esl.tone_constraint %}
-        <span class="emerging-sensitivity-explanation">Max: {{ item_esl.tone_constraint }}</span>
-        {% endif %}
-        {% if item_esl.cadence_blocked %}
-        <span class="emerging-cooldown">Cooldown active</span>
-        {% endif %}
-        {% if item_esl.stability_cap_triggered %}
-        <span class="emerging-stability-cap">Stability cap — Soft Value Share only</span>
-        {% endif %}
-    </div>
-    {% endif %}
-
-    {% if item.why_now %}
-    <div class="section-label">Why Now</div>
-    <div class="section-text">{{ item.why_now }}</div>
-    {% endif %}
-
-    {% if item.risk_summary %}
-    <div class="section-label">Risk Summary</div>
-    <div class="section-text">{{ item.risk_summary }}</div>
-    {% endif %}
-
-    {% if item.suggested_angle %}
-    <div class="section-label">Suggested Angle</div>
-    <div class="section-text">{{ item.suggested_angle }}</div>
-    {% endif %}
-
-    {% if item.outreach_subject or item.outreach_message %}
-    <div class="outreach-block">
-        {% if item.outreach_subject %}
-        <div class="outreach-subject">Subject: {{ item.outreach_subject }}</div>
-        {% endif %}
-        {% if item.outreach_message %}
-        <div class="outreach-message">{{ item.outreach_message }}</div>
-        {% endif %}
-        <button class="copy-btn" onclick="copyOutreach(this, {{ item.id }})" data-subject="{{ item.outreach_subject or '' }}" data-message="{{ item.outreach_message or '' }}">📋 Copy Outreach</button>
-    </div>
-    {% endif %}
-</div>
-{% endfor %}
-
-{% else %}
-<div class="empty-state">
-    <h2>No briefing for {{ briefing_date.strftime('%B %d, %Y') }}</h2>
-    <p>No briefing items have been generated for this date yet.</p>
-    <form method="post" action="{{ generate_action|default('/briefing/generate') }}">
-        <button type="submit" class="btn btn-primary">Generate Now</button>
-    </form>
-    {% if briefing_date != today %}
-    <p style="margin-top:1rem;"><a href="/briefing">Back to today</a></p>
-    {% endif %}
-</div>
-{% endif %}
 
 <script>
 function copyOutreach(btn, itemId) {
