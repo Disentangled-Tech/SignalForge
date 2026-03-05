@@ -71,16 +71,19 @@ Consumers (draft generator, ORE pipeline, critic) use this single source of trut
 
 ---
 
-## 3. Critic extension (forbidden phrases)
+## 3. Critic extension (pack-aware context and logging)
 
 **Module:** `app/services/ore/critic.py`
 
 The critic enforces:
 
-- Core rules: no surveillance phrases, no urgency language, single CTA, opt-out language, short paragraphs (see `docs/critic_rules.md`).
-- **Pack forbidden phrases:** When the ORE pipeline passes `forbidden_phrases` from the playbook into `check_critic(subject, message, forbidden_phrases=...)`, the critic treats any draft containing one of those phrases (case-insensitive) as a violation. When `forbidden_phrases` is `None` or empty, behavior is unchanged (core rules only).
+- **Core rules:** No surveillance phrases, no urgency language, single CTA, opt-out language, short paragraphs, shame framing (see `docs/critic_rules.md`).
+- **Pack forbidden phrases:** When the ORE pipeline passes `forbidden_phrases` from the playbook, any draft containing one of those phrases (case-insensitive) fails.
+- **Pack-aware context (Issue #120):** The pipeline passes optional `suppressed_signal_ids` (entity signals that must not be referenced), `tone_constraint` (max allowed tier), `pack_id`, and `allowed_signal_labels`. When `suppressed_signal_ids` is non-empty, the critic checks the draft against a core phrase map so drafts do not mention core-banned or pack-blocked signals. When `tone_constraint` is set, the draft must not exceed that tier. Violations are returned in `CriticResult.violation_details` (violation_type, signal_id, phrase, etc.) for logging.
 
-Pipeline usage: `check_critic(subject, message, forbidden_phrases=playbook.get("forbidden_phrases") or [])`.
+**Logging:** On critic failure, the pipeline calls `_log_critic_violations(critic_result, company_id, pack_id)` and logs each violation with structured fields (violation_type, pack_id, signal_id when applicable). Strategy_notes are set with a "Manual Review" message and short violation summary when the draft is stored for manual review.
+
+Pipeline usage: `check_critic(subject, message, forbidden_phrases=..., suppressed_signal_ids=..., tone_constraint=..., pack_id=..., allowed_signal_labels=...)` with context derived from ESL and pack (see `ore_pipeline.generate_ore_recommendation`).
 
 ---
 
@@ -101,6 +104,30 @@ Pipeline usage: `check_critic(subject, message, forbidden_phrases=playbook.get("
 - **Prompt:** The base template `app/prompts/ore_outreach_v1.md` (and any pack override) must include `{{TONE_INSTRUCTION}}`. When no tone constraint is set, the pipeline passes an empty string.
 
 Tone gating is prompt-only: it does not change policy gate, critic, or ESL logic.
+
+---
+
+## 5a. Optional LLM polishing (hybrid mode, Issue #119)
+
+When the playbook sets **enable_ore_polish** to `true`, ORE runs an optional LLM polishing step after draft generation and before the critic. This "hybrid" path improves readability and flow without changing meaning or adding claims.
+
+**Inputs to the polisher:**
+
+- **Draft** — Subject and message from `generate_ore_draft`.
+- **Pack tone** — `tone_definition` (from playbook `tone` by recommendation_type or default).
+- **Sensitivity** — Sensitivity-derived tone instruction (same as draft generator).
+- **Forbidden phrases** — Playbook `forbidden_phrases`; the polisher is instructed not to introduce them.
+- **Allowed framing** — Top signal labels from the snapshot; the polisher must not reference events or signals outside this list (no suppressed or out-of-scope references).
+
+**Flow:**
+
+1. Generate draft → if `enable_ore_polish` is true, call `polish_ore_draft(...)` (see `app/services/ore/polisher.py`).
+2. Run **critic** on the candidate (polished draft if polish succeeded, else original draft).
+3. If critic **passes** → persist the candidate.
+4. If critic **fails** and the candidate was polished → set candidate to **original** draft and run critic again on the original; if original passes, persist original; otherwise use the existing template fallback path.
+5. If polish was not enabled and critic fails → existing behavior (template fallback).
+
+**Constraints (polisher prompt):** Preserve meaning and explainability; match pack tone; do not add urgency or speculation not in the playbook; do not reference events/signals outside the allowed framing list. The critic still runs on the chosen draft; ESL hard bans and pack forbidden phrases cannot be bypassed.
 
 ---
 
@@ -131,8 +158,8 @@ Logging is implemented in `app/services/ore/ore_pipeline.py` after the policy ga
 3. **Policy gate** → Cooldown, stability cap, ESL suppress; optionally playbook `sensitivity_levels` (no draft if entity sensitivity not in list).
 4. **Pattern frame** → `get_dominant_trs_dimension(snapshot M/C/P/G)` → key into `playbook["pattern_frames"]`; fallback key `momentum`.
 5. **Draft** → `generate_ore_draft(..., explainability_snippet, top_signal_labels, tone_constraint, tone_definition, recipient_label)` using pack prompt and playbook pattern_frames/value_assets/ctas; recipient_label from pack taxonomy or "Contact".
-6. **Optional polish** → When `playbook["enable_ore_polish"]` is true: call `polish_ore_draft(draft, tone_definition, sensitivity_level, forbidden_phrases, allowed_framing_labels)`; if the polisher returns non-empty subject/message, use that as the candidate draft; otherwise keep the original draft as candidate. When polish is disabled, candidate draft = original draft.
-7. **Critic** → `check_critic(subject, message, forbidden_phrases=playbook["forbidden_phrases"])` on the candidate draft. If the critic fails and the candidate was polished, set candidate to the original draft and run the critic again on the original; if the original passes, use it. If the critic still fails, pipeline uses the template fallback (same as when polish is disabled).
+6. **Optional polish** → When `playbook["enable_ore_polish"]` is true: call `polish_ore_draft(draft["subject"], draft["message"], tone_definition, sensitivity_level, forbidden_phrases, allowed_framing_labels)`; if the polisher returns non-empty subject/message, use that as the candidate draft; otherwise keep the original draft as candidate. When polish is disabled, candidate draft = original draft.
+7. **Critic** → `check_critic(..., forbidden_phrases=..., suppressed_signal_ids=..., tone_constraint=..., pack_id=..., allowed_signal_labels=...)` on the candidate draft. If the critic fails and the candidate was polished, set candidate to the original draft and run the critic again on the original; if the original passes, use it. If the critic still fails, pipeline uses the template fallback or stores for manual review and logs violation_type, pack_id, signal_id.
 8. **Persist** → `OutreachRecommendation` with `pack_id`, `playbook_id="ore_outreach"`, `channel` from playbook or default `"LinkedIn DM"`.
 
 ---
