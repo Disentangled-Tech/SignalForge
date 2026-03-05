@@ -53,7 +53,7 @@ def select_outreach_strategy(
     soft_ctas = playbook.get("soft_ctas") if isinstance(playbook.get("soft_ctas"), list) else None
 
     pattern_frame = _resolve_pattern_frame(pattern_frames, dominant_dimension)
-    channel = _resolve_channel(channels)
+    channel = _resolve_channel(channels, playbook.get("channel"))
     cta_type = _resolve_cta(ctas, soft_ctas, stability_cap_triggered)
     value_asset = _resolve_value_asset(value_assets, recommendation_type)
 
@@ -75,10 +75,12 @@ def _resolve_pattern_frame(pattern_frames: dict[str, str], dominant_dimension: s
     return ""
 
 
-def _resolve_channel(channels: Any) -> str:
-    """Resolve channel: first from playbook channels list, else default LinkedIn DM."""
+def _resolve_channel(channels: Any, channel_singular: Any = None) -> str:
+    """Resolve channel: channels list, else playbook channel (singular), else default LinkedIn DM."""
     if isinstance(channels, list) and len(channels) > 0 and isinstance(channels[0], str):
         return str(channels[0]).strip() or _DEFAULT_CHANNEL
+    if isinstance(channel_singular, str) and channel_singular.strip():
+        return channel_singular.strip()
     return _DEFAULT_CHANNEL
 
 

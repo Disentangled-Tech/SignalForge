@@ -264,6 +264,8 @@ outreach_recommendations
  • safeguards_triggered (json)
  • created_at
 
+**strategy_notes shape (Issue #117 M4):** The pipeline sets `strategy_notes` from the Strategy Selector so each recommendation records the chosen strategy for audit and debugging. The object always includes: `channel`, `cta_type`, `value_asset`, `pattern_frame`. When the draft fails the critic and is stored for manual review, the pipeline also adds a `message` key with a short summary of the critic result (e.g. violation types). Consumers should treat `strategy_notes` as an opaque JSON object; the four selector keys are stable for query/display; `message` is optional and only present on critic failure.
+
 This enables:
  • reviewing later
  • comparing what worked
