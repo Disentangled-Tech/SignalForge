@@ -696,13 +696,15 @@ def _log_critic_violations(
         return
     details = critic_result.violation_details or []
     for v in details:
+        # Critic uses "violation_type"; support legacy "type" for backward compat
+        vtype = v.get("violation_type") or v.get("type") or "unknown"
         logger.warning(
             "ORE critic violation: type=%s pack_id=%s company_id=%s",
-            v.get("type", "unknown"),
+            vtype,
             pack_id,
             company_id,
             extra={
-                "violation_type": v.get("type"),
+                "violation_type": vtype,
                 "pack_id": str(pack_id),
                 "signal_id": v.get("signal_id"),
                 "company_id": company_id,
