@@ -420,3 +420,33 @@ class TestSelectorContractForPipelineIntegration:
         )
         assert result.pattern_frame == PATTERN_FRAMES["pressure"]
         assert result.channel == "LinkedIn DM"
+
+
+class TestStrategyNotesShapeForAuditPersist:
+    """M5 (Issue #117): StrategySelectorResult is serializable to strategy_notes dict for audit persist.
+
+    When M4 persists selector output (Option A), strategy_notes = { channel, cta_type, value_asset,
+    pattern_frame }. This contract ensures the selector result can be stored without schema change.
+    """
+
+    def test_selector_result_serializable_to_strategy_notes_dict(self) -> None:
+        """StrategySelectorResult fields can be persisted as strategy_notes dict for audit."""
+        playbook = _minimal_playbook()
+        result = select_outreach_strategy(
+            recommendation_type="Soft Value Share",
+            dominant_dimension="pressure",
+            alignment_high=True,
+            playbook=playbook,
+            stability_cap_triggered=True,
+        )
+        strategy_notes = {
+            "channel": result.channel,
+            "cta_type": result.cta_type,
+            "value_asset": result.value_asset,
+            "pattern_frame": result.pattern_frame,
+        }
+        assert isinstance(strategy_notes["channel"], str)
+        assert isinstance(strategy_notes["cta_type"], str)
+        assert isinstance(strategy_notes["value_asset"], str)
+        assert isinstance(strategy_notes["pattern_frame"], str)
+        assert len(strategy_notes) == 4

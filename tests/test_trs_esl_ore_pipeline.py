@@ -735,6 +735,187 @@ def test_ore_pipeline_pattern_frame_from_dominant_dimension(db: Session) -> None
     )
 
 
+def test_ore_pipeline_complexity_dominant_uses_complexity_frame(db: Session) -> None:
+    """M5 regression (Issue #117): Snapshot with complexity dominant yields draft with playbook's complexity pattern frame."""
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ComplexityDomCo",
+        website_url="https://complexitydom.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    complexity_frame = "When products add integrations and enterprise asks, systems often need a stabilization pass."
+    playbook_with_frames = {
+        "pattern_frames": {
+            "momentum": "Momentum framing text.",
+            "complexity": complexity_frame,
+            "pressure": "When timelines get tighter.",
+            "leadership_gap": "When there isn't a dedicated technical owner yet.",
+        },
+        "value_assets": ["2-page Tech Inflection Checklist"],
+        "ctas": ["Want me to send that checklist?"],
+        "forbidden_phrases": [],
+        "tone": None,
+    }
+
+    as_of = date(2026, 2, 26)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=10,
+        complexity=95,
+        pressure=10,
+        leadership_gap=10,
+        composite=35,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    draft_kwargs: list[dict] = []
+
+    def capture_draft(*args: object, **kwargs: object) -> dict:
+        draft_kwargs.append(dict(kwargs))
+        return _ORE_DRAFT
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_frames,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            side_effect=capture_draft,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert len(draft_kwargs) >= 1, "Pipeline must call generate_ore_draft when gate allows"
+    assert draft_kwargs[0].get("pattern_frame") == complexity_frame, (
+        "Pipeline must pass playbook's complexity pattern frame when snapshot has complexity dominant"
+    )
+
+
+def test_ore_pipeline_strategy_parity_with_selector(db: Session) -> None:
+    """M5 parity (Issue #117): Pipeline draft inputs match select_outreach_strategy for same gate/snapshot/playbook.
+
+    When M4 wires the selector into the pipeline, behavior should stay consistent. This test asserts
+    pattern_frame, value_asset, and cta passed to generate_ore_draft match the selector output.
+    """
+    from app.services.ore.dominant_dimension import get_dominant_trs_dimension
+    from app.services.ore.strategy_selector import select_outreach_strategy
+
+    pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
+    pack_id = pack.id if pack else None
+
+    company = Company(
+        name="ParityCo",
+        website_url="https://parity.example.com",
+        founder_name="Founder",
+    )
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    playbook_with_frames = {
+        "pattern_frames": {
+            "momentum": "Momentum framing text.",
+            "complexity": "Complexity framing text.",
+            "pressure": "Pressure framing text.",
+            "leadership_gap": "Leadership gap framing text.",
+        },
+        "value_assets": ["Checklist asset", "Other asset"],
+        "ctas": ["First CTA", "Second CTA"],
+        "forbidden_phrases": [],
+        "tone": None,
+    }
+
+    as_of = date(2026, 2, 27)
+    # Momentum dominant (85 > others)
+    snapshot = ReadinessSnapshot(
+        company_id=company.id,
+        as_of=as_of,
+        momentum=85,
+        complexity=20,
+        pressure=15,
+        leadership_gap=10,
+        composite=40,
+        pack_id=pack_id,
+    )
+    db.add(snapshot)
+    db.commit()
+
+    draft_kwargs: list[dict] = []
+
+    def capture_draft(*args: object, **kwargs: object) -> dict:
+        draft_kwargs.append(dict(kwargs))
+        return _ORE_DRAFT
+
+    with (
+        patch(
+            "app.services.ore.ore_pipeline.get_ore_playbook",
+            return_value=playbook_with_frames,
+        ),
+        patch(
+            "app.services.ore.ore_pipeline.generate_ore_draft",
+            side_effect=capture_draft,
+        ),
+    ):
+        from app.services.ore.ore_pipeline import generate_ore_recommendation
+
+        rec = generate_ore_recommendation(
+            db,
+            company_id=company.id,
+            as_of=as_of,
+            stability_modifier=0.9,
+            cooldown_active=False,
+            alignment_high=True,
+        )
+
+    assert rec is not None
+    assert len(draft_kwargs) >= 1, "Pipeline must call generate_ore_draft when gate allows"
+
+    dominant = get_dominant_trs_dimension(
+        snapshot.momentum,
+        snapshot.complexity,
+        snapshot.pressure,
+        snapshot.leadership_gap,
+    )
+    assert dominant == "momentum"
+    # Stability cap not triggered (SM=0.9 >= 0.7)
+    selector_result = select_outreach_strategy(
+        recommendation_type=rec.recommendation_type,
+        dominant_dimension=dominant,
+        alignment_high=True,
+        playbook=playbook_with_frames,
+        stability_cap_triggered=False,
+    )
+    assert draft_kwargs[0].get("pattern_frame") == selector_result.pattern_frame, (
+        "Pipeline pattern_frame must match selector output (parity for M4 wiring)"
+    )
+    assert draft_kwargs[0].get("value_asset") == selector_result.value_asset, (
+        "Pipeline value_asset must match selector output (parity for M4 wiring)"
+    )
+    assert draft_kwargs[0].get("cta") == selector_result.cta_type, (
+        "Pipeline cta must match selector output (parity for M4 wiring)"
+    )
+
+
 def test_ore_pipeline_m4_channel_and_strategy_notes_from_selector(db: Session) -> None:
     """M4 (Issue #117): Pipeline persists channel and strategy_notes from select_outreach_strategy."""
     pack = db.query(SignalPack).filter(SignalPack.pack_id == "fractional_cto_v1").first()
