@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -97,6 +99,16 @@ async def run(
     Returns:
         (run_id, list of validated EvidenceBundles, metadata).
     """
+    # #region agent log
+    _log_path = Path("/Users/triciaballad/Documents/GitHub/SignalForge/.cursor/debug-481458.log")
+    def _dbg(msg: str, data: dict | None = None):
+        try:
+            f = open(_log_path, "a", encoding="utf-8")
+            f.write('{"sessionId":"481458","hypothesisId":"H2,H3,H4,H5","location":"discovery_scout_service.py:run","message":"' + msg + '","data":' + (json.dumps(data or {}) if data else "{}") + ',"timestamp":' + str(int(time.time() * 1000)) + "}\n")
+            f.close()
+        except Exception: pass
+    _dbg("run_scout_entered")
+    # #endregion
     settings = get_settings()
     if allowlist is None:
         allowlist = list(settings.scout_source_allowlist)
@@ -111,6 +123,7 @@ async def run(
         pack_id=pack_id,
         denylist=denylist,
     )
+    _dbg("after_planner")
 
     urls_to_fetch: list[str] = []
     if seed_urls:
@@ -137,6 +150,7 @@ async def run(
         ICP_DEFINITION=icp_definition,
         PAGE_CONTENT=page_content,
     )
+    _dbg("after_render_prompt")
     provider = llm_provider or get_llm_provider(role=ModelRole.SCOUT, settings=settings)
     model_version = getattr(provider, "model", "unknown")
     raw_response = provider.complete(
@@ -144,6 +158,7 @@ async def run(
         response_format={"type": "json_object"},
         temperature=0.3,
     )
+    _dbg("after_llm_complete")
 
     bundle_dicts = _parse_llm_bundles(raw_response)
     validated: list[EvidenceBundle] = []
@@ -249,6 +264,7 @@ async def run(
             else None
         )
 
+    _dbg("before_store_evidence", {"bundles_count": len(bundles_to_store)})
     store_evidence_bundle(
         db,
         run_id=run_id,
@@ -259,7 +275,10 @@ async def run(
         structured_payloads=payloads_to_store,
         pack_id=None,
     )
+    _dbg("after_store_evidence")
+    _dbg("before_commit")
     db.commit()
+    _dbg("after_commit")
 
     metadata = ScoutRunMetadata(
         model_version=model_version,

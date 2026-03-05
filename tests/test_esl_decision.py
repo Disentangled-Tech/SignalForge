@@ -265,20 +265,26 @@ class TestGetEffectiveSensitivityLevel:
     def test_pack_only_returns_mapping_level(self) -> None:
         """Pack sensitivity_mapping only (core_taxonomy None) → same as legacy."""
         policy = {"sensitivity_mapping": {"distress_mentioned": "high"}}
-        assert get_effective_sensitivity_level(
-            signal_ids={"funding_raised", "distress_mentioned"},
-            core_taxonomy=None,
-            esl_policy=policy,
-        ) == "high"
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"funding_raised", "distress_mentioned"},
+                core_taxonomy=None,
+                esl_policy=policy,
+            )
+            == "high"
+        )
 
     def test_pack_only_no_overlap_returns_none(self) -> None:
         """Pack mapping with no overlapping signals → None."""
         policy = {"sensitivity_mapping": {"other_signal": "high"}}
-        assert get_effective_sensitivity_level(
-            signal_ids={"funding_raised"},
-            core_taxonomy=None,
-            esl_policy=policy,
-        ) is None
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"funding_raised"},
+                core_taxonomy=None,
+                esl_policy=policy,
+            )
+            is None
+        )
 
     def test_core_only_returns_core_level(self) -> None:
         """Core taxonomy sensitivity only (no pack mapping) → core level."""
@@ -286,11 +292,14 @@ class TestGetEffectiveSensitivityLevel:
             "signal_ids": ["founder_urgency_language", "funding_raised"],
             "signals": {"founder_urgency_language": {"sensitivity": "medium"}},
         }
-        assert get_effective_sensitivity_level(
-            signal_ids={"founder_urgency_language"},
-            core_taxonomy=core,
-            esl_policy={},
-        ) == "medium"
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"founder_urgency_language"},
+                core_taxonomy=core,
+                esl_policy={},
+            )
+            == "medium"
+        )
 
     def test_core_only_no_sensitivity_in_core_returns_none(self) -> None:
         """Core has signals map but signal has no sensitivity → None."""
@@ -298,11 +307,14 @@ class TestGetEffectiveSensitivityLevel:
             "signal_ids": ["funding_raised"],
             "signals": {"funding_raised": {}},
         }
-        assert get_effective_sensitivity_level(
-            signal_ids={"funding_raised"},
-            core_taxonomy=core,
-            esl_policy={},
-        ) is None
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"funding_raised"},
+                core_taxonomy=core,
+                esl_policy={},
+            )
+            is None
+        )
 
     def test_pack_overrides_core_for_same_signal(self) -> None:
         """Pack sensitivity_mapping overrides core for same signal_id."""
@@ -311,11 +323,14 @@ class TestGetEffectiveSensitivityLevel:
             "signals": {"founder_urgency_language": {"sensitivity": "low"}},
         }
         policy = {"sensitivity_mapping": {"founder_urgency_language": "high"}}
-        assert get_effective_sensitivity_level(
-            signal_ids={"founder_urgency_language"},
-            core_taxonomy=core,
-            esl_policy=policy,
-        ) == "high"
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"founder_urgency_language"},
+                core_taxonomy=core,
+                esl_policy=policy,
+            )
+            == "high"
+        )
 
     def test_merge_highest_wins(self) -> None:
         """Multiple levels → highest wins (high > medium > low)."""
@@ -324,11 +339,14 @@ class TestGetEffectiveSensitivityLevel:
             "signals": {"a": {"sensitivity": "low"}, "b": {"sensitivity": "medium"}},
         }
         policy = {"sensitivity_mapping": {"c": "high"}}
-        assert get_effective_sensitivity_level(
-            signal_ids={"a", "b", "c"},
-            core_taxonomy=core,
-            esl_policy=policy,
-        ) == "high"
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"a", "b", "c"},
+                core_taxonomy=core,
+                esl_policy=policy,
+            )
+            == "high"
+        )
 
     def test_merge_core_only_highest_wins(self) -> None:
         """Core-only multiple levels → highest wins."""
@@ -336,20 +354,26 @@ class TestGetEffectiveSensitivityLevel:
             "signal_ids": ["a", "b"],
             "signals": {"a": {"sensitivity": "medium"}, "b": {"sensitivity": "low"}},
         }
-        assert get_effective_sensitivity_level(
-            signal_ids={"a", "b"},
-            core_taxonomy=core,
-            esl_policy={},
-        ) == "medium"
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"a", "b"},
+                core_taxonomy=core,
+                esl_policy={},
+            )
+            == "medium"
+        )
 
     def test_empty_signal_ids_returns_none(self) -> None:
         """Empty signal_ids → None."""
         policy = {"sensitivity_mapping": {"x": "high"}}
-        assert get_effective_sensitivity_level(
-            signal_ids=set(),
-            core_taxonomy=None,
-            esl_policy=policy,
-        ) is None
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids=set(),
+                core_taxonomy=None,
+                esl_policy=policy,
+            )
+            is None
+        )
 
     def test_invalid_pack_level_ignored(self) -> None:
         """Pack level not in low/medium/high is ignored (valid level still wins)."""
@@ -358,8 +382,11 @@ class TestGetEffectiveSensitivityLevel:
             "signals": {"a": {"sensitivity": "medium"}},
         }
         policy = {"sensitivity_mapping": {"a": "invalid", "b": "high"}}
-        assert get_effective_sensitivity_level(
-            signal_ids={"a", "b"},
-            core_taxonomy=core,
-            esl_policy=policy,
-        ) == "high"
+        assert (
+            get_effective_sensitivity_level(
+                signal_ids={"a", "b"},
+                core_taxonomy=core,
+                esl_policy=policy,
+            )
+            == "high"
+        )

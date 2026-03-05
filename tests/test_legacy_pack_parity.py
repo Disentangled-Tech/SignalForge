@@ -816,8 +816,8 @@ class TestOutreachDraftConstraintsParity:
         """ORE (fractional_cto_v1) sets playbook_id and stored drafts satisfy tone, required elements, no forbidden phrases."""
         from unittest.mock import patch
 
-        from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
         from app.services.ore.ore_pipeline import generate_ore_recommendation
+        from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
         from app.services.pack_resolver import resolve_pack
 
         # Deterministic critic-compliant draft (no surveillance, single CTA, opt-out)
@@ -869,9 +869,7 @@ class TestOutreachDraftConstraintsParity:
                 "app.services.ore.ore_pipeline.generate_ore_draft",
                 return_value=draft,
             ):
-                rec = generate_ore_recommendation(
-                    db, company_id=company.id, as_of=as_of
-                )
+                rec = generate_ore_recommendation(db, company_id=company.id, as_of=as_of)
 
             assert rec is not None, "ORE must return OutreachRecommendation when snapshot exists"
             # Same playbook chosen (parity harness assertion)
@@ -927,7 +925,43 @@ class TestOutreachDraftConstraintsParity:
                 OutreachRecommendation.as_of == as_of,
                 OutreachRecommendation.pack_id == fractional_cto_pack_id,
             ).delete(synchronize_session="fetch")
-            db.execute(delete(EngagementSnapshot).where(EngagementSnapshot.company_id == company.id))
+            db.execute(
+                delete(EngagementSnapshot).where(EngagementSnapshot.company_id == company.id)
+            )
             db.execute(delete(ReadinessSnapshot).where(ReadinessSnapshot.company_id == company.id))
             db.delete(company)
             db.commit()
+
+    def test_ore_parity_critic_rejects_pack_forbidden_phrases(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
+        """M5 (Issue #120): Parity — critic must reject any draft containing a pack forbidden_phrase."""
+        from app.services.ore.critic import check_critic
+        from app.services.ore.playbook_loader import DEFAULT_PLAYBOOK_NAME, get_ore_playbook
+        from app.services.pack_resolver import resolve_pack
+
+        pack = resolve_pack(db, fractional_cto_pack_id)
+        playbook = get_ore_playbook(pack, DEFAULT_PLAYBOOK_NAME)
+        forbidden_phrases = playbook.get("forbidden_phrases") or []
+        if not forbidden_phrases:
+            # Fixture so parity assertion always runs (fractional_cto_v1 may have empty list)
+            forbidden_phrases = ["limited time offer"]
+
+        base_subject = "Quick question about TestCo"
+        base_message = (
+            "Hi Jane, teams often hit a complexity step-change. "
+            "Want me to send a checklist? No worries if now isn't the time."
+        )
+        for phrase in forbidden_phrases:
+            if not phrase or not isinstance(phrase, str):
+                continue
+            message_with_phrase = base_message + " " + phrase
+            result = check_critic(
+                base_subject,
+                message_with_phrase,
+                forbidden_phrases=[phrase],
+            )
+            assert not result.passed, (
+                f"Critic must reject draft containing pack forbidden phrase {phrase!r} (parity)"
+            )
+            assert any(phrase.lower() in v.lower() for v in result.violations)

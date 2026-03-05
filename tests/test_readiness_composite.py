@@ -345,7 +345,9 @@ class TestWriteReadinessSnapshotPersists:
         snapshot = write_readiness_snapshot(db, company.id, date.today())
         assert snapshot is None
 
-    def test_explain_includes_delta_1d_when_prev_exists(self, db: Session, fractional_cto_pack_id) -> None:
+    def test_explain_includes_delta_1d_when_prev_exists(
+        self, db: Session, fractional_cto_pack_id
+    ) -> None:
         """Second snapshot includes delta_1d when previous day snapshot exists."""
         company = Company(name="DeltaTestCo", website_url="https://delta.example.com")
         db.add(company)

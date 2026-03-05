@@ -184,6 +184,7 @@ def generate_ore_recommendation(
 
     # Compute or use provided ESL (Issue #106)
     # ESL signal set: legacy (pack-scoped); not passing core_pack_id (Issue #287).
+    ctx: dict | None = None
     if stability_modifier is not None:
         sm = stability_modifier
         esl_composite = sm
@@ -329,11 +330,21 @@ def generate_ore_recommendation(
                 used_polish = True
 
         forbidden_phrases = playbook.get("forbidden_phrases") or []
+        no_ref_signal_ids = _no_reference_signal_ids(pack)
+        entity_signal_ids = set(ctx.get("signal_ids") or ()) if ctx else set()
+        suppressed_signal_ids_for_critic = entity_signal_ids & no_ref_signal_ids
+        critic_kwargs = {
+            "forbidden_phrases": forbidden_phrases,
+            "suppressed_signal_ids": suppressed_signal_ids_for_critic or None,
+            "tone_constraint": tone_constraint_esl,
+            "pack_id": resolved_pack_id,
+            "allowed_signal_labels": top_signal_labels or None,
+        }
         if candidate_draft.get("subject") or candidate_draft.get("message"):
             critic_result = check_critic(
                 candidate_draft.get("subject", ""),
                 candidate_draft.get("message", ""),
-                forbidden_phrases=forbidden_phrases,
+                **critic_kwargs,
             )
             if critic_result.passed:
                 draft_variants = [candidate_draft]
@@ -344,7 +355,7 @@ def generate_ore_recommendation(
                     critic_result = check_critic(
                         draft.get("subject", ""),
                         draft.get("message", ""),
-                        forbidden_phrases=forbidden_phrases,
+                        **critic_kwargs,
                     )
                 if critic_result.passed:
                     draft_variants = [candidate_draft]
@@ -358,7 +369,7 @@ def generate_ore_recommendation(
                     fallback_critic = check_critic(
                         fallback.get("subject", ""),
                         fallback.get("message", ""),
-                        forbidden_phrases=forbidden_phrases,
+                        **critic_kwargs,
                     )
                     if fallback_critic.passed:
                         draft_variants = [fallback]

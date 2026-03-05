@@ -108,6 +108,17 @@ def test_anthropic_api_key_fallback_to_llm_api_key(monkeypatch: pytest.MonkeyPat
         get_settings.cache_clear()
 
 
+def test_llm_provider_openai_coerced_to_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When LLM_PROVIDER=openai (or any non-anthropic), config coerces to anthropic (ADR-012)."""
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.llm_provider == "anthropic"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_anthropic_provider_claude_model_names_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """When LLM_PROVIDER=anthropic and role env vars are set, settings load Claude model names."""
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")

@@ -44,6 +44,7 @@ def _create_engagement_snapshot(
 ) -> EngagementSnapshot:
     if pack_id is None:
         from app.services.pack_resolver import get_default_pack_id
+
         pack_id = get_default_pack_id(db)
     db.add(
         ReadinessSnapshot(
@@ -80,6 +81,7 @@ def _create_signal_event(
 ) -> SignalEvent:
     if pack_id is None:
         from app.services.pack_resolver import get_default_pack_id
+
         pack_id = get_default_pack_id(db)
     if event_time is None:
         event_time = datetime.now(UTC) - timedelta(days=1)

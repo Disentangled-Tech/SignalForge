@@ -81,7 +81,9 @@ def test_generate_ore_draft_returns_empty_on_invalid_json() -> None:
     assert result == {"subject": "", "message": ""}
 
 
-def test_generate_ore_draft_passes_tone_instruction_when_tone_constraint_and_definition_provided() -> None:
+def test_generate_ore_draft_passes_tone_instruction_when_tone_constraint_and_definition_provided() -> (
+    None
+):
     """M5: When tone_constraint and tone_definition are provided, TONE_INSTRUCTION is built and passed to prompt."""
     company = Company(name="TestCo", founder_name="Jane", website_url="https://test.co")
     with patch(
