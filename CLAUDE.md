@@ -244,6 +244,7 @@ docs/               # Comprehensive documentation
 | File | Purpose |
 |------|---------|
 | `README.md` | Project overview and quick start |
+| `docs/DEVELOPER_ONBOARDING.md` | **Developer onboarding**: where things live, data flow, feature-by-feature usage, maintenance |
 | `docs/GLOSSARY.md` | Acronyms (TRS, ESL, ORE, SM, BE, CM, AM, etc.) |
 | `docs/pipeline.md` | Pipeline stages with API endpoints; Scout as separate flow |
 | `docs/discovery_scout.md` | LLM Discovery Scout (Evidence-Only): inputs, output schema, no entity writes |
