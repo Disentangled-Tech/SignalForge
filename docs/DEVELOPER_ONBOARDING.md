@@ -2,6 +2,8 @@
 
 This document is for developers who need to **maintain, extend, or onboard** onto the SignalForge codebase. It explains what the app does, where things live, how data flows, and how each feature is intended to be used. Use it to jump in without reverse-engineering the repo.
 
+**End-user docs:** For user onboarding and task-based tutorials, see [USER_ONBOARDING.md](USER_ONBOARDING.md) and [USER_GUIDE.md](USER_GUIDE.md).
+
 ---
 
 ## 1. What SignalForge Does (One Paragraph)

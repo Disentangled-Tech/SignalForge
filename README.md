@@ -126,6 +126,15 @@ Both require the `X-Internal-Token` header matching `INTERNAL_JOB_TOKEN`.
 
 ## Documentation
 
+### User-facing
+
+| Doc | Description |
+| --- | --- |
+| [docs/USER_ONBOARDING.md](docs/USER_ONBOARDING.md) | Quick start: login, add/import companies, briefing, record outreach |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Full user guide: onboarding, concepts, task-based tutorials |
+
+### Technical
+
 | Doc | Description |
 | --- | --- |
 | [docs/GLOSSARY.md](docs/GLOSSARY.md) | Glossary of acronyms (ESL, ORE, TRS, ADR, etc.) |
